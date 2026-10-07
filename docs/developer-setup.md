@@ -14,7 +14,7 @@ Work inside the WSL filesystem (for example `~/code`), not under `/mnt/c`, for s
 | SSH key on GitHub | Push access | [GitHub docs](https://docs.github.com/en/authentication/connecting-to-github-with-ssh); verify with `ssh -T git@github.com` |
 | GitHub CLI (optional) | Creating pull requests | [cli.github.com](https://cli.github.com); then `gh auth login` |
 
-`make setup` installs everything else in the next section. Docker and Node.js are only checked, see below.
+`make setup` installs the pinned tools and Docker (see below). Node.js is only checked.
 
 ### Pinned tools
 
@@ -30,12 +30,13 @@ To upgrade a tool, change its version in `.tool-versions` and run `make tools`.
 
 ### Docker
 
-Minikube runs on the Docker driver, so Docker must be installed and its daemon reachable. `make setup` does not install it because the options need admin rights or Windows-side action. Choose one:
+Minikube runs on the Docker driver. `make setup` runs `scripts/install-docker.sh` (also available alone as `make docker`):
 
-- **Docker Desktop (Windows):** install it, then enable Settings → Resources → WSL integration for your distribution.
-- **Docker Engine in WSL2:** follow the [official Ubuntu instructions](https://docs.docker.com/engine/install/ubuntu/), then `sudo usermod -aG docker $USER` and restart the WSL shell (`wsl --shutdown` from Windows).
+- If `docker info` already works (Docker Desktop with WSL integration, or an existing Engine), nothing is installed.
+- Otherwise it installs Docker Engine from Docker's official apt repository, enables the service, and adds you to the `docker` group. This needs `sudo`, so it asks for your password once. Supported: Ubuntu and Debian, including WSL2 with systemd.
+- After the first install, open a new shell so the group change applies. In WSL run `wsl --shutdown` from Windows PowerShell and reopen the terminal, then run `make doctor`.
 
-Verify with `docker info`.
+On other systems, install Docker manually ([Docker Desktop](https://docs.docker.com/desktop/) or [Engine](https://docs.docker.com/engine/install/)) and verify with `docker info`.
 
 ### Node.js
 
@@ -54,7 +55,8 @@ make setup
 1. Installs `pre-commit` into the git-ignored `.venv/` (skipped if `pre-commit` is already on your PATH).
 2. Installs the git pre-commit hook, so checks run on every commit.
 3. Installs the pinned tools from `.tool-versions` (`scripts/install-tools.sh`).
-4. Runs `make doctor`, which compares everything with `.tool-versions` and lists problems (for example a missing Docker).
+4. Installs Docker Engine if it is missing (`scripts/install-docker.sh`, needs sudo).
+5. Runs `make doctor`, which compares everything with `.tool-versions` and lists problems (for example a missing Docker).
 
 ## 3. Daily commands
 
@@ -63,6 +65,7 @@ make setup
 | `make help` | List all targets |
 | `make doctor` | Check the environment against `.tool-versions` |
 | `make tools` | Install or update the pinned tools |
+| `make docker` | Install Docker Engine if missing (needs sudo) |
 | `make cluster-up` | Start the local Minikube cluster (profile `rpp`) |
 | `make cluster-status` | Show cluster status |
 | `make cluster-down` | Delete the cluster and its data (destructive) |
@@ -92,7 +95,8 @@ For WSL networking and disk problems see the [WSL runbook](runbooks/wsl-troubles
 |---|---|
 | `make doctor` reports `PROBLEM ...` | Follow the hint printed on that line; most are fixed by `make setup` |
 | `~/.local/bin is not on PATH` | Add it to `~/.bashrc` as shown above |
-| `docker daemon is not reachable` | Start Docker Desktop and enable WSL integration, or start the Docker service |
+| `docker daemon is not reachable` | `sudo systemctl start docker`, or start Docker Desktop with WSL integration |
+| `permission denied` on the Docker socket | Open a new shell after `make setup` so the `docker` group applies |
 | `python3 -m venv` fails | `sudo apt install python3-venv` |
 | `Permission denied (publickey)` on push | Check the key with `ssh -T git@github.com` and that the remote uses the SSH URL (`git remote -v`) |
 | Hooks fail on line endings | Work in the WSL filesystem; the repo enforces LF via `.gitattributes` |

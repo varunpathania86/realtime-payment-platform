@@ -585,7 +585,7 @@ make cluster-status
 make cluster-down
 ```
 
-Docker is verified by `make doctor` but installed manually (Docker Desktop or Docker Engine), as described in `docs/developer-setup.md`. Scripts longer than a few lines live in `/scripts` and are called from the Makefile.
+Docker Engine is installed by `make setup` through `scripts/install-docker.sh` (skipped when Docker Desktop or an existing Engine already works) and verified by `make doctor`; see `docs/developer-setup.md`. Scripts longer than a few lines live in `/scripts` and are called from the Makefile.
 
 Add a WSL networking and disk-usage troubleshooting runbook.
 

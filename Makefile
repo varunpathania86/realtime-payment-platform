@@ -12,7 +12,7 @@ PRE_COMMIT := $(or $(shell command -v pre-commit),$(VENV)/bin/pre-commit)
 PROJECT_ROOTS := apps packages streaming platform ml knowledge analytics contracts tests
 SUBPROJECTS   := $(sort $(patsubst %/Makefile,%,$(wildcard $(addsuffix /*/Makefile,$(PROJECT_ROOTS)))))
 
-.PHONY: help setup tools doctor cluster-up cluster-status cluster-down projects build test lint fmt clean ci hooks version
+.PHONY: help setup tools docker doctor cluster-up cluster-status cluster-down projects build test lint fmt clean ci hooks version
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
@@ -23,10 +23,14 @@ setup: ## Set up the developer environment (see docs/developer-setup.md)
 	echo "Installing pre-commit into $(VENV)"; python3 -m venv $(VENV) && $(VENV)/bin/pip install --quiet pre-commit; }
 	$(PRE_COMMIT) install
 	scripts/install-tools.sh
+	scripts/install-docker.sh
 	@$(MAKE) --no-print-directory doctor
 
 tools: ## Install or update the pinned CLI tools from .tool-versions
 	scripts/install-tools.sh
+
+docker: ## Install Docker Engine if missing (needs sudo)
+	scripts/install-docker.sh
 
 doctor: ## Check the environment against .tool-versions
 	@scripts/doctor.sh

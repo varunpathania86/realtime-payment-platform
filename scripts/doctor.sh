@@ -31,9 +31,15 @@ elif [ "${have%%.*}" != "$want" ]; then bad "node is $have, want $want.x (see do
 else ok "node $have"; fi
 
 if [ -z "$(installed_version docker)" ]; then
-  bad "docker is missing (see docs/developer-setup.md, section Docker)"
+  bad "docker is missing (run: make setup)"
 elif ! docker info >/dev/null 2>&1; then
-  bad "docker is installed but the daemon is not reachable (start Docker Desktop or enable WSL integration)"
+  if id -nG "$USER" | grep -qw docker; then
+    bad "docker daemon is not reachable (start it: sudo systemctl start docker, or start Docker Desktop)"
+  elif getent group docker | grep -qw "$USER"; then
+    bad "you were added to the docker group; open a new shell (WSL: run 'wsl --shutdown' in PowerShell, then reopen)"
+  else
+    bad "docker daemon is not reachable (run: make docker, or start Docker Desktop)"
+  fi
 else
   ok "docker $(installed_version docker)"
 fi
