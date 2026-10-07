@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Register this machine as a GitHub Actions self-hosted runner ("agent") for this repository.
 # Usage: scripts/agent.sh setup|remove|status
-# Settings (environment): AGENT_DIR, AGENT_NAME, AGENT_LABELS (default "local"), AGENT_SERVICE=0 to skip
+# Settings (environment): AGENT_DIR, AGENT_NAME (default rpp-<first label>), AGENT_LABELS (default "local"), AGENT_SERVICE=0 to skip
 # the systemd service, RUNNER_TOKEN to supply a registration token instead of using the gh CLI.
 set -euo pipefail
 # shellcheck source=scripts/lib.sh
@@ -11,8 +11,9 @@ remote=$(git -C "$REPO_ROOT" remote get-url origin)
 slug=$(printf '%s' "$remote" | sed -E 's#^(git@github\.com:|https://github\.com/)##; s#\.git$##')
 repo_url="https://github.com/$slug"
 AGENT_DIR="${AGENT_DIR:-$HOME/actions-runner/${slug//\//-}}"
-AGENT_NAME="${AGENT_NAME:-$(hostname)-local}"
 AGENT_LABELS="${AGENT_LABELS:-local}"
+# Neutral default name: the hostname is public in workflow logs and can reveal an employer's naming scheme.
+AGENT_NAME="${AGENT_NAME:-rpp-${AGENT_LABELS%%,*}}"
 AGENT_SERVICE="${AGENT_SERVICE:-1}"
 
 # A registration (or removal) token is short-lived. Prefer the gh CLI; fall back to RUNNER_TOKEN or a prompt.
@@ -87,9 +88,14 @@ remove() {
 
 status() {
   [ -f "$AGENT_DIR/.runner" ] || { echo "No runner registered in $AGENT_DIR (run: make setup-agent)"; return 1; }
-  if has_systemd; then (cd "$AGENT_DIR" && sudo ./svc.sh status 2>&1 | sed -n '1,4p'); fi
+  if has_systemd; then
+    unit=$(cat "$AGENT_DIR/.service" 2>/dev/null || true)
+    [ -n "$unit" ] && echo "service  $unit: $(systemctl is-active "$unit" || true)"
+  fi
   if command -v gh >/dev/null && gh auth status >/dev/null 2>&1; then
-    gh api "repos/$slug/actions/runners" --jq '.runners[] | "\(.name)\t\(.status)\t\([.labels[].name] | join(","))"'
+    gh api "repos/$slug/actions/runners" --jq '.runners[] | "runner   \(.name)\t\(.status)\t\([.labels[].name] | join(","))"'
+  else
+    echo "runner   GitHub status unavailable (run: gh auth login), see $repo_url/settings/actions/runners"
   fi
 }
 

@@ -71,7 +71,7 @@ make setup-agent
 
 The command downloads the pinned runner (version in `.tool-versions`, SHA-256 verified) into `~/actions-runner/`, installs its OS dependencies and the systemd service (sudo is required), and registers it for this repository with the label `local`. A registration token comes from the `gh` CLI if it is logged in (`gh auth login`); otherwise the command asks you to paste one from the repository's Settings, Actions, Runners page.
 
-Options (environment variables): `AGENT_LABELS` (default `local`; use `vps` on the VPS), `AGENT_NAME`, `AGENT_DIR`, `AGENT_SERVICE=0` to skip the service and run `./run.sh` manually.
+Options (environment variables): `AGENT_LABELS` (default `local`; use `vps` on the VPS), `AGENT_NAME` (default `rpp-<first label>`, for example `rpp-local`; the hostname is deliberately not used because it is public in workflow logs), `AGENT_DIR`, `AGENT_SERVICE=0` to skip the service and run `./run.sh` manually.
 
 No static IP or open ports are needed: the runner only makes outbound HTTPS connections to GitHub.
 
