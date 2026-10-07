@@ -37,7 +37,7 @@ download_runner() {
   [ "$ARCH" = amd64 ] && arch=x64 || arch=arm64
   asset="actions-runner-linux-$arch-$v.tar.gz"
   tmp=$(mktemp -d)
-  trap 'rm -rf "$tmp"' RETURN
+  trap 'rm -rf "${tmp:-}"; trap - RETURN' RETURN
   echo "Downloading runner $v"
   curl -fsSL --retry 3 -o "$tmp/$asset" "https://github.com/actions/runner/releases/download/v$v/$asset"
   digest=$(curl -fsSL "https://api.github.com/repos/actions/runner/releases/tags/v$v" |
