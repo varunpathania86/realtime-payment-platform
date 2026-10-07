@@ -6,7 +6,7 @@ The full requirements and roadmap are in the [master plan](docs/master-plan.md).
 
 ## Status
 
-Stage 0a (repository foundation) is in progress. No sub-projects exist yet.
+Stage 0 (repository foundation and workstation baseline) is in progress. No sub-projects exist yet.
 
 ## Repository map
 

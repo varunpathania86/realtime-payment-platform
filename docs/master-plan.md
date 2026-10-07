@@ -1,7 +1,7 @@
 # Master Plan: Frozen Requirements and Staged Delivery
 ## Production-Style FOSS Real-Time Data and AI Platform
 
-> **Status:** Requirements frozen on 7 October 2026; engineering conventions added in Stage 0a  
+> **Status:** Requirements frozen on 7 October 2026; engineering conventions added in Stage 0  
 > **Primary purpose:** A reusable implementation roadmap and recovery prompt if the original conversation is lost.  
 > **Target roles:** Senior Software Engineer, Senior Backend Engineer, Distributed Data Platform Engineer, Streaming Platform Engineer, and AI-enabled Data Platform Engineer in the German market.  
 > **Existing experience:** 12 years of C#, followed by 5 years of Go/Python and AWS data-pipeline work using Lambda, EMR, Kinesis, and related services.  
@@ -537,12 +537,14 @@ These are starting estimates, not guarantees. Tune resource requests and limits 
 
 Every stage must leave the repository runnable, documented, and testable. Do not start the next stage until the current exit criteria pass.
 
-## Stage 0a: repository foundation
+## Stage 0: repository foundation and WSL2 workstation baseline
 
-**Estimated effort:** 2-3 hours  
-**Outcome:** Empty but fully governed monorepo.
+Delivered as a single pull request.
 
-Implement:
+**Estimated effort:** 5-7 hours  
+**Outcome:** Governed monorepo and a reproducible developer toolchain.
+
+Repository foundation:
 
 - Root `README.md`, `CONTRIBUTING.md`, `Makefile`, shared lint configuration, and pre-commit hooks
 - This master plan in `docs/master-plan.md`
@@ -552,14 +554,7 @@ Implement:
 - GitHub Actions: Build, Publish, Deploy
 - PR template; branch protection on `main`
 
-**Exit criteria:** `make ci` passes locally and in GitHub Actions on the foundation pull request.
-
----
-
-## Stage 0: WSL2 workstation baseline
-
-**Estimated effort:** 2-4 hours  
-**Outcome:** Reproducible developer toolchain.
+Workstation baseline:
 
 Install and pin:
 
@@ -589,7 +584,7 @@ Docker Engine is installed by `make setup` through `scripts/install-docker.sh` (
 
 Add a WSL networking and disk-usage troubleshooting runbook.
 
-**Exit criteria:** A clean WSL shell can clone the repository, run `make doctor`, create Minikube, inspect it, and destroy it without undocumented commands.
+**Exit criteria:** `make ci` passes locally and in GitHub Actions. A clean WSL shell can clone the repository, run `make setup` and `make doctor`, create Minikube, inspect it, and destroy it without undocumented commands.
 
 ---
 
