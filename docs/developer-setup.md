@@ -34,7 +34,7 @@ Minikube runs on the Docker driver. `make setup` runs `scripts/install-docker.sh
 
 - If `docker info` already works (Docker Desktop with WSL integration, or an existing Engine), nothing is installed.
 - Otherwise it installs Docker Engine from Docker's official apt repository, enables the service, and adds you to the `docker` group. This needs `sudo`, so it asks for your password once. Supported: Ubuntu and Debian, including WSL2 with systemd.
-- After the first install, open a new shell so the group change applies. In WSL run `wsl --shutdown` from Windows PowerShell and reopen the terminal, then run `make doctor`.
+- Docker then works without `sudo`. Group changes normally apply only to new shells, so the `make` targets (`make setup`, `make doctor`, `make cluster-*`) re-run themselves under the `docker` group and work immediately. For plain `docker` commands in an already-open terminal, run `newgrp docker`, or open a new terminal (in WSL: `wsl --shutdown` from Windows PowerShell, then reopen).
 
 On other systems, install Docker manually ([Docker Desktop](https://docs.docker.com/desktop/) or [Engine](https://docs.docker.com/engine/install/)) and verify with `docker info`.
 
@@ -96,7 +96,7 @@ For WSL networking and disk problems see the [WSL runbook](runbooks/wsl-troubles
 | `make doctor` reports `PROBLEM ...` | Follow the hint printed on that line; most are fixed by `make setup` |
 | `~/.local/bin is not on PATH` | Add it to `~/.bashrc` as shown above |
 | `docker daemon is not reachable` | `sudo systemctl start docker`, or start Docker Desktop with WSL integration |
-| `permission denied` on the Docker socket | Open a new shell after `make setup` so the `docker` group applies |
+| `permission denied` on the Docker socket | Run `newgrp docker` or open a new terminal so the `docker` group applies; `make` targets work without this |
 | `python3 -m venv` fails | `sudo apt install python3-venv` |
 | `Permission denied (publickey)` on push | Check the key with `ssh -T git@github.com` and that the remote uses the SSH URL (`git remote -v`) |
 | Hooks fail on line endings | Work in the WSL filesystem; the repo enforces LF via `.gitattributes` |

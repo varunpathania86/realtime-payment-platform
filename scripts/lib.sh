@@ -32,3 +32,15 @@ installed_version() {
   esac
   echo "$out"
 }
+
+# If Docker is installed and you are in the docker group, but this shell predates the group change
+# (so Docker needs sudo), re-run the calling script under the docker group. Call as: reexec_with_docker_group "$@"
+reexec_with_docker_group() {
+  docker info >/dev/null 2>&1 && return 0
+  command -v docker >/dev/null && command -v sg >/dev/null || return 0
+  [ -z "${RPP_IN_SG:-}" ] || return 0
+  id -nG | grep -qw docker && return 0
+  getent group docker | grep -qw "$USER" || return 0
+  export RPP_IN_SG=1
+  exec sg docker -c "$(printf '%q ' "$0" "$@")"
+}
