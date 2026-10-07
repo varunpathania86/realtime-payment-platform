@@ -578,11 +578,14 @@ Install and pin:
 Create:
 
 ```text
-make doctor
+make setup           installs pinned tools from .tool-versions (scripts/install-tools.sh)
+make doctor          verifies the environment (scripts/doctor.sh)
 make cluster-up
 make cluster-status
 make cluster-down
 ```
+
+Docker is verified by `make doctor` but installed manually (Docker Desktop or Docker Engine), as described in `docs/developer-setup.md`. Scripts longer than a few lines live in `/scripts` and are called from the Makefile.
 
 Add a WSL networking and disk-usage troubleshooting runbook.
 

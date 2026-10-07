@@ -12,24 +12,33 @@ PRE_COMMIT := $(or $(shell command -v pre-commit),$(VENV)/bin/pre-commit)
 PROJECT_ROOTS := apps packages streaming platform ml knowledge analytics contracts tests
 SUBPROJECTS   := $(sort $(patsubst %/Makefile,%,$(wildcard $(addsuffix /*/Makefile,$(PROJECT_ROOTS)))))
 
-.PHONY: help setup doctor projects build test lint fmt clean ci hooks version
+.PHONY: help setup tools doctor cluster-up cluster-status cluster-down projects build test lint fmt clean ci hooks version
 
 help: ## Show available targets
-	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
 
 setup: ## Set up the developer environment (see docs/developer-setup.md)
 	@command -v python3 >/dev/null || { echo "python3 is required: see docs/developer-setup.md"; exit 1; }
 	@command -v pre-commit >/dev/null || [ -x $(VENV)/bin/pre-commit ] || { \
 	echo "Installing pre-commit into $(VENV)"; python3 -m venv $(VENV) && $(VENV)/bin/pip install --quiet pre-commit; }
 	$(PRE_COMMIT) install
+	scripts/install-tools.sh
 	@$(MAKE) --no-print-directory doctor
 
-doctor: ## Check that required tools are installed
-	@ok=1; for t in git make python3; do \
-	if command -v $$t >/dev/null; then echo "ok       $$t"; else echo "MISSING  $$t (see docs/developer-setup.md)"; ok=0; fi; \
-	done; \
-	if [ -x "$(PRE_COMMIT)" ] || command -v pre-commit >/dev/null; then echo "ok       pre-commit"; else echo "MISSING  pre-commit (run: make setup)"; ok=0; fi; \
-	[ $$ok = 1 ]
+tools: ## Install or update the pinned CLI tools from .tool-versions
+	scripts/install-tools.sh
+
+doctor: ## Check the environment against .tool-versions
+	@scripts/doctor.sh
+
+cluster-up: ## Start the local Minikube cluster (idempotent)
+	@scripts/cluster.sh up
+
+cluster-status: ## Show the local cluster status
+	@scripts/cluster.sh status
+
+cluster-down: ## DESTRUCTIVE: delete the local Minikube cluster and its data
+	@scripts/cluster.sh down
 
 projects: ## List discovered sub-projects
 	@if [ -z "$(SUBPROJECTS)" ]; then echo "(none yet)"; else printf '%s\n' $(SUBPROJECTS); fi

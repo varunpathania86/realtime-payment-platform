@@ -28,6 +28,8 @@
 ## Build, test, and static checks
 
 - Every Makefile (root and sub-project) provides `build`, `test`, `lint`, `fmt`, `clean`. The root Makefile runs them across all sub-projects. Use `make`, not ad-hoc commands, in docs and CI.
+- Tool versions are pinned in `.tool-versions`; `make setup` installs them and `make doctor` checks them. Change versions there only.
+- Shell logic longer than a few lines goes into `scripts/*.sh` (checked by ShellCheck) and is called from the Makefile.
 - Before finishing a change run `make ci` (lint, test, build) and fix all failures.
 - Shared lint and format rules live at the root (`.editorconfig`, `.pre-commit-config.yaml`, `.markdownlint-cli2.yaml`). Do not create per-project variants; language linters use one shared config per language at the root.
 - Every behavior change needs unit tests in the same change. Tests must be deterministic and runnable offline.

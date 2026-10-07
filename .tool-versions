@@ -1,0 +1,10 @@
+# Pinned tool versions (asdf-compatible format). Read by scripts/install-tools.sh and scripts/doctor.sh.
+# Docker and Node.js are checked but not installed by `make setup`; see docs/developer-setup.md.
+kubectl 1.37.1
+minikube 1.39.0
+helm 4.3.0
+terraform 1.16.5
+go 1.27.1
+jq 1.8.2
+yq 4.54.1
+nodejs 22

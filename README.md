@@ -25,7 +25,8 @@ Full environment instructions: [docs/developer-setup.md](docs/developer-setup.md
 ```bash
 git clone git@github.com:varunpathania86/realtime-payment-platform.git
 cd realtime-payment-platform
-make setup    # install pre-commit and git hooks, then check tools
+make setup    # install hooks and pinned tools, then check the environment
+make cluster-up  # start local Minikube (needs Docker)
 make ci       # lint, test, build
 ```
 
