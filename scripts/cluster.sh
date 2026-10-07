@@ -3,7 +3,6 @@
 set -euo pipefail
 # shellcheck source=scripts/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
-reexec_with_docker_group "$@"
 export PATH="$BIN_DIR:$PATH"
 
 PROFILE="${MINIKUBE_PROFILE:-rpp}"

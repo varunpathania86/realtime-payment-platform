@@ -1,17 +1,15 @@
 #!/usr/bin/env bash
 # Install Docker Engine from Docker's official apt repository (Ubuntu/Debian, incl. WSL2).
 # Needs sudo (asks for your password). Idempotent: does nothing if Docker already works,
-# for example Docker Desktop with WSL integration. Also makes Docker usable without sudo
-# by adding the user to the docker group (make targets pick that up immediately; see lib.sh).
+# for example Docker Desktop with WSL integration. Also makes Docker usable without sudo:
+# the user joins the docker group (applies to new shells) and gets an ACL on the Docker socket
+# (applies to already open shells until the daemon restarts).
 set -euo pipefail
 
 if docker info >/dev/null 2>&1; then
   echo "ok       docker $(docker --version | sed -n 's/^Docker version \([0-9.]*\).*/\1/p') (daemon reachable)"
   exit 0
 fi
-
-# shellcheck source=scripts/lib.sh
-. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 if ! command -v docker >/dev/null; then
   if ! command -v apt-get >/dev/null; then
@@ -62,11 +60,9 @@ if ! getent group docker | grep -qw "$USER"; then
 fi
 
 if ! docker info >/dev/null 2>&1; then
-  echo "NOTE: 'make' targets work right away. For plain 'docker' commands in THIS terminal run 'newgrp docker',"
-  echo "      or open a new terminal (WSL: 'wsl --shutdown' in PowerShell, then reopen)."
+  command -v setfacl >/dev/null || sudo apt-get install -y -qq acl
+  sudo setfacl -m "u:$USER:rw" /var/run/docker.sock
 fi
 
-# Continue under the docker group so the rest of this run (and make setup) needs no new shell.
-reexec_with_docker_group "$@"
 docker info >/dev/null 2>&1 || { echo "Docker is installed but not usable yet. See docs/developer-setup.md" >&2; exit 1; }
 echo "ok       docker works without sudo"

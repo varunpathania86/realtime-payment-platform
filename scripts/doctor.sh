@@ -3,7 +3,6 @@
 set -uo pipefail
 # shellcheck source=scripts/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
-reexec_with_docker_group "$@"
 
 fail=0
 ok()   { printf 'ok       %s\n' "$*"; }
@@ -35,7 +34,7 @@ if [ -z "$(installed_version docker)" ]; then
   bad "docker is missing (run: make setup)"
 elif ! docker info >/dev/null 2>&1; then
   if id -nG "$USER" | grep -qw docker; then
-    bad "docker daemon is not reachable (start it: sudo systemctl start docker, or start Docker Desktop)"
+    bad "docker daemon is not reachable (run: make docker, or start Docker Desktop)"
   else
     bad "docker daemon is not reachable (run: make docker, or start Docker Desktop)"
   fi
