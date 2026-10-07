@@ -45,6 +45,10 @@ Any new developer dependency (tool, runtime, linter, system package) must be ins
 3. Implement `build`, `test`, `lint`, `fmt`, `clean` in its Makefile; the root Makefile discovers it automatically.
 4. Document design in its `docs/` folder using the [templates](templates/README.md).
 
+## AI assistants
+
+Project instructions for AI tools live in [AGENTS.md](AGENTS.md), the single source for all tools. Do not duplicate them in tool-specific files; those only point to it.
+
 ## Documentation
 
 Write design docs in `docs/` with Mermaid diagrams, from the templates. Record significant decisions as ADRs in `docs/adr/`.

@@ -12,7 +12,7 @@
 
 # 0. Engineering conventions (apply to every stage)
 
-These rules apply to the whole monorepo. Details for AI tools live in `.github/copilot-instructions.md`; contributor details live in `CONTRIBUTING.md`.
+These rules apply to the whole monorepo. Details for AI tools live in `AGENTS.md`; contributor details live in `CONTRIBUTING.md`.
 
 ## 0.1 Repository model
 
@@ -51,7 +51,7 @@ These rules apply to the whole monorepo. Details for AI tools live in `.github/c
 
 ## 0.6 AI tooling
 
-- `.github/copilot-instructions.md` describes the project, processes, test, lint, and static-check rules for AI assistants.
+- `AGENTS.md` (root) is the single tool-neutral source describing the project, processes, test, lint, and static-check rules for AI assistants. `CLAUDE.md` and `.github/copilot-instructions.md` are thin pointers to it so any AI tool can be used; never duplicate content in them.
 - `.github/instructions/*.instructions.md` hold path-specific rules; `.github/skills/*` hold reusable AI skills. Sub-projects may add their own.
 
 ---
@@ -317,7 +317,7 @@ realtime-payment-platform/
 │   ├── workflows/                   # build, publish, deploy
 │   ├── instructions/                # path-specific AI instructions
 │   ├── skills/                      # reusable AI skills
-│   ├── copilot-instructions.md
+│   ├── copilot-instructions.md      # pointer to /AGENTS.md
 │   └── CODEOWNERS
 ├── apps/
 │   ├── payment-api/                 # Go modular monolith
@@ -389,6 +389,8 @@ realtime-payment-platform/
 │   ├── threat-model/
 │   └── interviews/
 ├── scripts/
+├── AGENTS.md                        # tool-neutral AI instructions
+├── CLAUDE.md                        # pointer to AGENTS.md
 ├── Makefile
 ├── .tool-versions
 ├── .editorconfig

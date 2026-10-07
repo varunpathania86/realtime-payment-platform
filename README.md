@@ -15,7 +15,8 @@ Stage 0 (repository foundation and workstation baseline) is in progress. No sub-
 | [docs/developer-setup.md](docs/developer-setup.md) | Developer environment setup |
 | [docs/](docs/README.md) | Master plan, SDD, LLD, ADR, runbooks (Mermaid) |
 | [templates/](templates/README.md) | Templates for documents and sub-projects |
-| [.github/](.github/copilot-instructions.md) | Workflows, AI instructions, AI skills |
+| [AGENTS.md](AGENTS.md) | Tool-neutral instructions for AI assistants (Copilot, Claude, Codex, Cursor, ...) |
+| [.github/](.github/) | Workflows, path-specific AI instructions, AI skills |
 | `apps/`, `packages/`, `platform/`, `streaming/`, ... | Sub-projects, added stage by stage; each has its own `README.md` and `Makefile` |
 
 ## Quick start
