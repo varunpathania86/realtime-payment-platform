@@ -58,6 +58,10 @@ make setup
 4. Installs Docker Engine if it is missing (`scripts/install-docker.sh`, needs sudo).
 5. Runs `make doctor`, which compares everything with `.tool-versions` and lists problems (for example a missing Docker).
 
+### Editor (optional)
+
+[.vscode/extensions.json](../.vscode/extensions.json) lists recommended VS Code extensions: Remote - WSL, EditorConfig, markdownlint, ShellCheck, YAML, Mermaid preview, Docker, Kubernetes, Terraform, and Go. VS Code offers to install them when you open the folder; nothing is installed automatically and `make setup` does not depend on them. Open the repo from WSL (`code .` inside the WSL terminal) so the extensions run in WSL. Other editors can ignore this file.
+
 ## 3. Daily commands
 
 | Command | Purpose |
@@ -66,6 +70,7 @@ make setup
 | `make doctor` | Check the environment against `.tool-versions` |
 | `make tools` | Install or update the pinned tools |
 | `make docker` | Install Docker Engine if missing (needs sudo) |
+| `make setup-agent` | Optional: register this machine as a self-hosted runner for the Deploy workflow ([runbook](runbooks/self-hosted-runner.md), including the dedicated WSL instance steps) |
 | `make cluster-up` | Start the local Minikube cluster (profile `rpp`) |
 | `make cluster-status` | Show cluster status |
 | `make cluster-down` | Delete the cluster and its data (destructive) |
@@ -98,6 +103,7 @@ For WSL networking and disk problems see the [WSL runbook](runbooks/wsl-troubles
 | `docker daemon is not reachable` | `sudo systemctl start docker`, or start Docker Desktop with WSL integration |
 | `permission denied` on the Docker socket | Run `make docker`, or open a new terminal so the `docker` group applies |
 | `python3 -m venv` fails | `sudo apt install python3-venv` |
+| `systemd-binfmt.service failed` during `apt install` on WSL | Harmless: WSL already registers its own binfmt handler. Check with `sudo dpkg --audit`; no output means apt finished cleanly |
 | `Permission denied (publickey)` on push | Check the key with `ssh -T git@github.com` and that the remote uses the SSH URL (`git remote -v`) |
 | Hooks fail on line endings | Work in the WSL filesystem; the repo enforces LF via `.gitattributes` |
 | Hook environments are broken or stale | `.venv/bin/pre-commit clean` (or `pre-commit clean`), then `make lint` |

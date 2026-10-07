@@ -1,5 +1,5 @@
 # Pinned tool versions (asdf-compatible format). Read by scripts/install-tools.sh and scripts/doctor.sh.
-# Docker is installed by scripts/install-docker.sh and Node.js is only checked; see docs/developer-setup.md.
+# actions-runner is only used by `make setup-agent`. Docker is installed by scripts/install-docker.sh and Node.js is only checked; see docs/developer-setup.md.
 kubectl 1.37.1
 minikube 1.39.0
 helm 4.3.0
@@ -8,3 +8,4 @@ go 1.27.1
 jq 1.8.2
 yq 4.54.1
 nodejs 22
+actions-runner 2.338.0

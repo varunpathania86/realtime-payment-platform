@@ -12,7 +12,7 @@ PRE_COMMIT := $(or $(shell command -v pre-commit),$(VENV)/bin/pre-commit)
 PROJECT_ROOTS := apps packages streaming platform ml knowledge analytics contracts tests
 SUBPROJECTS   := $(sort $(patsubst %/Makefile,%,$(wildcard $(addsuffix /*/Makefile,$(PROJECT_ROOTS)))))
 
-.PHONY: help setup tools docker doctor cluster-up cluster-status cluster-down projects build test lint fmt clean ci hooks version
+.PHONY: help setup tools docker setup-agent agent-status remove-agent doctor cluster-up cluster-status cluster-down projects build test lint fmt clean ci hooks version
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
@@ -31,6 +31,15 @@ tools: ## Install or update the pinned CLI tools from .tool-versions
 
 docker: ## Install Docker Engine if missing (needs sudo)
 	scripts/install-docker.sh
+
+setup-agent: ## Register this machine as a self-hosted GitHub Actions runner (for Deploy)
+	scripts/agent.sh setup
+
+agent-status: ## Show the self-hosted runner status
+	@scripts/agent.sh status
+
+remove-agent: ## Unregister and delete the self-hosted runner
+	scripts/agent.sh remove
 
 doctor: ## Check the environment against .tool-versions
 	@scripts/doctor.sh
