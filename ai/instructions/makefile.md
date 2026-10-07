@@ -1,6 +1,7 @@
----
-applyTo: "**/Makefile,**/*.mk"
----
+# Makefile rules
+
+Applies to: `**/Makefile` and `**/*.mk`.
+
 - Provide `build`, `test`, `lint`, `fmt`, `clean`, and `help`; mark them `.PHONY`.
 - Document each target with a `## description` comment so `make help` lists it.
 - Use tabs for recipe indentation.

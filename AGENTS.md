@@ -1,6 +1,9 @@
 # Instructions for AI assistants
 
-This file is the single, tool-neutral source of project instructions (the [AGENTS.md](https://agents.md) convention). `CLAUDE.md` and `.github/copilot-instructions.md` only point here; edit this file, not those. Path-specific rules are in `.github/instructions/`, reusable skills in `.github/skills/`.
+This file is the single, tool-neutral source of project instructions, using the open [AGENTS.md](https://agents.md) convention. Do not create tool- or vendor-named instruction files; keep everything in this file and in `ai/`.
+
+- Path-specific rules: `ai/instructions/` (read the matching file before editing those paths).
+- Reusable skills (step-by-step procedures): `ai/skills/<name>/SKILL.md`.
 
 ## Project
 

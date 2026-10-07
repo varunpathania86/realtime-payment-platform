@@ -47,7 +47,7 @@ Any new developer dependency (tool, runtime, linter, system package) must be ins
 
 ## AI assistants
 
-Project instructions for AI tools live in [AGENTS.md](AGENTS.md), the single source for all tools. Do not duplicate them in tool-specific files; those only point to it.
+Project instructions for AI tools live in [AGENTS.md](AGENTS.md), the single source for all tools, with rules and skills in [ai/](ai/). Do not create vendor- or tool-named instruction files.
 
 ## Documentation
 
