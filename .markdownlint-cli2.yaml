@@ -1,0 +1,11 @@
+config:
+  default: true
+  MD013: false   # long lines allowed in prose and tables
+  MD024:
+    siblings_only: true
+  MD033: false   # inline HTML allowed
+  MD041: false  # instruction and PR-template files have front matter or no H1
+  MD060: false
+ignores:
+  - node_modules/**
+  - docs/master-plan.md
