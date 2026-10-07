@@ -10,4 +10,5 @@ description: Scaffold a new sub-project (README, Makefile, docs) that follows th
 3. Copy `templates/project-makefile.mk` to `<project>/Makefile` and implement `build`, `test`, `lint`, `fmt`, `clean`.
 4. Create `<project>/docs/` and add an SDD or LLD from `templates/` when design is non-trivial.
 5. Add the project to the repository map in the root `README.md`.
-6. Run `make projects` to confirm discovery, then `make ci`.
+6. If the project needs a new developer tool or runtime, add it to `make setup`, `scripts/doctor.sh`, `.tool-versions`, and `docs/developer-setup.md`.
+7. Run `make projects` to confirm discovery, then `make ci`.

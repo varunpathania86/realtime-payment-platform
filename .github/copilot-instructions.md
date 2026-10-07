@@ -29,6 +29,11 @@
 
 - Every Makefile (root and sub-project) provides `build`, `test`, `lint`, `fmt`, `clean`. The root Makefile runs them across all sub-projects. Use `make`, not ad-hoc commands, in docs and CI.
 - Tool versions are pinned in `.tool-versions`; `make setup` installs them and `make doctor` checks them. Change versions there only.
+- **Developer dependencies must go through `make setup`.** Whenever a change introduces a new developer dependency (CLI tool, SDK, runtime, linter, system package, pre-commit hook, container runtime, and so on), in the same change you must:
+  1. Install it from `make setup` (via `scripts/install-tools.sh` or another script in `scripts/` called from the Makefile), pinned to an exact version in `.tool-versions` where applicable. Downloads must be checksum-verified, idempotent, and avoid `sudo` unless unavoidable.
+  2. Verify it in `scripts/doctor.sh` (`make doctor`) with a clear hint on how to fix a problem.
+  3. Document it in `docs/developer-setup.md`.
+  Developers must never need undocumented manual installation steps; a fresh clone plus `make setup` must be enough. Project-level package managers (`go.mod`, `package.json`, `requirements`) are fine for libraries, but the toolchains that run them belong in `make setup`.
 - Shell logic longer than a few lines goes into `scripts/*.sh` (checked by ShellCheck) and is called from the Makefile.
 - Before finishing a change run `make ci` (lint, test, build) and fix all failures.
 - Shared lint and format rules live at the root (`.editorconfig`, `.pre-commit-config.yaml`, `.markdownlint-cli2.yaml`). Do not create per-project variants; language linters use one shared config per language at the root.

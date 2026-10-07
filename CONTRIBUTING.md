@@ -34,6 +34,10 @@ make build
 make ci      # all of the above
 ```
 
+## Developer dependencies
+
+Any new developer dependency (tool, runtime, linter, system package) must be installed by `make setup`, verified by `make doctor`, and documented in [docs/developer-setup.md](docs/developer-setup.md), in the same pull request. Pin versions in [.tool-versions](.tool-versions).
+
 ## Adding a sub-project
 
 1. Create the directory under `apps/`, `packages/`, or another root listed in the root [Makefile](Makefile).
