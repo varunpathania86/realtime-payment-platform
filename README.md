@@ -12,6 +12,7 @@ Stage 0a (repository foundation) is in progress. No sub-projects exist yet.
 
 | Path | Purpose |
 |---|---|
+| [docs/developer-setup.md](docs/developer-setup.md) | Developer environment setup |
 | [docs/](docs/README.md) | Master plan, SDD, LLD, ADR, runbooks (Mermaid) |
 | [templates/](templates/README.md) | Templates for documents and sub-projects |
 | [.github/](.github/copilot-instructions.md) | Workflows, AI instructions, AI skills |
@@ -19,13 +20,12 @@ Stage 0a (repository foundation) is in progress. No sub-projects exist yet.
 
 ## Quick start
 
-Prerequisites: `git`, `make`, `python3`, and [pre-commit](https://pre-commit.com).
+Full environment instructions: [docs/developer-setup.md](docs/developer-setup.md).
 
 ```bash
 git clone git@github.com:varunpathania86/realtime-payment-platform.git
 cd realtime-payment-platform
-make doctor   # check tools
-make hooks    # install git hooks
+make setup    # install pre-commit and git hooks, then check tools
 make ci       # lint, test, build
 ```
 

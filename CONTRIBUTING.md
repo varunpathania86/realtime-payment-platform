@@ -27,7 +27,7 @@ Use kebab-case after the prefix. Never commit directly to `main`.
 ## Local checks
 
 ```bash
-make hooks   # once: installs pre-commit
+make setup   # once: see docs/developer-setup.md
 make lint    # shared static checks and per-project lint
 make test
 make build
