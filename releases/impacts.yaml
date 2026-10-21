@@ -1,0 +1,4 @@
+schemaVersion: 1
+# Approved initial policy. Changes are reviewed on main before publication uses them.
+defaultImpact: patch
+modules: {}

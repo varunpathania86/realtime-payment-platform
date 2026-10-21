@@ -1,0 +1,34 @@
+schemaVersion: 1
+
+solution:
+  name: realtime-payment-platform
+  version: 0.0.0
+  owners:
+    - varunpathania86
+
+pi:
+  id: PI-2026.4
+  startDate: "2026-10-26"
+  iterations: 6
+  iterationLengthDays: 14
+
+modules:
+  - payment-api
+  - event-generator
+  - ai-gateway
+  - ai-orchestrator
+  - llm-enrichment-worker
+  - web-portal
+  - ai-core
+  - flink-jobs
+  - event-contracts
+  - clickhouse-analytics
+  - iceberg-lakehouse
+  - trino-analytics
+  - superset-bi
+  - payment-risk-model
+  - operations-knowledge
+
+registries:
+  images: ghcr.io/varunpathania86
+  charts: oci://ghcr.io/varunpathania86/charts

@@ -1,0 +1,7 @@
+*
+!schemas/
+!schemas/*.avsc
+!examples/
+!examples/*.json
+!README.md
+!module.yaml

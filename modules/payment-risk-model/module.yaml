@@ -1,0 +1,7 @@
+schemaVersion: 1
+name: payment-risk-model
+type: model
+version: 0.0.0
+owners:
+  - varunpathania86
+dependencies: []

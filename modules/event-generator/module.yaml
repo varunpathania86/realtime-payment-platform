@@ -1,0 +1,8 @@
+schemaVersion: 1
+name: event-generator
+type: worker
+version: 0.0.0
+owners:
+  - varunpathania86
+dependencies:
+  - event-contracts

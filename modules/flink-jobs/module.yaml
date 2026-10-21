@@ -1,0 +1,9 @@
+schemaVersion: 1
+name: flink-jobs
+type: stream-processing
+version: 0.0.0
+owners:
+  - varunpathania86
+dependencies:
+  - event-contracts
+  - payment-risk-model

@@ -1,0 +1,7 @@
+schemaVersion: 1
+name: iceberg-lakehouse
+type: analytics
+version: 0.0.0
+owners:
+  - varunpathania86
+dependencies: []

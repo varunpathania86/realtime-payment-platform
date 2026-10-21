@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://realtime-payment-platform.example/schemas/release-state.schema.json",
+  "title": "Release counter reservation state",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "reservations"],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "reservations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["module", "targetVersion", "iteration", "releaseLine", "sourceCommit", "reservedVersion", "counter", "branch", "integrated", "registry", "approvedImpact"],
+        "properties": {
+          "module": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
+          },
+          "targetVersion": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
+          },
+          "iteration": {
+            "type": ["integer", "null"],
+            "minimum": 1
+          },
+          "counter": {"type": "integer", "minimum": 1},
+          "branch": {"type": "string", "minLength": 1},
+          "integrated": {"const": true},
+          "registry": {"type": "string", "pattern": "^ghcr\\.io/[a-z0-9][a-z0-9/_-]*$"},
+          "approvedImpact": {"enum": ["none", "patch", "minor", "major"]},
+          "publication": {
+            "type": "object",
+            "required": ["module", "version", "sourceCommit", "repository", "digest", "workflowRun", "testRun", "sbom", "provenance"],
+            "properties": {
+              "digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+              "sourceCommit": {"type": "string", "pattern": "^[a-f0-9]{40}$"}
+            }
+          },
+          "releaseLine": {
+            "type": "string",
+            "pattern": "^(main|rc[1-9][0-9]*)$"
+          },
+          "sourceCommit": {
+            "type": "string",
+            "pattern": "^(?:[a-f0-9]{40}|[a-f0-9]{64})$"
+          },
+          "reservedVersion": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-it[1-9][0-9]*|-rc[1-9][0-9]*)-rv\\.[1-9][0-9]*$"
+          }
+        }
+      }
+    }
+  }
+}

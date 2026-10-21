@@ -1,0 +1,26 @@
+schemaVersion: 1
+kind: module-release
+
+module: <module-name>
+version: <immutable-module-version>
+source:
+  repository: <repository-url>
+  commit: <full-git-commit>
+  gitTag: <module-aware-git-tag>
+workflow:
+  runId: <workflow-run-id>
+  url: <workflow-run-url>
+artifacts:
+  images:
+    - repository: <image-repository>
+      tag: <version>
+      digest: sha256:<image-digest>
+  charts:
+    - repository: <chart-oci-repository>
+      version: <version>
+      digest: sha256:<chart-digest>
+evidence:
+  tests: []
+  sbom: <sbom-reference>
+  provenance: <provenance-reference>
+  approvedImpact: patch

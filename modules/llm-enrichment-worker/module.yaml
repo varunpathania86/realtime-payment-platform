@@ -1,0 +1,10 @@
+schemaVersion: 1
+name: llm-enrichment-worker
+type: worker
+version: 0.0.0
+owners:
+  - varunpathania86
+dependencies:
+  - ai-core
+  - event-contracts
+  - operations-knowledge
