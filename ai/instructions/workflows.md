@@ -6,4 +6,7 @@ Applies to: `.github/workflows/**`.
 - Run project commands through `make` targets, not inline scripts.
 - Use `concurrency` to cancel superseded runs on pull requests.
 - Never run self-hosted runners for fork pull requests.
+- Discover modules from `solution.yaml` and `modules/*/module.yaml`; do not hard-code module names or use the descriptive `type` field as a behavior switch.
+- Keep fork pull requests build/test-only and read-only. Package publication, state updates, tagging, promotion, and cleanup require trusted jobs with narrowly scoped permissions and protected environments.
+- Module and solution release versions are calculated from the documented lifecycle; workflows must be idempotent and promote immutable OCI digests without rebuilding.
 - Validate with `actionlint`.

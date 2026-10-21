@@ -16,8 +16,10 @@ These rules apply to the whole monorepo. Details for AI tools live in `AGENTS.md
 
 ## 0.1 Repository model
 
-- One root repository, `realtime-payment-platform`, containing multiple sub-projects (`apps/*`, `packages/*`, `streaming/`, `platform/`, ...).
-- Each sub-project has its own `README.md` and `Makefile`. The root `README.md` is the index and quick start.
+- One root repository, `realtime-payment-platform`, containing independently versioned product modules under `modules/<module-name>/`.
+- `solution.yaml` is the solution catalog and lists module identities. Every module has a `module.yaml`; its `name` must match the containing directory.
+- Module implementations are added incrementally from the capabilities in Section 4. A catalog entry can exist before its source, README, Dockerfile, or Helm chart; add packaging only when appropriate to that module.
+- Root `README.md` is the solution index and quick start. Module documentation describes that module. Root `Makefile` and workflows discover modules from the catalog rather than hard-coding names.
 - Default branch: `main`. It is protected: changes arrive only through pull requests.
 
 ## 0.2 Branching and delivery
@@ -28,15 +30,18 @@ These rules apply to the whole monorepo. Details for AI tools live in `AGENTS.md
 
 ## 0.3 Versioning
 
-- Semantic Versioning with a `v` prefix on git tags: `v0.1.3`.
-- Container images, Helm charts, and other artifacts use the same version as the git tag.
-- Portfolio milestones in section 14 map to minor versions: `v0.1` means tag `v0.1.0`, and later fixes are `v0.1.1`, `v0.1.2`.
-- Pre-1.0: a minor bump may contain breaking changes; patch bumps never do.
+- Modules and the integrated solution have independent SemVer lifecycles. `module.yaml.version` and `solution.yaml.solution.version` record only the current stable production version; both begin at `0.0.0`.
+- Module versions use the lifecycle defined in [module-development.md](module-development.md): iteration branch (`<target>-itN-br.<branchHash>`), integrated revision (`<target>-itN-rv.<counter>`), iteration baseline (`<target>-itN`), release candidate (`<target>-rcN`), optional RC revision (`<target>-rcN-rv.<counter>`), and stable production (`<target>`). `br` hashes are deterministic from normalized branch names, not commits.
+- Solution versions use iteration, RC, and stable production states without `br` or `rv`; solution Git tags use `solution/v<version>`. Module tags are namespaced, for example `modules/payment-api/v0.2.2`.
+- OCI digests identify immutable image and Helm artifacts. Promotion adds version tags to the exact approved digests and does not rebuild. Release manifests connect versions to source commits, artifact digests, test evidence, workflow runs, SBOM/provenance, and QA evidence.
+- Target-version impact is explicit and approved per module (`patch`, `minor`, `major`); `none` defaults to `patch` for now. It is not inferred from branch names, commit messages, or changed-file counts. The solution version is calculated independently from the aggregate approved module impact.
+- After successful production promotion, automation opens a PR updating the stable version in the appropriate module or solution catalog. It never pushes directly to protected `main`; a catalog-only version update must not trigger a new integrated revision.
+- Section 14 portfolio milestones describe solution releases, not repository-wide module versions. Before 1.0, a minor solution/module bump may contain breaking changes; patch bumps do not.
 
 ## 0.4 Documentation
 
 - All design documents live in `/docs`; diagrams use Mermaid.
-- Document templates live in `/templates` (SDD, LLD, ADR, runbook, sub-project README). Every new document is created from a template.
+- Document and catalog templates live in `/templates` (SDD, LLD, ADR, runbook, module manifest, release manifest, and module README). Every new document or module manifest is created from its template.
 - Sub-projects keep project-specific docs in their own `docs/` folder using the same templates and link back to the root `/docs`.
 
 ## 0.5 Build, quality, and CI/CD
@@ -44,10 +49,11 @@ These rules apply to the whole monorepo. Details for AI tools live in `AGENTS.md
 - Root and sub-project `Makefile` files share one target contract: `build`, `test`, `lint`, `fmt`, `clean`. The root `Makefile` runs the target in every sub-project.
 - Lint and static-check configuration is defined once at the root (`.editorconfig`, `.pre-commit-config.yaml`, `.markdownlint-cli2.yaml`) and reused by all sub-projects. Language-specific linters (for example `golangci-lint`, ESLint, Ruff) are configured per language with a single shared config per language at the root.
 - GitHub Actions workflows:
-  - **Build** (`build.yml`): pull requests and `main`; runs `make ci` (lint, test, build).
-  - **Publish** (`publish.yml`): `v*.*.*` tags; creates a GitHub Release and, once sub-projects produce artifacts, pushes images and charts to GitHub Container Registry. Free for public repositories.
-  - **Deploy** (`deploy.yml`): manual, environment-gated. Not available in the free hosted tier for a local Minikube; it will target a self-hosted runner or the Contabo VPS later.
-- Self-hosted runners are used only for manually triggered or tag-triggered deploy jobs, never for pull requests from forks.
+  - **Validate/build**: PRs and trusted branch updates; discover changed modules dynamically, expand dependency impact, and test in a matrix. Fork PRs remain build/test-only with read-only permissions.
+  - **Branch/integrated artifact workflows**: publish replaceable branch tags or immutable integrated revisions for trusted source only; reserve revision counters atomically and make reruns idempotent.
+  - **Promotion**: manually dispatched and permission-controlled; promote exact OCI digests through protected environments, create manifests/releases, and perform cleanup only after verification.
+  - **Stable-version recording**: after successful production promotion, create a PR updating the stable catalog version; never push directly to protected `main`.
+- Self-hosted runners are used only for explicitly approved protected work, never for pull requests from forks.
 
 ## 0.6 AI tooling
 
@@ -311,6 +317,8 @@ PaymentExplanationCompleted
 
 Start with one monorepo. A single developer does not benefit from coordinating many repositories before independent ownership and release lifecycles exist.
 
+The logical capability map below is the source for the initial module boundaries, not a requirement to retain the old top-level physical folders. Independently versioned capabilities live at `modules/<module-name>/`; shared solution concerns such as Terraform, cluster bootstrap, GitOps composition, and cross-module test suites remain at the root. Each initial module begins with `module.yaml` only. Add implementation subdirectories and packaging as its scope is implemented.
+
 ```text
 realtime-payment-platform/
 ├── .github/
@@ -399,9 +407,31 @@ realtime-payment-platform/
 └── README.md
 ```
 
+The initial catalog maps the capabilities above to these module boundaries:
+
+| Module | Capability source in the plan | Primary responsibility |
+|---|---|---|
+| `payment-api` | `apps/payment-api` | Go payment API and transactional behavior |
+| `event-generator` | `apps/event-generator` | Deterministic synthetic payment/event generation |
+| `ai-gateway` | `apps/ai-gateway` | Authenticated boundary for interactive AI |
+| `ai-orchestrator` | `apps/ai-orchestrator` | Interactive RAG/CAG and controlled AI workflows |
+| `llm-enrichment-worker` | `apps/llm-enrichment-worker` | Asynchronous, non-authoritative LLM enrichment |
+| `web-portal` | `apps/web-portal` | React user interface |
+| `ai-core` | `packages/ai-core` | Shared AI prompts, schemas, retrieval, and graph code |
+| `flink-jobs` | `streaming/flink-jobs` | Stateful event-time processing and sinks |
+| `event-contracts` | `contracts` | Avro events, OpenAPI, compatibility rules, and examples |
+| `clickhouse-analytics` | `analytics/clickhouse` | Real-time analytical serving |
+| `iceberg-lakehouse` | `analytics/iceberg` | Historical lakehouse table definitions and integration |
+| `trino-analytics` | `analytics/trino` | SQL access over the lakehouse |
+| `superset-bi` | `analytics/superset` | BI dashboards and embedding integration |
+| `payment-risk-model` | `ml` | Payment-risk training, evaluation, and deployable model artifacts |
+| `operations-knowledge` | `knowledge` | Versioned LLM retrieval sources and prepared context |
+
+The current module names and manifest types are documented in [module-development.md](module-development.md). Infrastructure and third-party platform services do not become modules merely because the solution deploys them; give them independent module identities only if they acquire a distinct product boundary and release lifecycle.
+
 ## 4.1 Possible future repository split
 
-Split only when independent ownership or releases justify it:
+The modules have independent versions while remaining in this monorepo. Split into repositories only when independent ownership or repository-level access controls justify the additional coordination:
 
 ```text
 data-platform-infra
@@ -1814,6 +1844,7 @@ ADR-009  LLM not in the payment critical path
 ADR-010  LangChain/LangGraph restricted to AI workflows
 ADR-011  CAG for stable bounded knowledge, RAG for changing knowledge
 ADR-012  Flink event-time and late-data semantics
+ADR-013  Independently versioned modules in the monorepo
 ```
 
 Required runbooks:
@@ -1895,7 +1926,7 @@ v0.15 OpenBao + TLS + policies + SBOM
 v1.0  Argo CD + CI gates + SLOs + resilience report + cloud-dev plan
 ```
 
-Do not wait for v1.0 before applying.
+These are independent **solution** milestones, not repository-wide module versions. For example, the v0.1 milestone is represented by solution lifecycle tags such as `solution/v0.1.0`; individual modules have their own versioned tags and may remain unchanged across a solution release. Do not wait for solution v1.0 before applying.
 
 ```text
 After v0.3
@@ -2079,12 +2110,14 @@ Update this block after every session.
 
 ```yaml
 current_milestone: stage-0
-last_completed_task: requirements frozen
-next_task: create repository skeleton and implement make doctor
-known_issues: []
+last_completed_task: initial solution catalog, 15 module manifests, module lifecycle and type documentation
+next_task: define schemas and catalog validation before implementing release automation
+known_issues:
+  - module and solution schemas and automated catalog validation are not implemented yet
 architecture_decisions:
   - ADR-001 HashiCorp Terraform
   - ADR-002 Monorepo initially
+  - ADR-013 Independently versioned modules in the monorepo
 last_verified_commit: none
-last_verified_date: none
+last_verified_date: 2026-10-21
 ```

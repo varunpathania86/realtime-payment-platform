@@ -1,0 +1,19 @@
+schemaVersion: 1
+
+solution:
+  name: <solution-name>
+  version: 0.0.0
+  owners:
+    - <owner>
+
+pi:
+  id: <pi-id>
+  startDate: "YYYY-MM-DD"
+  iterations: 6
+  iterationLengthDays: 14
+
+modules: []
+
+registries:
+  images: ghcr.io/<owner>
+  charts: oci://ghcr.io/<owner>/charts

@@ -10,9 +10,14 @@ Copy a template instead of writing a document from scratch, so every sub-project
 | [runbook.md](runbook.md) | Operational procedure | `docs/runbooks/<name>.md` |
 | [project-readme.md](project-readme.md) | Sub-project README | `<project>/README.md` |
 | [project-makefile.mk](project-makefile.mk) | Sub-project Makefile | `<project>/Makefile` |
+| [solution.yaml](solution.yaml) | Solution catalog | `solution.yaml` |
+| [module.yaml](module.yaml) | Independently versioned module catalog entry | `modules/<module-name>/module.yaml` |
+| [module-release.yaml](module-release.yaml) | Immutable module release record | `releases/modules/<module-name>/<version>.yaml` |
+| [solution-release.yaml](solution-release.yaml) | Immutable integrated solution release record | `releases/solutions/<version>.yaml` |
 
 Rules:
 
 - Keep all template headings; write "N/A" with a reason instead of deleting a section.
 - Use Mermaid for diagrams.
 - Sub-project documents live in `<project>/docs/` and use the same templates.
+- A module begins with its catalog manifest; add implementation files only when its deliverable requires them.

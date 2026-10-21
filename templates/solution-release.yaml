@@ -1,0 +1,26 @@
+schemaVersion: 1
+kind: solution-release
+
+pi:
+  id: <pi-id>
+solution:
+  version: <immutable-solution-version>
+  sourceCommit: <full-git-commit>
+  gitTag: solution/v<immutable-solution-version>
+modules:
+  - name: <module-name>
+    version: <exact-module-version>
+    sourceCommit: <full-git-commit>
+    image:
+      repository: <image-repository>
+      tag: <version>
+      digest: sha256:<image-digest>
+    chart:
+      repository: <chart-oci-repository>
+      version: <version>
+      digest: sha256:<chart-digest>
+    workflowRun: <workflow-run-url>
+    approvedImpact: patch
+qa:
+  evidence: []
+  runForRecord: <qa-evidence-reference>

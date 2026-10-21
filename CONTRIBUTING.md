@@ -21,8 +21,10 @@ Use kebab-case after the prefix. Never commit directly to `main`.
 
 ## Versioning and releases
 
-- SemVer with a `v` prefix on tags: `v0.1.3`. Artifacts (images, charts) use the same version.
-- Release: merge to `main`, then `git tag -a vX.Y.Z -m "vX.Y.Z"` and `git push origin vX.Y.Z`. The Publish workflow creates the GitHub Release.
+- Modules and the integrated solution are independently versioned. `module.yaml.version` and `solution.yaml.solution.version` record stable production versions only; initial manifests start at `0.0.0`.
+- Use the module and solution lifecycle in [docs/module-development.md](docs/module-development.md). Module Git tags are namespaced (`modules/<module>/v<version>`); solution tags use `solution/v<version>`.
+- Do not manually assign iteration, branch, revision, or RC numbers, and do not rebuild during promotion. The protected promotion workflow calculates versions and promotes immutable OCI digests.
+- After production promotion, automation opens a PR to update the stable version field. Never update protected `main` directly.
 
 ## Local checks
 
@@ -38,12 +40,13 @@ make ci      # all of the above
 
 Any new developer dependency (tool, runtime, linter, system package) must be installed by `make setup`, verified by `make doctor`, and documented in [docs/developer-setup.md](docs/developer-setup.md), in the same pull request. Pin versions in [.tool-versions](.tool-versions).
 
-## Adding a sub-project
+## Adding a module
 
-1. Create the directory under `apps/`, `packages/`, or another root listed in the root [Makefile](Makefile).
-2. Copy [templates/project-readme.md](templates/project-readme.md) and [templates/project-makefile.mk](templates/project-makefile.mk).
-3. Implement `build`, `test`, `lint`, `fmt`, `clean` in its Makefile; the root Makefile discovers it automatically.
-4. Document design in its `docs/` folder using the [templates](templates/README.md).
+1. Confirm the boundary against [Section 4 of the master plan](docs/master-plan.md#4-repository-strategy); avoid creating a module just to mirror an infrastructure component.
+2. Add the kebab-case module name to `solution.yaml` and create `modules/<name>/module.yaml` from [templates/module.yaml](templates/module.yaml). Keep the folder and manifest names identical.
+3. Declare only real module dependencies. The manifest `version` is the current stable production version, not an iteration or RC version.
+4. Add code, README, Makefile, Dockerfile, Helm chart, and tests as appropriate to what the module actually builds or deploys. Libraries, contracts, models, and knowledge data do not automatically need images or charts.
+5. Document the module boundary and design using [docs/module-development.md](docs/module-development.md) and the [templates](templates/README.md).
 
 ## AI assistants
 

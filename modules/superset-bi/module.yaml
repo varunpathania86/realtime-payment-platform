@@ -1,0 +1,9 @@
+schemaVersion: 1
+name: superset-bi
+type: analytics
+version: 0.0.0
+owners:
+  - varunpathania86
+dependencies:
+  - clickhouse-analytics
+  - trino-analytics

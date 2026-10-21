@@ -1,6 +1,6 @@
 # ADR-002: Monorepo initially
 
-- **Status:** Accepted
+- **Status:** Accepted; release model superseded by [ADR-013](ADR-013-independent-module-releases.md)
 - **Date:** 2026-10-07
 - **Deciders:** Varun Pathania
 
@@ -10,7 +10,7 @@ One developer builds several related sub-projects (Go APIs, React portal, Python
 
 ## Decision
 
-Keep everything in one repository, `realtime-payment-platform`. Each sub-project has its own README and Makefile; shared rules (lint, templates, CI, AI instructions) live at the root. One SemVer tag versions the whole repository.
+Keep everything in one repository, `realtime-payment-platform`. Shared rules (lint, templates, CI, and AI instructions) live at the root. The original single-version release decision was superseded by ADR-013; product modules now have independent versions while remaining in this monorepo.
 
 ## Alternatives considered
 

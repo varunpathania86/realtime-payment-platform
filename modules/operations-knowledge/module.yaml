@@ -1,0 +1,7 @@
+schemaVersion: 1
+name: operations-knowledge
+type: knowledge
+version: 0.0.0
+owners:
+  - varunpathania86
+dependencies: []

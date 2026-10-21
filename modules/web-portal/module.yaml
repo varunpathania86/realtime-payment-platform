@@ -1,0 +1,11 @@
+schemaVersion: 1
+name: web-portal
+type: web
+version: 0.0.0
+owners:
+  - varunpathania86
+dependencies:
+  - ai-gateway
+  - event-contracts
+  - payment-api
+  - superset-bi

@@ -6,7 +6,7 @@ The full requirements and roadmap are in the [master plan](docs/master-plan.md).
 
 ## Status
 
-Stage 0 (repository foundation and workstation baseline) is in progress. No sub-projects exist yet.
+The repository foundation is in place. The catalog currently defines 15 independently versioned modules; module implementations are added incrementally from the [master plan](docs/master-plan.md).
 
 ## Repository map
 
@@ -15,10 +15,13 @@ Stage 0 (repository foundation and workstation baseline) is in progress. No sub-
 | [docs/developer-setup.md](docs/developer-setup.md) | Developer environment setup |
 | [docs/](docs/README.md) | Master plan, SDD, LLD, ADR, runbooks (Mermaid) |
 | [templates/](templates/README.md) | Templates for documents and sub-projects |
+| [solution.yaml](solution.yaml) | Solution identity, stable version, PI schedule, modules, and registry roots |
+| [modules/](modules/) | Independently versioned module manifests and, as implemented, their source and packaging |
+| [docs/module-development.md](docs/module-development.md) | Module boundaries, types, and release lifecycle |
 | [AGENTS.md](AGENTS.md) | Tool-neutral instructions for AI assistants |
 | [ai/](ai/) | Path-specific AI rules and reusable AI skills |
 | [.github/](.github/) | Workflows, CODEOWNERS, PR template |
-| `apps/`, `packages/`, `platform/`, `streaming/`, ... | Sub-projects, added stage by stage; each has its own `README.md` and `Makefile` |
+| `platform/`, `tests/`, `scripts/` | Shared solution infrastructure, cross-module tests, and tooling |
 
 ## Quick start
 
@@ -37,10 +40,10 @@ Run `make help` for all targets.
 ## Workflow
 
 - Branches: `feature/`, `bugfix/`, `patch/`, `hotfix/`; each roadmap stage is one pull request into `main`.
-- Versions: SemVer git tags such as `v0.1.3`.
+- Versions: modules and the integrated solution have separate lifecycles; see [module-development.md](docs/module-development.md).
 - Details: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Documentation structure
 
 - This root README is the index.
-- Every sub-project has its own README (from [the template](templates/project-readme.md)) describing only that project.
+- Module READMEs are added as module implementations arrive, using [the template](templates/project-readme.md), and describe only that module.

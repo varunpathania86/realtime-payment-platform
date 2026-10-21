@@ -1,0 +1,9 @@
+schemaVersion: 1
+name: <module-name>
+# Descriptive primary classification; see docs/module-development.md.
+type: api
+# Stable production version only.
+version: 0.0.0
+owners:
+  - <owner>
+dependencies: []

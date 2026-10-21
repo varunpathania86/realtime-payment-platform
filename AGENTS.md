@@ -11,15 +11,17 @@ This file is the single, tool-neutral source of project instructions, using the 
 
 ## Repository structure
 
-- Sub-projects live under `apps/`, `packages/`, `platform/`, `streaming/`, `analytics/`, `ml/`, `knowledge/`, `contracts/`, `tests/`.
-- Every sub-project has its own `README.md` and `Makefile`. The root `README.md` is only the index.
+- Independently versioned product modules live under `modules/<module-name>/`; `solution.yaml` catalogs them, and every module has `module.yaml` whose `name` matches its folder.
+- The module manifest may precede implementation files. Add a README, Makefile, Dockerfile, Helm chart, or language-specific structure only when the module's implementation needs it.
+- Module `type` is descriptive (such as API, worker, stream processing, library, contract, model, or knowledge), not a workflow switch. Its meaning is documented in `docs/module-development.md`.
+- Shared solution infrastructure, cross-module tests, docs, scripts, and workflows remain outside module directories. See `docs/master-plan.md` Section 4 and `docs/module-development.md`.
 - `docs/` holds SDD, LLD, ADR, runbooks; `templates/` holds the templates for them.
 
 ## Process rules
 
 1. Work in a branch named `feature/`, `bugfix/`, `patch/`, or `hotfix/` plus kebab-case. Never commit to `main`.
 2. Deliver one roadmap stage per pull request; do not start work from a later stage.
-3. Versions are SemVer tags with a `v` prefix (`v0.1.3`); artifacts share the version.
+3. Modules and the integrated solution are independently versioned. Catalog versions are stable-production versions only; follow the release lifecycle and namespaced tag rules in `docs/master-plan.md` and `docs/module-development.md`.
 4. Commit messages: `type(scope): imperative summary` (`feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `ci`).
 5. Keep changes small and focused; do not reformat unrelated files.
 
@@ -29,6 +31,7 @@ This file is the single, tool-neutral source of project instructions, using the 
 - Use Mermaid for diagrams. Put design docs in `docs/` or the sub-project's `docs/`.
 - Record significant decisions as `docs/adr/ADR-NNN-title.md`.
 - Update the sub-project README and the root README index when behavior or layout changes.
+- When adding or renaming a module, update both `solution.yaml` and `modules/<name>/module.yaml`; workflow logic must discover modules dynamically, never use hard-coded module names or infer behavior from the descriptive `type`.
 
 ## Build, test, and static checks
 
@@ -48,7 +51,7 @@ This file is the single, tool-neutral source of project instructions, using the 
 ## CI/CD
 
 - Build (`.github/workflows/build.yml`): runs `make ci` on pull requests and `main`.
-- Publish (`publish.yml`): triggered by `v*.*.*` tags; creates a GitHub Release and publishes artifacts.
+- Publish and promotion workflows use module/solution lifecycle events and protected promotion rules; do not add a repository-wide `v*` publication path alongside them.
 - Deploy (`deploy.yml`): manual and environment-gated; targets a self-hosted runner or VPS configured later.
 - Workflow changes must pass `actionlint` (part of `make lint`). Pin third-party actions to a major version or SHA and use least-privilege `permissions`.
 
