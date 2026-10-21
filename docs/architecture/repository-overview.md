@@ -29,3 +29,5 @@ flowchart LR
   Revision --> Promote[Protected promotion of exact OCI digests]
   Promote --> Stable[Stable-version catalog PR]
 ```
+
+CI validates catalogs and builds/tests modules. Successful same-repository push CI can trigger protected branch/main OCI publication using trusted default-branch tooling. Main revision reservations use atomic updates on `automation/release-state`; no temporary versions enter catalogs. See the [publication runbook](../release-publication.md) for activation and recovery. Promotion and stable-version PR automation in the diagram remain target-state steps.

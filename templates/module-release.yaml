@@ -11,14 +11,14 @@ workflow:
   runId: <workflow-run-id>
   url: <workflow-run-url>
 artifacts:
-  image:
-    repository: <image-repository>
-    tag: <version>
-    digest: sha256:<image-digest>
-  chart:
-    repository: <chart-oci-repository>
-    version: <version>
-    digest: sha256:<chart-digest>
+  images:
+    - repository: <image-repository>
+      tag: <version>
+      digest: sha256:<image-digest>
+  charts:
+    - repository: <chart-oci-repository>
+      version: <version>
+      digest: sha256:<chart-digest>
 evidence:
   tests: []
   sbom: <sbom-reference>

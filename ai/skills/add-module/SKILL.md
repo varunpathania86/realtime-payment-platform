@@ -13,3 +13,4 @@ description: Add an independently versioned module to the solution catalog and s
 6. If implementation adds a developer dependency, wire it through `make setup`, `make doctor`, and `docs/developer-setup.md` following `AGENTS.md`.
 7. Update the root README and architecture documentation if the module catalog or module boundaries change.
 8. Run the repository catalog validation and `make ci` when those validation targets are available.
+9. If adding OCI packaging, read `docs/release-publication.md`. Publication discovers Dockerfiles dynamically, uses reviewed impact metadata, and skips unpackaged modules; do not add a per-module workflow. Non-runtime artifacts may use a data-only image without a Helm chart.

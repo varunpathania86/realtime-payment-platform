@@ -1,0 +1,71 @@
+name: Publish one module
+
+on:
+  workflow_call:
+    inputs:
+      context:
+        required: true
+        type: string
+      source_commit:
+        required: true
+        type: string
+      source_run_url:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: release-publication
+    permissions:
+      contents: write
+      packages: write
+    concurrency:
+      group: publish-${{ fromJSON(inputs.context).module }}-${{ fromJSON(inputs.context).integrated && fromJSON(inputs.context).sourceCommit || fromJSON(inputs.context).branch }}
+      cancel-in-progress: false
+    steps:
+      - name: Check out trusted release tooling
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: tooling
+          persist-credentials: false
+      - name: Check out exact tested source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_commit }}
+          path: source
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install trusted release tooling dependencies
+        working-directory: tooling
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install --no-cache-dir -r scripts/requirements-catalog.txt
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Reserve version, publish, and verify immutable digest
+        working-directory: tooling
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_ROOT: ${{ github.workspace }}/source
+          PUBLICATION_CONTEXT: ${{ inputs.context }}
+          PUBLICATION_OUTPUT: ${{ github.workspace }}/publication
+          SOURCE_RUN_URL: ${{ inputs.source_run_url }}
+        run: make publish-module
+      - name: Preserve publication evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: publication-${{ fromJSON(inputs.context).module }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: publication/*.json
+          if-no-files-found: error
+          retention-days: 90

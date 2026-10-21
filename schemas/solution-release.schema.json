@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://realtime-payment-platform.example/schemas/solution-release.schema.json",
+  "title": "Immutable solution release manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "pi", "solution", "modules", "qa"],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "kind": {
+      "const": "solution-release"
+    },
+    "pi": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^PI-[0-9]{4}\\.[1-9][0-9]*$"
+        }
+      }
+    },
+    "solution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "sourceCommit", "gitTag"],
+      "properties": {
+        "version": {
+          "$ref": "#/$defs/lifecycleVersion"
+        },
+        "sourceCommit": {
+          "$ref": "#/$defs/commit"
+        },
+        "gitTag": {
+          "type": "string",
+          "pattern": "^solution\\/v.+$"
+        }
+      }
+    },
+    "modules": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "version", "sourceCommit", "artifacts", "workflowRun", "approvedImpact"],
+        "properties": {
+          "name": {
+            "$ref": "#/$defs/name"
+          },
+          "version": {
+            "$ref": "#/$defs/lifecycleVersion"
+          },
+          "sourceCommit": {
+            "$ref": "#/$defs/commit"
+          },
+          "artifacts": {
+            "$ref": "#/$defs/artifacts"
+          },
+          "workflowRun": {
+            "type": "string",
+            "format": "uri"
+          },
+          "approvedImpact": {
+            "$ref": "#/$defs/impact"
+          }
+        }
+      }
+    },
+    "qa": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evidence", "runForRecord"],
+      "properties": {
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "runForRecord": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  },
+  "$defs": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
+    },
+    "commit": {
+      "type": "string",
+      "pattern": "^(?:[a-f0-9]{40}|[a-f0-9]{64})$"
+    },
+    "impact": {
+      "enum": ["none", "patch", "minor", "major"]
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "tag", "digest"],
+      "properties": {
+        "repository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tag": {
+          "type": "string",
+          "minLength": 1
+        },
+        "digest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "chart": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "version", "digest"],
+      "properties": {
+        "repository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "$ref": "#/$defs/lifecycleVersion"
+        },
+        "digest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["images", "charts"],
+      "properties": {
+        "images": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/image"
+          }
+        },
+        "charts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/chart"
+          }
+        }
+      }
+    },
+    "lifecycleVersion": {
+      "type": "string",
+      "pattern": "^(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)(?:-it[1-9][0-9]*(?:-br\\.[a-f0-9]{4}|-rv\\.[1-9][0-9]*)?|-rc[1-9][0-9]*(?:-br\\.[a-f0-9]{4}|-rv\\.[1-9][0-9]*)?)?$"
+    }
+  }
+}

@@ -1,31 +1,75 @@
-name: Build
+name: Validate and build modules
 
 on:
   pull_request:
   push:
-    branches: [main]
+    branches-ignore: ["automation/**"]
 
 permissions:
   contents: read
 
 concurrency:
-  group: build-${{ github.ref }}
+  group: build-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  build:
+  catalog:
+    uses: ./.github/workflows/validate-catalog.yml
+
+  quality:
+    needs: catalog
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install pre-commit
-        run: python -m pip install pre-commit
-      - name: Cache pre-commit hooks
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pre-commit
-          key: pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
-      - name: Lint, test, build
+      - name: Install CI dependencies
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install --no-cache-dir pre-commit -r scripts/requirements-catalog.txt
+      - name: Lint, test, and build shared solution tooling
         run: make ci
+
+  plan:
+    needs: catalog
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      has_modules: ${{ steps.plan.outputs.has_modules }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install catalog planner dependencies
+        run: python -m pip install --no-cache-dir -r scripts/requirements-catalog.txt
+      - name: Detect affected modules
+        id: plan
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || '0000000000000000000000000000000000000000' }}
+          HEAD_SHA: ${{ github.sha }}
+        run: python scripts/module_catalog.py plan --base "$BASE_SHA" --head "$HEAD_SHA"
+
+  module-build:
+    needs: [catalog, plan]
+    if: needs.plan.outputs.has_modules == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install module runner dependencies
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install --no-cache-dir -r scripts/requirements-catalog.txt
+      - name: Build, test, and lint module
+        env:
+          MODULE_NAME: ${{ matrix.module }}
+        run: .venv/bin/python scripts/module_catalog.py run-module --name "$MODULE_NAME"

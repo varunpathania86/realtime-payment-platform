@@ -8,6 +8,9 @@ The full requirements and roadmap are in the [master plan](docs/master-plan.md).
 
 The repository foundation is in place. The catalog currently defines 15 independently versioned modules; module implementations are added incrementally from the [master plan](docs/master-plan.md).
 
+[Event contracts](modules/event-contracts/README.md) is the first implementation:
+a synthetic Avro payment event, offline tests, and a non-runtime OCI data bundle.
+
 ## Repository map
 
 | Path | Purpose |
@@ -17,6 +20,7 @@ The repository foundation is in place. The catalog currently defines 15 independ
 | [templates/](templates/README.md) | Templates for documents and sub-projects |
 | [solution.yaml](solution.yaml) | Solution identity, stable version, PI schedule, modules, and registry roots |
 | [modules/](modules/) | Independently versioned module manifests and, as implemented, their source and packaging |
+| [schemas/](schemas/) | JSON Schemas for solution, module, release, and counter-state documents |
 | [docs/module-development.md](docs/module-development.md) | Module boundaries, types, and release lifecycle |
 | [AGENTS.md](AGENTS.md) | Tool-neutral instructions for AI assistants |
 | [ai/](ai/) | Path-specific AI rules and reusable AI skills |
@@ -36,6 +40,8 @@ make ci       # lint, test, build
 ```
 
 Run `make help` for all targets.
+
+Catalog validation is available through `make validate-catalog`; `make ci` includes catalog validation and unit tests. CI has a dynamic affected-module matrix; root checks also validate implemented modules. Trusted push CI can trigger protected branch/main OCI publication after the workflows are merged into `main` and the environment is configured. See the [publication runbook](docs/release-publication.md). Promotion and cleanup remain later phases.
 
 ## Workflow
 

@@ -1,22 +1,68 @@
-name: Publish
+name: Publish tested module artifacts
 
 on:
-  push:
-    tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
+  workflow_run:
+    workflows: ["Validate and build modules"]
+    types: [completed]
 
 permissions:
-  contents: write
-  packages: write
+  contents: read
+  actions: read
+  pull-requests: read
 
 jobs:
-  release:
+  plan:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      !startsWith(github.event.workflow_run.head_branch, 'automation/')
     runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      has_modules: ${{ steps.plan.outputs.has_modules }}
     steps:
-      - uses: actions/checkout@v4
-      - name: Verify build
-        run: make ci
-      # Sub-projects later add image/chart publishing to ghcr.io here, tagged with the git tag.
-      - name: Create GitHub Release
+      - name: Check out trusted release tooling
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: tooling
+          persist-credentials: false
+      - name: Check out exact tested source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install trusted release tooling dependencies
+        working-directory: tooling
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install --no-cache-dir -r scripts/requirements-catalog.txt
+      - name: Calculate module publication matrix
+        id: plan
+        working-directory: tooling
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --generate-notes --verify-tag
+          SOURCE_ROOT: ${{ github.workspace }}/source
+          SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+        run: make publication-plan
+
+  publish:
+    needs: plan
+    if: needs.plan.outputs.has_modules == 'true'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    uses: ./.github/workflows/publish-module.yml
+    with:
+      context: ${{ toJSON(matrix) }}
+      source_commit: ${{ github.event.workflow_run.head_sha }}
+      source_run_url: ${{ github.event.workflow_run.html_url }}
+    permissions:
+      contents: write
+      packages: write

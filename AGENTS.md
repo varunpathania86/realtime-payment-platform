@@ -35,7 +35,7 @@ This file is the single, tool-neutral source of project instructions, using the 
 
 ## Build, test, and static checks
 
-- Every Makefile (root and sub-project) provides `build`, `test`, `lint`, `fmt`, `clean`. The root Makefile runs them across all sub-projects. Use `make`, not ad-hoc commands, in docs and CI.
+- Implemented modules with a Makefile provide `build`, `test`, `lint`, `fmt`, `clean`; catalog-only modules need no Makefile yet. The root Makefile runs shared solution checks, and CI runs implemented affected modules dynamically. Use `make`, not ad-hoc commands, in docs and CI.
 - Tool versions are pinned in `.tool-versions`; `make setup` installs them and `make doctor` checks them. Change versions there only.
 - **Developer dependencies must go through `make setup`.** Whenever a change introduces a new developer dependency (CLI tool, SDK, runtime, linter, system package, pre-commit hook, container runtime, and so on), in the same change you must:
   1. Install it from `make setup` (via `scripts/install-tools.sh` or another script in `scripts/` called from the Makefile), pinned to an exact version in `.tool-versions` where applicable. Downloads must be checksum-verified, idempotent, and avoid `sudo` unless unavoidable.
@@ -50,8 +50,10 @@ This file is the single, tool-neutral source of project instructions, using the 
 
 ## CI/CD
 
-- Build (`.github/workflows/build.yml`): runs `make ci` on pull requests and `main`.
-- Publish and promotion workflows use module/solution lifecycle events and protected promotion rules; do not add a repository-wide `v*` publication path alongside them.
+- Catalog validation (`.github/workflows/validate-catalog.yml`): reusable read-only workflow validating solution, module, and release manifests.
+- Build (`.github/workflows/build.yml`): runs `make ci` and a dynamic affected-module matrix on pull requests and branch pushes. Fork PRs remain read-only and build/test-only.
+- Publication (`publish.yml` / `publish-module.yml`): successful same-repository push CI triggers protected GHCR publication using trusted default-branch tooling. Main revisions use atomic GitHub Contents API reservations on `automation/release-state`; branch tags are replaceable. Read `docs/release-publication.md` before changing this path. Promotion, cleanup, and stable-version PRs are not implemented yet.
+- Do not add a repository-wide `v*` publishing path. Preserve idempotent versions/digests, read-only fork CI, current-UTC PI boundaries, reviewed per-module impacts, and the separation between tested source and trusted publication tooling.
 - Deploy (`deploy.yml`): manual and environment-gated; targets a self-hosted runner or VPS configured later.
 - Workflow changes must pass `actionlint` (part of `make lint`). Pin third-party actions to a major version or SHA and use least-privilege `permissions`.
 

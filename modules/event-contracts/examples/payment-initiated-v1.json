@@ -1,0 +1,14 @@
+{
+  "event_id": "00000000-0000-4000-8000-000000000001",
+  "event_type": "payment.initiated.v1",
+  "event_time": "2026-10-26T00:00:00Z",
+  "producer": "payment-api",
+  "correlation_id": "00000000-0000-4000-8000-000000000002",
+  "causation_id": null,
+  "schema_version": 1,
+  "payload": {
+    "payment_id": "00000000-0000-4000-8000-000000000003",
+    "amount_minor": 1250,
+    "currency": "EUR"
+  }
+}

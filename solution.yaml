@@ -30,5 +30,5 @@ modules:
   - operations-knowledge
 
 registries:
-  images: ghcr.io/<owner>
-  charts: oci://ghcr.io/<owner>/charts
+  images: ghcr.io/varunpathania86
+  charts: oci://ghcr.io/varunpathania86/charts

@@ -2,7 +2,7 @@
 
 This repository uses `solution.yaml` to list independently versioned modules. Each module lives at `modules/<module-name>/module.yaml`; the manifest's `name` must match the directory name.
 
-For now, `type` is a human-readable primary classification. It is not a complete description of every aspect of a module and must not be used as a workflow switch. Workflows discover modules from the catalog and manifests, not from hard-coded module names or assumptions about `type`.
+For now, `type` is a human-readable primary classification. It is not a complete description of every aspect of a module and must not be used as a workflow switch. Workflows discover modules from the catalog and manifests, not from hard-coded module names or assumptions about `type`. `make validate-catalog` validates catalog and release YAML against the JSON Schemas in `schemas/`, plus folder/name equality and dependency references.
 
 `module.yaml.version` records the current stable production version only. New modules start at `0.0.0`; workflow-generated iteration, branch, revision, and RC versions are not written there. The integrated solution has its own stable version in `solution.yaml`.
 
@@ -51,7 +51,9 @@ The `rv` counter is scoped per module, target version, iteration, and release li
 
 Impact is approved per module. `patch`, `minor`, and `major` are explicit values; `none` defaults to `patch` for now. Do not infer impact or lifecycle from branch names or commit messages. Promotions retag the already-built OCI artifact and verify its digest; they do not rebuild it. After production promotion, an automated PR updates the stable version field in the module or solution catalog.
 
-The exact schemas, counter reservation, promotion, and cleanup behavior are introduced in later implementation phases. See [the master plan](master-plan.md) for the complete policy.
+The validator checks every JSON Schema under `schemas/`, validates the solution and module manifests, verifies catalog/folder equality, rejects unknown dependencies and cycles, and validates release manifests and the reviewed impact policy under `releases/`. Module CI expands changes to transitive dependents. Trusted push CI can trigger protected OCI publication for affected modules with Dockerfiles; catalog-only modules are skipped explicitly.
+
+Main publication reserves immutable revisions atomically on `automation/release-state`; branch publication uses deterministic replaceable tags. See the [publication runbook](release-publication.md) for approvals, current-UTC PI boundaries, reviewed per-module impacts, RC classification, recovery, and required GitHub configuration. Promotion, cleanup, solution releases, stable-version PRs, and Helm publication remain later phases. See [the master plan](master-plan.md) for the complete policy.
 
 ## Module boundaries
 

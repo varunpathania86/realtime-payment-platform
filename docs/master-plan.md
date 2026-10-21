@@ -46,14 +46,16 @@ These rules apply to the whole monorepo. Details for AI tools live in `AGENTS.md
 
 ## 0.5 Build, quality, and CI/CD
 
-- Root and sub-project `Makefile` files share one target contract: `build`, `test`, `lint`, `fmt`, `clean`. The root `Makefile` runs the target in every sub-project.
+- Implemented modules with a `Makefile` share one target contract: `build`, `test`, `lint`, `fmt`, `clean`; catalog-only modules do not need a `Makefile`. The root `Makefile` runs shared solution checks, while CI dynamically runs the contract for affected implemented modules.
 - Lint and static-check configuration is defined once at the root (`.editorconfig`, `.pre-commit-config.yaml`, `.markdownlint-cli2.yaml`) and reused by all sub-projects. Language-specific linters (for example `golangci-lint`, ESLint, Ruff) are configured per language with a single shared config per language at the root.
 - GitHub Actions workflows:
+  - **Catalog validation** (`validate-catalog.yml`): reusable, read-only JSON Schema and cross-manifest validation.
   - **Validate/build**: PRs and trusted branch updates; discover changed modules dynamically, expand dependency impact, and test in a matrix. Fork PRs remain build/test-only with read-only permissions.
   - **Branch/integrated artifact workflows**: publish replaceable branch tags or immutable integrated revisions for trusted source only; reserve revision counters atomically and make reruns idempotent.
   - **Promotion**: manually dispatched and permission-controlled; promote exact OCI digests through protected environments, create manifests/releases, and perform cleanup only after verification.
   - **Stable-version recording**: after successful production promotion, create a PR updating the stable catalog version; never push directly to protected `main`.
 - Self-hosted runners are used only for explicitly approved protected work, never for pull requests from forks.
+- Current implementation status: catalog/schema validation, affected-module CI, the first synthetic Avro contract, tested version/UTC iteration calculations, atomic main revision reservations, and protected branch/main OCI publication workflows are implemented. Publication needs default-branch installation and environment configuration; see [the publication runbook](release-publication.md). Promotion, cleanup, solution releases, stable-version PRs, and Helm publication remain future work; see Section 19.
 
 ## 0.6 AI tooling
 
@@ -2109,11 +2111,12 @@ excluded_initially:
 Update this block after every session.
 
 ```yaml
-current_milestone: stage-0
-last_completed_task: initial solution catalog, 15 module manifests, module lifecycle and type documentation
-next_task: define schemas and catalog validation before implementing release automation
+current_milestone: module-publication-foundation
+last_completed_task: synthetic Avro contract, tested versions and reservations, protected OCI publication workflows
+next_task: configure publication approvals, merge to main, and verify the first real GHCR run after PI start
 known_issues:
-  - module and solution schemas and automated catalog validation are not implemented yet
+  - GitHub/GHCR publication has not yet been exercised; PI starts 2026-10-26
+  - promotion, cleanup, solution releases, stable-version PRs, and Helm publication are not implemented yet
 architecture_decisions:
   - ADR-001 HashiCorp Terraform
   - ADR-002 Monorepo initially

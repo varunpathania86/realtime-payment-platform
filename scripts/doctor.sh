@@ -19,6 +19,13 @@ else
   bad "pre-commit is missing (run: make setup)"
 fi
 
+if [ -x "$REPO_ROOT/.venv/bin/python" ] &&
+  "$REPO_ROOT/.venv/bin/python" -c 'import avro.schema, jsonschema, yaml' >/dev/null 2>&1; then
+  ok "catalog validation dependencies"
+else
+  bad "catalog validation dependencies are missing (run: make setup)"
+fi
+
 for t in kubectl minikube helm terraform go jq yq; do
   want=$(pinned_version "$t"); have=$(installed_version "$t")
   if [ -z "$have" ]; then bad "$t is missing, want $want (run: make setup)"

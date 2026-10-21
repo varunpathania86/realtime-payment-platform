@@ -10,7 +10,7 @@ Work inside the WSL filesystem (for example `~/code`), not under `/mnt/c`, for s
 |---|---|---|
 | git | Version control | `sudo apt install git` |
 | make | All workflows | `sudo apt install make` |
-| python3 with venv | pre-commit | `sudo apt install python3 python3-venv` |
+| python3 with venv | pre-commit and catalog validation | `sudo apt install python3 python3-venv` |
 | SSH key on GitHub | Push access | [GitHub docs](https://docs.github.com/en/authentication/connecting-to-github-with-ssh); verify with `ssh -T git@github.com` |
 | GitHub CLI (optional) | Creating pull requests | [cli.github.com](https://cli.github.com); then `gh auth login` |
 
@@ -52,7 +52,7 @@ make setup
 
 `make setup`:
 
-1. Installs `pre-commit` into the git-ignored `.venv/` (skipped if `pre-commit` is already on your PATH).
+1. Creates the git-ignored `.venv/` and installs the pinned catalog-validation libraries and Apache Avro 1.12.0 from `scripts/requirements-catalog.txt`; installs `pre-commit` there only if it is not already on your PATH. Avro validates and binary-round-trips the first synthetic event contract.
 2. Installs the git pre-commit hook, so checks run on every commit.
 3. Installs the pinned tools from `.tool-versions` (`scripts/install-tools.sh`).
 4. Installs Docker Engine if it is missing (`scripts/install-docker.sh`, needs sudo).
@@ -68,6 +68,8 @@ make setup
 |---|---|
 | `make help` | List all targets |
 | `make doctor` | Check the environment against `.tool-versions` |
+| `make validate-catalog` | Validate `solution.yaml`, module manifests, release manifests, and dependency references |
+| `make test-catalog` | Run offline tests for catalog validation, versions, reservations, classification, and publication recovery |
 | `make tools` | Install or update the pinned tools |
 | `make docker` | Install Docker Engine if missing (needs sudo) |
 | `make setup-agent` | Optional: register this machine as a self-hosted runner for the Deploy workflow ([runbook](runbooks/self-hosted-runner.md), including the dedicated WSL instance steps) |
@@ -92,6 +94,11 @@ flowchart LR
 
 Branch, commit, and versioning rules are in [CONTRIBUTING.md](../CONTRIBUTING.md).
 
+Trusted OCI publication uses GitHub-hosted Buildx and the job's GitHub token.
+Local contract tests and archive builds need only `make setup`; no new CLI is
+required. GitHub approval/environment and GHCR configuration are covered in the
+[publication runbook](release-publication.md).
+
 ## 5. Troubleshooting
 
 For WSL networking and disk problems see the [WSL runbook](runbooks/wsl-troubleshooting.md).
@@ -103,6 +110,7 @@ For WSL networking and disk problems see the [WSL runbook](runbooks/wsl-troubles
 | `docker daemon is not reachable` | `sudo systemctl start docker`, or start Docker Desktop with WSL integration |
 | `permission denied` on the Docker socket | Run `make docker`, or open a new terminal so the `docker` group applies |
 | `python3 -m venv` fails | `sudo apt install python3-venv` |
+| Catalog validation dependencies are missing | Run `make setup` to install the pinned libraries into `.venv/` |
 | `systemd-binfmt.service failed` during `apt install` on WSL | Harmless: WSL already registers its own binfmt handler. Check with `sudo dpkg --audit`; no output means apt finished cleanly |
 | `Permission denied (publickey)` on push | Check the key with `ssh -T git@github.com` and that the remote uses the SSH URL (`git remote -v`) |
 | Hooks fail on line endings | Work in the WSL filesystem; the repo enforces LF via `.gitattributes` |

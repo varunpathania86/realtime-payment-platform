@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Reviewed per-module release impacts",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "defaultImpact", "modules"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "defaultImpact": {"const": "patch"},
+    "modules": {
+      "type": "object",
+      "propertyNames": {"pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"},
+      "additionalProperties": {"enum": ["none", "patch", "minor", "major"]}
+    }
+  }
+}
