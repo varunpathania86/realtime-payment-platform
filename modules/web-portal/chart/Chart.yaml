@@ -1,0 +1,5 @@
+apiVersion: v2
+name: web-portal
+description: Minimal local React status portal
+type: application
+version: 0.1.0

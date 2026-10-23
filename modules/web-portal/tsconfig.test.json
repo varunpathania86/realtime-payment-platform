@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "noEmit": false,
+    "outDir": ".test-dist",
+    "types": ["node"]
+  },
+  "include": ["src/status.ts", "src/StatusPage.tsx", "tests"]
+}

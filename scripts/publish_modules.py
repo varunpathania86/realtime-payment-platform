@@ -128,8 +128,16 @@ def publish(source: Path, context: dict, output: Path) -> dict:
     else:
         with tempfile.TemporaryDirectory() as directory:
             metadata = Path(directory) / "metadata.json"
+            pins = dict(
+                line.split() for line in (source / ".tool-versions").read_text().splitlines()
+                if line.strip() and not line.lstrip().startswith("#")
+            )
             subprocess.run([
                 "docker", "buildx", "build",
+                "--build-arg", f"GO_VERSION={pins['go']}",
+                "--build-arg", f"NODE_VERSION={pins['nodejs']}",
+                "--build-arg", f"VERSION={version}",
+                "--build-arg", f"COMMIT={context['sourceCommit']}",
                 "--file", str(source / "modules" / context["module"] / "Dockerfile"),
                 "--tag", f"{repository}:{version}", "--push", "--platform", "linux/amd64",
                 "--provenance=mode=max", "--sbom=true",

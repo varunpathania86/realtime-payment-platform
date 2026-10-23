@@ -36,6 +36,21 @@ make build
 make ci      # all of the above
 ```
 
+For application changes, also verify the local development loop:
+
+```bash
+make dev-up
+make dev-update
+make smoke
+make dev-access  # foreground browser access; Ctrl-C stops
+```
+
+Stop access forwarding before running smoke checks on the same port.
+These commands require no GitHub workflow, GHCR login, approval, or active PI.
+Use a dedicated `MINIKUBE_PROFILE` for destructive recreation tests.
+See [the developer guide](docs/developer-setup.md#4-local-application-development)
+for image loading, state ownership, and teardown.
+
 ## Developer dependencies
 
 Any new developer dependency (tool, runtime, linter, system package) must be installed by `make setup`, verified by `make doctor`, and documented in [docs/developer-setup.md](docs/developer-setup.md), in the same pull request. Pin versions in [.tool-versions](.tool-versions).

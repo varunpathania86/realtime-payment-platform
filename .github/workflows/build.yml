@@ -28,6 +28,8 @@ jobs:
         run: |
           python -m venv .venv
           .venv/bin/pip install --no-cache-dir pre-commit -r scripts/requirements-catalog.txt
+      - name: Install pinned build toolchains
+        run: make tools
       - name: Lint, test, and build shared solution tooling
         run: make ci
 
@@ -69,7 +71,10 @@ jobs:
         run: |
           python -m venv .venv
           .venv/bin/pip install --no-cache-dir -r scripts/requirements-catalog.txt
+      - name: Install pinned build toolchains
+        if: hashFiles(format('modules/{0}/Makefile', matrix.module)) != ''
+        run: make tools
       - name: Build, test, and lint module
         env:
           MODULE_NAME: ${{ matrix.module }}
-        run: .venv/bin/python scripts/module_catalog.py run-module --name "$MODULE_NAME"
+        run: make check-module

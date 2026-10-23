@@ -64,6 +64,21 @@ Main publication reserves immutable revisions atomically on `automation/release-
 - A knowledge-ingestion executable is a runtime module; the documents and prepared knowledge it processes are the knowledge module. Keep those responsibilities distinct even if they initially share source files.
 - The risk model is independent from the LLM assistant: the deterministic predictive score is produced by the ML model; the LLM may provide asynchronous explanations but does not approve, reject, or numerically score payments.
 
+## Local application packaging
+
+A runnable module owns its Dockerfile and `chart/` Helm chart. Local orchestration
+discovers modules listed in `solution.yaml` with both packaging files, regardless
+of their descriptive type. `make dev-up` and `make dev-update` build host images,
+load them into Minikube, and pass their content-derived development references to
+Terraform-managed Helm releases. No publication, PI version, or remote workflow
+is required; stable catalog versions remain unchanged.
+
+Keep the same Dockerfile for local and published images. Toolchain build arguments
+come from root `.tool-versions`; version and commit are supplied by the caller.
+The current local chart contract expects HTTP on container port 8080, readiness
+and liveness probes, restricted security contexts, and resource bounds.
+See the [developer guide](developer-setup.md#4-local-application-development).
+
 ## Adding a module
 
 1. Add its kebab-case name to `solution.yaml`.

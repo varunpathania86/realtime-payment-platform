@@ -9,6 +9,8 @@ All design documentation lives here, written in Markdown with Mermaid diagrams. 
 | [release-publication.md](release-publication.md) | Trusted OCI publication, activation, counters, and recovery |
 | [architecture/repository-overview.md](architecture/repository-overview.md) | Module catalog and delivery flow |
 | [developer-setup.md](developer-setup.md) | Developer environment setup (`make setup`) |
+| [adr/ADR-001-terraform-local-development.md](adr/ADR-001-terraform-local-development.md) | Terraform ownership and independent local image/deployment loop |
+| [runbooks/local-development.md](runbooks/local-development.md) | Local image, deployment, ingress, and recovery troubleshooting |
 | [architecture/](architecture/) | SDD, LLD, C4 and data-flow diagrams |
 | [adr/](adr/) | Architecture Decision Records |
 | [runbooks/](runbooks/) | Operational procedures |

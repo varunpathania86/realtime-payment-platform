@@ -16,8 +16,11 @@ Thumbs.db
 *.tfstate
 *.tfstate.*
 *.tfvars
+*.tfvars.json
 !*.tfvars.example
 crash.log
+tfplan
+.local/
 
 # Go
 bin/

@@ -47,6 +47,14 @@ This file is the single, tool-neutral source of project instructions, using the 
 - Shared lint and format rules live at the root (`.editorconfig`, `.pre-commit-config.yaml`, `.markdownlint-cli2.yaml`). Do not create per-project variants; language linters use one shared config per language at the root.
 - Every behavior change needs unit tests in the same change. Tests must be deterministic and runnable offline.
 - Never commit secrets, `.env` files, Terraform state, or real personal/cardholder data.
+- Local application development must work without GitHub Actions, GHCR login,
+  publication approval, release reservations, or an active PI. Preserve the
+  `dev-up`, `dev-update`, `dev-access`, and `smoke` Make workflow. First-use
+  dependency downloads may need internet; do not claim air-gapped operation.
+- Read `ai/instructions/local-development.md` before changing local images,
+  Helm charts, Terraform, or local orchestration. Verify dirty-source rebuilds
+  and clean-cluster recreation when changing this path; never destroy a shared
+  Minikube profile to test it.
 
 ## CI/CD
 
