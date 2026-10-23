@@ -55,7 +55,12 @@ These rules apply to the whole monorepo. Details for AI tools live in `AGENTS.md
   - **Promotion**: manually dispatched and permission-controlled; promote exact OCI digests through protected environments, create manifests/releases, and perform cleanup only after verification.
   - **Stable-version recording**: after successful production promotion, create a PR updating the stable catalog version; never push directly to protected `main`.
 - Self-hosted runners are used only for explicitly approved protected work, never for pull requests from forks.
-- Current implementation status: catalog/schema validation, affected-module CI, the first synthetic Avro contract, tested version/UTC iteration calculations, atomic main revision reservations, and protected branch/main OCI publication workflows are implemented. Publication needs default-branch installation and environment configuration; see [the publication runbook](release-publication.md). Promotion, cleanup, solution releases, stable-version PRs, and Helm publication remain future work; see Section 19.
+- Current implementation status: catalog/schema validation, affected-module CI, the first synthetic Avro contract, tested version/UTC iteration calculations, atomic main revision reservations, and protected branch/main OCI publication workflows are implemented. Stage 1 adds locally verified Go/React applications and Terraform/Helm deployment; see [the developer guide](developer-setup.md#4-local-application-development). Publication is installed on the default branch but still needs approval configuration and post-PI GHCR verification; see [the publication runbook](release-publication.md). Promotion, cleanup, solution releases, stable-version PRs, and Helm publication remain future work; see Section 19.
+- Local application development is independent of those workflows. Stage 0
+  supplies tools and Minikube lifecycle; Stage 1 supplies local image builds,
+  image loading, Terraform/Helm deployment, updates, and smoke checks. No GitHub
+  Actions, GHCR login, approval, release reservation, or active PI is required.
+  Initial dependency downloads may require internet.
 
 ## 0.6 AI tooling
 
@@ -619,6 +624,9 @@ Add a WSL networking and disk-usage troubleshooting runbook.
 
 **Exit criteria:** `make ci` passes locally and in GitHub Actions. A clean WSL shell can clone the repository, run `make setup` and `make doctor`, create Minikube, inspect it, and destroy it without undocumented commands.
 
+Stage 0 does not deliver runnable application implementations. The first local
+application edit/build/deploy/test loop is a mandatory Stage 1 deliverable.
+
 ---
 
 ## Stage 1: one-day Terraform foundation
@@ -637,6 +645,12 @@ Implement:
 - Minimal React status page
 - Small Helm charts
 - Local Terraform state excluded from Git
+- Host Docker image builds loaded into the selected Minikube profile, without a
+  local registry or GHCR; development-only content tags detect dirty source edits
+- Make targets for local start, update, access, smoke checks, and teardown
+- Explicit kubeconfig contexts and profile-specific local state
+- Non-root/read-only application containers, probes, resource requests and limits
+- Tests for local orchestration failures, endpoints, and frontend status/error states
 
 Required workflow:
 
@@ -644,6 +658,7 @@ Required workflow:
 clone
   -> make doctor
   -> make cluster-up
+  -> make dev-images
   -> make terraform-init
   -> make terraform-plan
   -> make terraform-apply
@@ -651,6 +666,15 @@ clone
 ```
 
 **Exit criteria:** Delete and recreate Minikube, then restore the endpoint using the documented workflow with no manual edits.
+
+Also demonstrate an application source edit followed by `make dev-update` changing
+the deployed image and visible output, and recovery after deleting an API pod.
+`make dev-up` wraps cluster start, local image build/load, Terraform init/plan/apply,
+and smoke checks; `make dev-access` exposes ingress on loopback for the browser.
+`make dev-down` destroys the stack but preserves the cluster.
+The entire loop must work before PI start and while remote workflows fail.
+Initial tool/dependency/base-image/provider/chart downloads still need connectivity.
+See [the developer guide](developer-setup.md#4-local-application-development).
 
 ---
 
@@ -2065,6 +2089,9 @@ When this document is supplied to an AI assistant:
 18. Keep pgvector behind a retrieval interface so Qdrant can be benchmarked later.
 19. Add or update an ADR for material architecture changes.
 20. Update the status block after each work session.
+21. Keep local development independent of publication and the PI clock. Use the
+    catalog-discovered local image workflow and an isolated verification profile;
+    never destroy a shared cluster to test recreation.
 
 ---
 
@@ -2111,16 +2138,29 @@ excluded_initially:
 Update this block after every session.
 
 ```yaml
-current_milestone: module-publication-foundation
-last_completed_task: synthetic Avro contract, tested versions and reservations, protected OCI publication workflows
-next_task: configure publication approvals, merge to main, and verify the first real GHCR run after PI start
+current_milestone: stage-1-local-terraform-foundation
+stage_status: in-progress; draft checkpoint, not final or ready to merge
+last_completed_task: Initial Stage 1 local Go/React deployment, dirty-source update, pod recovery, and clean-cluster recreation verified
+next_task: continue Stage 1 requirements and improvements on this branch; do not start Stage 2 or mark this PR ready until Stage 1 is explicitly accepted
 known_issues:
+  - Stage 1 remains work in progress; passing checks cover the current slice, not final stage acceptance
   - GitHub/GHCR publication has not yet been exercised; PI starts 2026-10-26
+  - publication environment approval configuration remains independent of local development
+  - Stage 1 changes are locally verified on the feature branch; remote CI has not been run for this change
   - promotion, cleanup, solution releases, stable-version PRs, and Helm publication are not implemented yet
 architecture_decisions:
-  - ADR-001 HashiCorp Terraform
+  - ADR-001 HashiCorp Terraform and independent local application development
   - ADR-002 Monorepo initially
   - ADR-013 Independently versioned modules in the monorepo
-last_verified_commit: none
-last_verified_date: 2026-10-21
+verification:
+  - make doctor and make ci passed locally
+  - Terraform validation, Helm lint/render checks, and 42 shared unit tests passed
+  - make dev-up and make dev-update passed on isolated profile rpp-stage1-check
+  - dirty portal source changed its image tag and browser-visible heading; verification edit restored
+  - browser error state and retry recovery verified using a deliberately failed API request
+  - API pod deletion recovered and ingress smoke checks passed
+  - stack and cluster destroyed, then recreated by make dev-up without manual configuration edits
+  - repeated dev-update reported no infrastructure changes and smoke passed
+last_verified_commit: Stage 1 draft checkpoint on feature/stage-1-terraform-foundation; validation performed before commit
+last_verified_date: 2026-10-23
 ```

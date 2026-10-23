@@ -7,7 +7,7 @@ set -euo pipefail
 # shellcheck source=scripts/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-ALL_TOOLS=(kubectl minikube helm terraform go jq yq)
+ALL_TOOLS=(kubectl minikube helm terraform go jq yq nodejs)
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 mkdir -p "$BIN_DIR"
@@ -80,6 +80,20 @@ install_yq() {
   install -m 0755 "$TMP/yq" "$BIN_DIR/yq"
 }
 
+install_nodejs() {
+  local v=$1 node_arch=$ARCH
+  [ "$node_arch" != amd64 ] || node_arch=x64
+  local f="node-v$v-$OS-$node_arch.tar.gz" base="https://nodejs.org/dist/v$v"
+  fetch "$base/$f" "$TMP/$f"
+  verify "$TMP/$f" "$(curl -fsSL "$base/SHASUMS256.txt" | awk -v f="$f" '$2 == f {print $1}')"
+  local node_root="$HOME/.local/node-v$v"
+  mkdir -p "$node_root"
+  tar -xzf "$TMP/$f" -C "$node_root" --strip-components=1
+  ln -sf "$node_root/bin/node" "$BIN_DIR/node"
+  ln -sf "$node_root/bin/npm" "$BIN_DIR/npm"
+  ln -sf "$node_root/bin/npx" "$BIN_DIR/npx"
+}
+
 tools=("$@")
 [ ${#tools[@]} -gt 0 ] || tools=("${ALL_TOOLS[@]}")
 
@@ -87,7 +101,8 @@ for t in "${tools[@]}"; do
   want=$(pinned_version "$t")
   [ -n "$want" ] || { echo "Unknown tool: $t" >&2; exit 1; }
   have=$(installed_version "$t")
-  if [ "$have" = "$want" ]; then
+  if [ "$have" = "$want" ] &&
+    { [ "$t" != nodejs ] || PATH="$BIN_DIR:$PATH" npm --version >/dev/null 2>&1; }; then
     echo "ok       $t $have"
     continue
   fi

@@ -1,0 +1,17 @@
+*
+!package.json
+!package-lock.json
+!tsconfig.json
+!index.html
+!src/
+!src/**
+!go.mod
+!*.go
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
+**/bin
+**/dist
+**/node_modules
+**/.test-dist

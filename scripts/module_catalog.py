@@ -362,6 +362,18 @@ def run_module(module_name: str, root: Path = ROOT) -> int:
     return subprocess.run(["make", "-C", str(module_path), "lint", "test", "build"], check=False).returncode
 
 
+def local_modules(root: Path = ROOT) -> list[str]:
+    """Discover runnable local packages without interpreting descriptive module types."""
+    catalog = _load_yaml(root / "solution.yaml")["modules"]
+    return sorted(
+        name
+        for name, (path, _) in _module_manifests(root).items()
+        if name in catalog
+        if (path.parent / "Dockerfile").is_file()
+        and (path.parent / "chart" / "Chart.yaml").is_file()
+    )
+
+
 def _write_github_output(matrix: dict[str, Any]) -> None:
     output = os.environ.get("GITHUB_OUTPUT")
     if output:
@@ -376,6 +388,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("validate", help="validate solution, module, and release manifests")
+    subparsers.add_parser("local-modules", help="list modules with a Dockerfile and Helm chart")
     plan_parser = subparsers.add_parser("plan", help="write the affected module matrix")
     plan_parser.add_argument("--base", required=True)
     plan_parser.add_argument("--head", required=True)
@@ -393,6 +406,9 @@ def main() -> int:
             return 0
         if args.command == "plan":
             _write_github_output(plan_matrix(args.base, args.head))
+            return 0
+        if args.command == "local-modules":
+            print("\n".join(local_modules()))
             return 0
         return run_module(args.name)
     except (OSError, subprocess.CalledProcessError, ValueError, yaml.YAMLError) as error:

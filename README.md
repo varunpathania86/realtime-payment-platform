@@ -11,6 +11,10 @@ The repository foundation is in place. The catalog currently defines 15 independ
 [Event contracts](modules/event-contracts/README.md) is the first implementation:
 a synthetic Avro payment event, offline tests, and a non-runtime OCI data bundle.
 
+Stage 1 adds the minimal [Go API](modules/payment-api/README.md) and
+[React status portal](modules/web-portal/README.md), deployed locally with
+Terraform, Helm, and Traefik. Payment commands and PostgreSQL come in Stage 2.
+
 ## Repository map
 
 | Path | Purpose |
@@ -35,9 +39,22 @@ Full environment instructions: [docs/developer-setup.md](docs/developer-setup.md
 git clone git@github.com:varunpathania86/realtime-payment-platform.git
 cd realtime-payment-platform
 make setup    # install hooks and pinned tools, then check the environment
-make cluster-up  # start local Minikube (needs Docker)
 make ci       # lint, test, build
+make dev-up   # start Minikube, build/load local images, deploy, smoke-test
+make dev-access  # foreground: open http://127.0.0.1:8080; Ctrl-C stops access
 ```
+
+After editing application code, stop `dev-access`, run `make dev-update`, and
+restart `make dev-access`. Alternatively use another `LOCAL_PORT` for smoke tests.
+Local work needs **no GitHub Actions, GHCR login, publication approval, or active
+PI**. A failed remote workflow does not disable local commands. Initial setup,
+image/dependency downloads, and Terraform/chart initialization need internet;
+local development is independent of publication, not a guarantee of air-gapped operation.
+
+`make dev-down` destroys the local stack but leaves Minikube running.
+`make cluster-down` deletes the cluster and all its data. See the
+[developer guide](docs/developer-setup.md#4-local-application-development) for
+profiles, image loading, Terraform commands, recovery, and recreation.
 
 Run `make help` for all targets.
 

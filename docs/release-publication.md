@@ -20,6 +20,14 @@ The existing deployment workflow is still a placeholder.
 Branch tags are replaceable; main revision tags must not change digest.
 Neither kind of publication changes stable versions in catalogs.
 
+Local application development is a separate path: `make dev-up` and
+`make dev-update` build host Docker images, load them into Minikube, and deploy
+through Terraform/Helm. They require no GHCR login, GitHub Actions, approvals,
+release reservations, or active PI. A failure here does not block local work.
+See the [developer guide](developer-setup.md#4-local-application-development).
+Application image builds receive toolchain pins from `.tool-versions` plus
+version/commit build arguments in both local and publication paths.
+
 ## Diagnosis
 
 ### Events and responsibilities

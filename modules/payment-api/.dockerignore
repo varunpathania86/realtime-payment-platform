@@ -1,0 +1,10 @@
+*
+!go.mod
+!*.go
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
+**/bin
+**/dist
+**/node_modules

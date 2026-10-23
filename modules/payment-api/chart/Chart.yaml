@@ -1,0 +1,5 @@
+apiVersion: v2
+name: payment-api
+description: Minimal local payment API
+type: application
+version: 0.1.0
