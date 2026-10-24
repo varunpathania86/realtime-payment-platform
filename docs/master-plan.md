@@ -2146,7 +2146,7 @@ known_issues:
   - Stage 1 remains work in progress; passing checks cover the current slice, not final stage acceptance
   - GitHub/GHCR publication has not yet been exercised; PI starts 2026-10-26
   - publication environment approval configuration remains independent of local development
-  - Stage 1 changes are locally verified on the feature branch; remote CI has not been run for this change
+  - remote quality checks failed because a test fixture lost its Python virtual environment; fixture fix verified locally, remote rerun pending
   - promotion, cleanup, solution releases, stable-version PRs, and Helm publication are not implemented yet
 architecture_decisions:
   - ADR-001 HashiCorp Terraform and independent local application development
@@ -2154,7 +2154,8 @@ architecture_decisions:
   - ADR-013 Independently versioned modules in the monorepo
 verification:
   - make doctor and make ci passed locally
-  - Terraform validation, Helm lint/render checks, and 42 shared unit tests passed
+  - Terraform validation, Helm lint/render checks, and 43 shared unit tests passed
+  - test-fixture interpreter now preserves the runner virtual environment; regression verifies its prefix and PyYAML import
   - make dev-up and make dev-update passed on isolated profile rpp-stage1-check
   - dirty portal source changed its image tag and browser-visible heading; verification edit restored
   - browser error state and retry recovery verified using a deliberately failed API request

@@ -2,6 +2,7 @@ import copy
 import json
 import os
 from pathlib import Path
+import shlex
 import shutil
 import subprocess
 import sys
@@ -86,7 +87,9 @@ class LocalCommandTests(unittest.TestCase):
             shutil.copy(ROOT / "scripts" / name, self.root / "scripts" / name)
         shutil.copy(ROOT / ".tool-versions", self.root / ".tool-versions")
         (self.root / ".venv" / "bin").mkdir(parents=True)
-        (self.root / ".venv" / "bin" / "python").symlink_to(sys.executable)
+        python = self.root / ".venv" / "bin" / "python"
+        python.write_text(f'#!/bin/sh\nexec {shlex.quote(sys.executable)} "$@"\n')
+        python.chmod(0o755)
         (self.root / ".gitignore").write_text(".local/\n.venv/\n__pycache__/\nbin/\n")
         module = self.root / "modules" / "demo"
         (module / "chart").mkdir(parents=True)
@@ -137,6 +140,16 @@ if name == "minikube" and os.environ.get("FAIL_LOAD"):
 
     def inventory(self):
         return json.loads((self.root / ".local" / "isolated" / "images.tfvars.json").read_text())
+
+    def test_fixture_python_preserves_test_runner_environment(self):
+        result = subprocess.run(
+            [
+                str(self.root / ".venv" / "bin" / "python"), "-c",
+                "import sys, yaml; print(sys.prefix)",
+            ],
+            cwd=self.root, check=True, capture_output=True, text=True,
+        )
+        self.assertEqual(result.stdout.strip(), sys.prefix)
 
     def test_local_images_need_no_release_credentials_and_detect_dirty_source(self):
         result = self.run_command("images")
