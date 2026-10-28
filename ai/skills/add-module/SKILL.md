@@ -19,3 +19,7 @@ description: Add an independently versioned module to the solution catalog and s
     The local workflow discovers Dockerfile/chart pairs from the catalog.
     Follow `ai/instructions/local-development.md`; verify local build/load/deploy
     without publication credentials or an active PI.
+11. Published charts must match the module name and support digest-pinned images;
+    test that local development still clears the digest and uses loaded images.
+    A module's optional `security` target delegates to the same shared IaC scanner
+    as the separate workflow. Do not put advisory scans in its required lint target.

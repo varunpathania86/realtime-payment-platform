@@ -3,7 +3,7 @@ SHELL := /usr/bin/env bash
 VERSION ?= dev
 COMMIT ?= unknown
 
-.PHONY: help build test lint fmt clean
+.PHONY: help build test lint fmt clean security
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
@@ -20,6 +20,9 @@ lint: ## Check Go source with go vet and gofmt
 
 fmt: ## Format Go source
 	gofmt -w .
+
+security: ## Run the separate advisory IaC scan for this module
+	$(MAKE) -C ../.. security-module MODULE_NAME=$(notdir $(CURDIR))
 
 clean: ## Remove build output
 	rm -rf bin

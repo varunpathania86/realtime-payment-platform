@@ -3,7 +3,7 @@ SHELL := /usr/bin/env bash
 VERSION ?= dev
 COMMIT ?= unknown
 
-.PHONY: help build test lint fmt clean
+.PHONY: help build test lint fmt clean security
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
@@ -27,6 +27,9 @@ lint: node_modules/.package-lock.json ## Check TypeScript types, Go vet, and Go 
 
 fmt: ## Format Go code (frontend uses shared editor settings)
 	gofmt -w *.go
+
+security: ## Run the separate advisory IaC scan for this module
+	$(MAKE) -C ../.. security-module MODULE_NAME=$(notdir $(CURDIR))
 
 clean: ## Remove static assets, test output, and server binary
 	rm -rf dist .test-dist bin

@@ -70,6 +70,13 @@ shutdown on `SIGTERM` or `SIGINT`. The static binary runs as non-root in scratch
 
 ## Documentation
 
+The Helm chart supports `image.digest` (takes precedence over `image.tag`).
+Local Terraform uses loaded development tags with pull policy `Never`; OCI
+publication packages a versioned copy referencing the verified GHCR image digest
+with `IfNotPresent`. Source chart and stable catalog versions are not changed.
+Run `make security` from this directory for a separate advisory Trivy IaC scan;
+it is not part of the module's build/test/lint contract.
+
 - [Master plan, Stage 1](../../docs/master-plan.md#stage-1-one-day-terraform-foundation)
 - [Module development](../../docs/module-development.md)
 - [Developer setup](../../docs/developer-setup.md)

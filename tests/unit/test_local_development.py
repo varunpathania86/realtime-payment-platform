@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import shlex
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -83,7 +84,7 @@ class LocalCommandTests(unittest.TestCase):
         self.addCleanup(self.directory.cleanup)
         self.root = Path(self.directory.name)
         (self.root / "scripts").mkdir()
-        for name in ("local-dev.sh", "lib.sh", "module_catalog.py"):
+        for name in ("local-dev.sh", "lib.sh", "module_catalog.py", "smoke.py"):
             shutil.copy(ROOT / "scripts" / name, self.root / "scripts" / name)
         shutil.copy(ROOT / ".tool-versions", self.root / ".tool-versions")
         (self.root / ".venv" / "bin").mkdir(parents=True)
@@ -117,6 +118,30 @@ if name == "docker" and os.environ.get("FAIL_BUILD"):
 if name == "minikube" and os.environ.get("FAIL_LOAD"):
     print("deliberate image load failure", file=sys.stderr)
     sys.exit(8)
+if name == "kubectl" and "port-forward" in sys.argv:
+    if os.environ.get("FAIL_FORWARD"):
+        print("deliberate forwarding failure", file=sys.stderr)
+        sys.exit(9)
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            if os.environ.get("FAIL_SMOKE"):
+                self.send_error(503)
+                return
+            if self.path == "/api/version":
+                body = b'{"version":"dev-test","commit":"test"}'
+            elif self.path.startswith("/api/"):
+                body = b'{"status":"ok"}'
+            else:
+                body = b'<html><div id="root"></div></html>'
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json" if self.path.startswith("/api/") else "text/html")
+            self.end_headers()
+            self.wfile.write(body)
+    with HTTPServer(("127.0.0.1", 0), Handler) as server:
+        pathlib.Path(os.environ["COMMAND_LOG"] + ".pid").write_text(str(os.getpid()))
+        print(f"Forwarding from 127.0.0.1:{server.server_port} -> 80", flush=True)
+        server.serve_forever()
 """
         for name in ("docker", "minikube", "terraform", "kubectl"):
             path = self.bin / name
@@ -140,6 +165,39 @@ if name == "minikube" and os.environ.get("FAIL_LOAD"):
 
     def inventory(self):
         return json.loads((self.root / ".local" / "isolated" / "images.tfvars.json").read_text())
+
+    def test_smoke_uses_assigned_port_without_interrupting_existing_listener(self):
+        self.assertEqual(self.run_command("images").returncode, 0)
+        inventory = self.root / ".local" / "isolated" / "images.tfvars.json"
+        inventory.write_text(json.dumps({"local_images": {"payment-api": "rpp-local/payment-api:dev-test"}}))
+        with socket.socket() as listener:
+            listener.bind(("127.0.0.1", 0))
+            listener.listen()
+            port = str(listener.getsockname()[1])
+            for settings in ({}, {"FAIL_SMOKE": "1"}, {"FAIL_FORWARD": "1"}):
+                with self.subTest(settings=settings):
+                    result = self.run_command("smoke", LOCAL_PORT=port, **settings)
+                    if settings:
+                        self.assertNotEqual(result.returncode, 0, result.stdout)
+                        self.assertIn(
+                            "deliberate forwarding failure" if "FAIL_FORWARD" in settings else "503",
+                            result.stderr,
+                        )
+                    else:
+                        self.assertEqual(result.returncode, 0, result.stderr)
+                        self.assertIn("Smoke passed", result.stdout)
+                    with socket.create_connection(("127.0.0.1", int(port)), timeout=2):
+                        pass
+                    pid = int(Path(str(self.log) + ".pid").read_text())
+                    with self.assertRaises(ProcessLookupError):
+                        os.kill(pid, 0)
+        calls = [json.loads(line) for line in self.log.read_text().splitlines()]
+        forwards = [call for call in calls if call[0] == "kubectl"]
+        self.assertEqual(len(forwards), 3)
+        for call in forwards:
+            self.assertIn(":80", call)
+            self.assertNotIn(f"{port}:80", call)
+            self.assertEqual(call[call.index("--address") + 1], "127.0.0.1")
 
     def test_fixture_python_preserves_test_runner_environment(self):
         result = subprocess.run(

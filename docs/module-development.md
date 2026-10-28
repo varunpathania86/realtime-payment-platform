@@ -53,7 +53,7 @@ Impact is approved per module. `patch`, `minor`, and `major` are explicit values
 
 The validator checks every JSON Schema under `schemas/`, validates the solution and module manifests, verifies catalog/folder equality, rejects unknown dependencies and cycles, and validates release manifests and the reviewed impact policy under `releases/`. Module CI expands changes to transitive dependents. Trusted push CI can trigger protected OCI publication for affected modules with Dockerfiles; catalog-only modules are skipped explicitly.
 
-Main publication reserves immutable revisions atomically on `automation/release-state`; branch publication uses deterministic replaceable tags. See the [publication runbook](release-publication.md) for approvals, current-UTC PI boundaries, reviewed per-module impacts, RC classification, recovery, and required GitHub configuration. Promotion, cleanup, solution releases, stable-version PRs, and Helm publication remain later phases. See [the master plan](master-plan.md) for the complete policy.
+Main publication reserves immutable revisions atomically on `automation/release-state`; branch publication uses deterministic replaceable tags. Module-owned Helm charts are packaged and published alongside images where present; their names must match module identities. See the [publication runbook](release-publication.md) for approvals, current-UTC PI boundaries, reviewed per-module impacts, RC classification, recovery, and required GitHub configuration. Promotion, cleanup, solution releases, and stable-version PRs remain later phases. See [the master plan](master-plan.md) for the complete policy.
 
 ## Module boundaries
 
@@ -78,6 +78,18 @@ come from root `.tool-versions`; version and commit are supplied by the caller.
 The current local chart contract expects HTTP on container port 8080, readiness
 and liveness probes, restricted security contexts, and resource bounds.
 See the [developer guide](developer-setup.md#4-local-application-development).
+
+The source chart supports both `image.tag` and optional `image.digest`. Local
+Terraform explicitly clears the digest and sets pull policy `Never`. The publisher
+copies the chart to a temporary directory, assigns its calculated module version,
+and sets the GHCR image repository, verified digest, and `IfNotPresent` policy.
+Source chart/catalog versions are not mutated. Digest takes precedence over tag.
+
+`make security-module MODULE_NAME=<name>` scans a module's Dockerfile/chart/IaC
+without building or publishing it. The standalone security workflow discovers
+packaging from the catalog and calls a reusable module workflow, without using
+the descriptive `type` field. These commands/configuration are the extraction
+boundary for a future repository split; no split is introduced now.
 
 ## Adding a module
 

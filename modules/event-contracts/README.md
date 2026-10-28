@@ -43,6 +43,7 @@ make -C modules/event-contracts build
 | `lint` | Parse and validate schemas and examples |
 | `fmt` | Format JSON schemas and examples |
 | `clean` | Remove the generated archive |
+| `security` | Separate advisory Trivy IaC scan of module packaging |
 
 ## Configuration
 

@@ -4,6 +4,7 @@
 SHELL := /usr/bin/env bash
 export PATH := $(HOME)/.local/bin:$(PATH)
 .DEFAULT_GOAL := help
+.PHONY: security security-solution security-module security-plan publication-login quality-report quality-module-report
 
 # Use a system pre-commit if present, otherwise the one installed by `make setup`.
 VENV       := .venv
@@ -30,7 +31,7 @@ setup: ## Set up the developer environment (see docs/developer-setup.md)
 	@$(MAKE) --no-print-directory doctor
 
 tools: ## Install or update the pinned CLI tools from .tool-versions
-	scripts/install-tools.sh
+	scripts/install-tools.sh $(TOOLS)
 
 docker: ## Install Docker Engine if missing (needs sudo)
 	scripts/install-docker.sh
@@ -56,11 +57,32 @@ test-catalog: ## Run catalog validation and change-planning unit tests
 check-module: ## Run the target contract for MODULE_NAME (used by the CI matrix)
 	$(VENV)/bin/python scripts/module_catalog.py run-module --name "$(MODULE_NAME)"
 
+security: ## Scan solution and packaged modules with Trivy (separate from make ci)
+	$(VENV)/bin/python -m scripts.security_checks all
+
+quality-report: ## Run make ci and retain a Markdown report plus full log
+	$(VENV)/bin/python -m scripts.check_reports
+
+quality-module-report: ## Run check-module for MODULE_NAME and retain Markdown/log output
+	$(VENV)/bin/python -m scripts.check_reports --module "$(MODULE_NAME)"
+
+security-solution: ## Scan shared platform IaC and write JSON and Markdown reports
+	$(VENV)/bin/python -m scripts.security_checks solution
+
+security-module: ## Scan MODULE_NAME packaging and write a JSON report
+	$(VENV)/bin/python -m scripts.security_checks module --module "$(MODULE_NAME)"
+
+security-plan: ## Discover a catalog-driven IaC security matrix
+	$(VENV)/bin/python -m scripts.security_checks plan
+
 publication-plan: ## Plan trusted OCI publication (requires workflow environment variables)
 	$(VENV)/bin/python -m scripts.publish_modules plan
 
 publish-module: ## Publish one approved module artifact (requires workflow environment variables)
 	$(VENV)/bin/python -m scripts.publish_modules publish
+
+publication-login: ## Authenticate Helm to GHCR using the job token through stdin
+	@printf '%s' "$$GH_TOKEN" | helm registry login ghcr.io --username "$$GITHUB_ACTOR" --password-stdin
 
 cluster-up: ## Start the local Minikube cluster (idempotent)
 	@scripts/cluster.sh up

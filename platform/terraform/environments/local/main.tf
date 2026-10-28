@@ -63,6 +63,7 @@ resource "helm_release" "application" {
       repository = split(":", lookup(var.local_images, each.key, "missing:missing"))[0]
       tag        = split(":", lookup(var.local_images, each.key, "missing:missing"))[1]
       pullPolicy = "Never"
+      digest     = ""
     }
   })]
   lifecycle {

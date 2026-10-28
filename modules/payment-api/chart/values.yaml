@@ -1,6 +1,7 @@
 image:
   repository: rpp-local/payment-api
   tag: dev
+  digest: ""
   pullPolicy: Never
 resources:
   requests:

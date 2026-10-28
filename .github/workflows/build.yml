@@ -31,7 +31,16 @@ jobs:
       - name: Install pinned build toolchains
         run: make tools
       - name: Lint, test, and build shared solution tooling
-        run: make ci
+        run: make quality-report
+      - name: Preserve quality report and log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-solution
+          path: .local/quality/solution.*
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 30
 
   plan:
     needs: catalog
@@ -77,4 +86,13 @@ jobs:
       - name: Build, test, and lint module
         env:
           MODULE_NAME: ${{ matrix.module }}
-        run: make check-module
+        run: make quality-module-report
+      - name: Preserve module quality report and log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-module-${{ matrix.module }}
+          path: .local/quality/module-${{ matrix.module }}.*
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 30

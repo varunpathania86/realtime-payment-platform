@@ -88,9 +88,10 @@ apply() {
 }
 
 smoke() (
+  require_images
   mkdir -p "$STATE_DIR"
-  local pid
-  kubectl --context "$PROFILE" -n platform port-forward --address 127.0.0.1 service/traefik "$LOCAL_PORT:80" \
+  local pid port
+  kubectl --context "$PROFILE" -n platform port-forward --address 127.0.0.1 service/traefik ":80" \
     > "$STATE_DIR/smoke-forward.log" 2>&1 &
   pid=$!
   trap 'kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true' EXIT
@@ -98,14 +99,15 @@ smoke() (
   for ((attempt = 0; attempt < 30; attempt++)); do
     if ! kill -0 "$pid" 2>/dev/null; then
       cat "$STATE_DIR/smoke-forward.log" >&2
-      echo "Cannot start ingress port-forward; stop make dev-access or choose another LOCAL_PORT." >&2
+      echo "Cannot start temporary ingress port-forward for smoke checks." >&2
       return 1
     fi
-    if grep -q 'Forwarding from' "$STATE_DIR/smoke-forward.log"; then ready=true; break; fi
+    port=$(sed -nE 's/^Forwarding from 127\.0\.0\.1:([0-9]+) -> .*/\1/p' "$STATE_DIR/smoke-forward.log")
+    if [ -n "$port" ]; then ready=true; break; fi
     sleep 1
   done
   [ "$ready" = true ] || { echo "Timed out starting ingress port-forward" >&2; return 1; }
-  "$PYTHON" scripts/smoke.py --url "http://127.0.0.1:$LOCAL_PORT" --images "$STATE_DIR/images.tfvars.json"
+  "$PYTHON" scripts/smoke.py --url "http://127.0.0.1:$port" --images "$STATE_DIR/images.tfvars.json"
 )
 
 charts() {

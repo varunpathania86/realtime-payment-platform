@@ -61,6 +61,14 @@ This file is the single, tool-neutral source of project instructions, using the 
 - Catalog validation (`.github/workflows/validate-catalog.yml`): reusable read-only workflow validating solution, module, and release manifests.
 - Build (`.github/workflows/build.yml`): runs `make ci` and a dynamic affected-module matrix on pull requests and branch pushes. Fork PRs remain read-only and build/test-only.
 - Publication (`publish.yml` / `publish-module.yml`): successful same-repository push CI triggers protected GHCR publication using trusted default-branch tooling. Main revisions use atomic GitHub Contents API reservations on `automation/release-state`; branch tags are replaceable. Read `docs/release-publication.md` before changing this path. Promotion, cleanup, and stable-version PRs are not implemented yet.
+- Stage 1 publication includes images and module-owned OCI Helm charts. Package
+  charts in temporary copies, pin the verified image digest, record both digests,
+  and preserve safe reruns after partial publication. Do not mutate stable catalog
+  versions or bypass the PI boundary to test live publication.
+- TFLint belongs to required quality checks. Trivy IaC scanning runs separately
+  through `make security` and read-only solution/module workflows. Findings and
+  scanner errors stay nonzero; advisory merge policy is configured in repository
+  rules, not hidden with `continue-on-error`. Preserve existing secret detection.
 - Do not add a repository-wide `v*` publishing path. Preserve idempotent versions/digests, read-only fork CI, current-UTC PI boundaries, reviewed per-module impacts, and the separation between tested source and trusted publication tooling.
 - Deploy (`deploy.yml`): manual and environment-gated; targets a self-hosted runner or VPS configured later.
 - Workflow changes must pass `actionlint` (part of `make lint`). Pin third-party actions to a major version or SHA and use least-privilege `permissions`.

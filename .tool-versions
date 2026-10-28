@@ -8,4 +8,6 @@ go 1.27.1
 jq 1.8.2
 yq 4.54.1
 nodejs 22.22.1
+tflint 0.65.0
+trivy 0.76.1
 actions-runner 2.338.0

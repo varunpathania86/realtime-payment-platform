@@ -11,8 +11,9 @@ build: ## Validate the local Terraform environment
 test: ## Lint and render all catalog-discovered application charts
 	../../scripts/local-dev.sh charts
 
-lint: ## Check Terraform formatting
+lint: ## Check Terraform formatting and shared TFLint rules
 	terraform fmt -check -recursive
+	tflint --recursive --config=$(abspath ../../.tflint.hcl)
 
 fmt: ## Format Terraform
 	terraform fmt -recursive

@@ -13,8 +13,9 @@ description: "Use when implementing or verifying the local Minikube development 
     profile. Record the name and use it consistently.
 4. Run `make dev-up MINIKUBE_PROFILE=<profile>`. Verify API build identity with
     `make smoke MINIKUBE_PROFILE=<profile>`, then the browser status page through
-    `make dev-access MINIKUBE_PROFILE=<profile>`. Stop forwarding before the next
-    update/smoke command, or use a different `LOCAL_PORT`.
+    `make dev-access MINIKUBE_PROFILE=<profile>`. Leave forwarding running during
+    update/smoke checks to verify automatic smoke-port selection does not compete
+    with browser access. `LOCAL_PORT` controls browser access only.
 5. Make a deliberate application source edit, run `make dev-update` for that
     profile, and verify a changed image reference and visible new output.
     Restore the verification-only edit and redeploy. Do not revert user changes.

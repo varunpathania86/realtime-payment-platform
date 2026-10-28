@@ -7,7 +7,7 @@ set -euo pipefail
 # shellcheck source=scripts/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-ALL_TOOLS=(kubectl minikube helm terraform go jq yq nodejs)
+ALL_TOOLS=(kubectl minikube helm terraform go jq yq nodejs tflint trivy)
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 mkdir -p "$BIN_DIR"
@@ -92,6 +92,25 @@ install_nodejs() {
   ln -sf "$node_root/bin/node" "$BIN_DIR/node"
   ln -sf "$node_root/bin/npm" "$BIN_DIR/npm"
   ln -sf "$node_root/bin/npx" "$BIN_DIR/npx"
+}
+
+install_tflint() {
+  local v=$1 f="tflint_${OS}_$ARCH.zip" base="https://github.com/terraform-linters/tflint/releases/download/v$1"
+  fetch "$base/$f" "$TMP/$f"
+  verify "$TMP/$f" "$(github_digest terraform-linters/tflint "v$v" "$f")"
+  python3 -c 'import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extract("tflint", sys.argv[2])' "$TMP/$f" "$TMP"
+  install -m 0755 "$TMP/tflint" "$BIN_DIR/tflint"
+}
+
+install_trivy() {
+  local v=$1 trivy_arch=$ARCH
+  [ "$trivy_arch" != amd64 ] || trivy_arch=64bit
+  [ "$trivy_arch" != arm64 ] || trivy_arch=ARM64
+  local f="trivy_${v}_Linux-${trivy_arch}.tar.gz" base="https://github.com/aquasecurity/trivy/releases/download/v$v"
+  fetch "$base/$f" "$TMP/$f"
+  verify "$TMP/$f" "$(github_digest aquasecurity/trivy "v$v" "$f")"
+  tar -xzf "$TMP/$f" -C "$TMP" trivy
+  install -m 0755 "$TMP/trivy" "$BIN_DIR/trivy"
 }
 
 tools=("$@")

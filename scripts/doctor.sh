@@ -25,7 +25,7 @@ else
   bad "catalog validation dependencies are missing (run: make setup)"
 fi
 
-for t in kubectl minikube helm terraform go jq yq nodejs; do
+for t in kubectl minikube helm terraform go jq yq nodejs tflint trivy; do
   want=$(pinned_version "$t"); have=$(installed_version "$t")
   if [ -z "$have" ]; then bad "$t is missing, want $want (run: make setup)"
   elif [ "$have" != "$want" ]; then bad "$t is $have, want $want (run: make setup)"

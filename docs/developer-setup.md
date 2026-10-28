@@ -18,7 +18,7 @@ Work inside the WSL filesystem (for example `~/code`), not under `/mnt/c`, for s
 
 ### Pinned tools
 
-Versions are pinned in [.tool-versions](../.tool-versions). `make setup` (or `make tools`) downloads kubectl, Minikube, Helm, Terraform, Go, jq, yq, and Node.js into `~/.local/bin` without sudo, verifying each download with SHA-256. Go is unpacked to `~/.local/go`; Node.js includes npm and lives in a versioned directory under `~/.local/`. Tools already at the pinned version are skipped, so the command is safe to repeat.
+Versions are pinned in [.tool-versions](../.tool-versions). `make setup` (or `make tools`) downloads kubectl, Minikube, Helm, Terraform, Go, jq, yq, Node.js, TFLint, and Trivy into `~/.local/bin` without sudo, verifying each download with SHA-256. Go is unpacked to `~/.local/go`; Node.js includes npm and lives in a versioned directory under `~/.local/`. Tools already at the pinned version are skipped, so the command is safe to repeat.
 
 Make sure `~/.local/bin` is on your PATH:
 
@@ -27,6 +27,11 @@ echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
 ```
 
 To upgrade a tool, change its version in `.tool-versions` and run `make tools`.
+For a focused installation use `make tools TOOLS="tflint trivy"`.
+TFLint uses its bundled Terraform ruleset and root `.tflint.hcl`; no downloaded
+provider plugin is required. Trivy uses root `trivy.yaml` and may download an
+updated public checks bundle on first use. It scans locally; no source upload,
+SaaS subscription, or registry authentication is needed for IaC scans.
 
 ### Docker
 
@@ -87,9 +92,43 @@ make setup
 | `make smoke` | Verify ingress, API build identity, readiness, and the React entry page |
 | `make dev-down` | Destroy Terraform-managed local resources, preserving Minikube (destructive) |
 | `make ci` | Lint, test, and build; same as the Build workflow |
+| `make quality-report` | Run `make ci`, retaining Markdown results and full text logs |
+| `make quality-module-report MODULE_NAME=payment-api` | Run the module quality contract with Markdown/log output |
 | `make lint` | Shared static checks and per-project lint |
+| `make security` | Separate Trivy IaC checks for shared solution and packaged modules; findings return nonzero |
+| `make security-solution` | Scan shared platform Terraform/IaC |
+| `make security-module MODULE_NAME=payment-api` | Scan one catalog module's Dockerfile/chart/IaC |
 | `make fmt` | Format all sub-projects |
 | `make projects` | List discovered sub-projects |
+
+### Quality and security reports
+
+`make ci` and `make lint` print directly to the terminal. To retain a quality
+report locally, run `make quality-report`; it runs the same `make ci` command,
+streams its output, and writes `.local/quality/solution.md` plus `solution.log`.
+For a single module, use `make quality-module-report MODULE_NAME=payment-api`;
+output is `.local/quality/module-payment-api.md` and `.log`.
+These are command-result reports with full diagnostic output, not coverage
+reports or a Sonar-style quality score. Checks remain fail-fast and failures
+return nonzero; later checks may not have run.
+
+Every `make security`, `make security-solution`, or `make security-module` scan
+automatically writes both JSON and Markdown under `.local/security/`:
+`solution.json` / `solution.md`, and `module-<name>.json` / `module-<name>.md`.
+Markdown includes severity, check ID, target, scanner-reported line where
+available, finding, message, and remediation. Failed/incomplete scans write
+an error Markdown report, never a clean-scan result.
+
+In GitHub Actions, open the workflow run's **Summary** for job status summaries.
+Download full reports from **Artifacts**: `quality-solution`,
+`quality-module-<name>`, `security-solution`, or `security-module-<name>`.
+They are retained for 30 days and uploaded even when checks fail, provided the
+reporting step ran. Dependency/tool installation failures before that step are
+available in job logs, not a generated report. These workflow changes must be
+pushed before GitHub produces the new reports.
+
+Local reports are Git-ignored and each scope's next run replaces its previous
+files. A successful report describes that run, not future source edits.
 
 ## 4. Local application development
 
@@ -114,11 +153,15 @@ Minikube tunnel, GitHub runner, or registry login is required.
 After editing an application:
 
 ```bash
-# Ctrl-C the dev-access terminal first, or choose a different LOCAL_PORT below.
+# In a second terminal; leave dev-access running.
 make ci
 make dev-update
-make dev-access
 ```
+
+Refresh the browser after the update. Smoke checks use an automatically assigned
+temporary loopback port and stop only their own forwarding process afterward.
+`LOCAL_PORT` selects the browser port for `dev-access` (default 8080); it does not
+select the smoke-test port.
 
 `dev-up` starts Minikube, builds images using the host Docker daemon, loads them
 into Minikube, initializes Terraform, plans/applies the stack, and runs smoke
@@ -164,6 +207,12 @@ so an unsuccessful installation does not leave an untracked failed release.
 Provider versions and checksums are pinned in the local Terraform environment;
 the Traefik chart version is pinned there too. `make ci` validates Terraform and
 lints/renders application charts without needing a running cluster.
+TFLint runs as part of Terraform linting and therefore `make lint` / `make ci`.
+Trivy is intentionally separate: run `make security` locally or inspect the
+advisory security workflow. Reports are in `.local/security/`. Findings and scan
+execution errors both remain visible as nonzero results; these jobs are not
+intended to be required merge checks initially. Existing secret detection stays
+in required quality checks. See [the security runbook](runbooks/security-checks.md).
 
 ### Profiles, ports, and state
 
@@ -183,8 +232,13 @@ Use a single kubeconfig file; `KUBECONFIG` may override its path.
 Terraform state, provider working data, saved plans, and image inventory live in
 git-ignored `.local/<profile>/`. Keep this directory until you have destroyed the
 resources it owns. Do not commit it, copy state between profiles, or delete state
-as a workaround for a failed apply. Stop access forwarding before smoke tests,
-or use another port, for example `make smoke LOCAL_PORT=8081`.
+as a workaround for a failed apply. You can run `make smoke` while `dev-access`
+is running; kubectl binds an available temporary port atomically for each check.
+
+To close browser access, press Ctrl-C in the `dev-access` terminal; the deployed
+applications keep running. `make dev-down` is not a pause command: it destroys
+the Terraform-managed stack. Use it only when you intend to remove those
+resources. You do not need it before updating applications.
 
 ### Recovery and clean-cluster acceptance
 

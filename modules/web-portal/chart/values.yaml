@@ -1,6 +1,7 @@
 image:
   repository: rpp-local/web-portal
   tag: dev
+  digest: ""
   pullPolicy: Never
 resources:
   requests:

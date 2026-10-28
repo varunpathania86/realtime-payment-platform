@@ -28,6 +28,8 @@ installed_version() {
     jq)        out=$(PATH=$bin jq --version 2>/dev/null | sed 's/^jq-//') ;;
     yq)        out=$(PATH=$bin yq --version 2>/dev/null | sed -n 's/.* v\([0-9.]*\)$/\1/p') ;;
     nodejs)    out=$(PATH=$bin node --version 2>/dev/null | sed 's/^v//') ;;
+    tflint)    out=$(PATH=$bin tflint --version 2>/dev/null | sed -n '1s/^TFLint version //p') ;;
+    trivy)     out=$(PATH=$bin trivy --version 2>/dev/null | sed -n 's/^Version: //p') ;;
     docker)    out=$(PATH=$bin docker --version 2>/dev/null | sed -n 's/^Docker version \([0-9.]*\).*/\1/p') ;;
   esac
   echo "$out"

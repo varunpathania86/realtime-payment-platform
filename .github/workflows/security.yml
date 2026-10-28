@@ -1,0 +1,70 @@
+name: Advisory IaC security
+
+on:
+  pull_request:
+  push:
+    branches-ignore: ["automation/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      has_modules: ${{ steps.plan.outputs.has_modules }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install planning dependencies
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install --no-cache-dir -r scripts/requirements-catalog.txt
+      - name: Discover module security scopes
+        id: plan
+        run: make security-plan
+
+  solution:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install --no-cache-dir -r scripts/requirements-catalog.txt
+      - name: Install pinned scanner
+        run: make tools TOOLS=trivy
+      - name: Scan solution IaC
+        run: make security-solution
+      - name: Preserve report even on findings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-solution
+          path: |
+            .local/security/solution.json
+            .local/security/solution.md
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 30
+
+  modules:
+    needs: plan
+    if: needs.plan.outputs.has_modules == 'true'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    uses: ./.github/workflows/security-module.yml
+    with:
+      module: ${{ matrix.module }}

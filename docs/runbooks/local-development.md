@@ -30,9 +30,11 @@ local application development.
 
 3. `ErrImageNeverPull` means the image is not loaded into this profile. Run
     `make dev-images`, then `make terraform-apply`.
-4. For forwarding errors, stop the foreground `make dev-access` process before
-    smoke checks, or choose another port with `make smoke LOCAL_PORT=8081`.
-    Forwarding diagnostics are in `.local/<profile>/smoke-forward.log`.
+4. Smoke checks automatically use an available loopback port and can run while
+    `make dev-access` stays open. For smoke forwarding errors, check cluster
+    connectivity and the Traefik Service. Forwarding diagnostics are in
+    `.local/<profile>/smoke-forward.log`. If browser access reports a port conflict,
+    choose another browser port with `make dev-access LOCAL_PORT=8081`.
 5. For a stale build, run `make dev-update`. Smoke checks compare the API version
     to the local image inventory, rather than merely accepting HTTP 200.
 6. For missing provider/npm/base-image/chart downloads, check connectivity.

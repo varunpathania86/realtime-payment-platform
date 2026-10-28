@@ -141,6 +141,13 @@ def validate_state(state: dict) -> None:
             or publication["repository"] != f"{entry['registry']}/{entry['module']}"
         ):
             raise ValueError("publication does not match its reserved source, version, or repository")
+        if publication is not None and "chart" in publication:
+            chart = publication["chart"]
+            if (
+                chart["repository"] != f"{entry.get('chartRegistry', '').removeprefix('oci://')}/{entry['module']}"
+                or chart["version"] != version
+            ):
+                raise ValueError("chart publication does not match its reserved registry or version")
 
 
 def reserve(store: Any, context: dict) -> dict:
@@ -176,6 +183,8 @@ def record_publication(store: Any, reservation: dict, publication: dict) -> dict
                 previous = entry.get("publication")
                 if previous is not None and previous["digest"] != publication["digest"]:
                     raise ValueError("immutable revision digest cannot be changed")
+                if previous is not None and previous.get("chart") != publication.get("chart"):
+                    raise ValueError("immutable chart publication cannot be changed")
                 if previous is None:
                     entry["publication"] = publication
                 return entry

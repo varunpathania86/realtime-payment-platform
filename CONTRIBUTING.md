@@ -45,11 +45,21 @@ make smoke
 make dev-access  # foreground browser access; Ctrl-C stops
 ```
 
-Stop access forwarding before running smoke checks on the same port.
+Leave access forwarding running during updates; smoke checks automatically use
+a separate available loopback port.
 These commands require no GitHub workflow, GHCR login, approval, or active PI.
 Use a dedicated `MINIKUBE_PROFILE` for destructive recreation tests.
 See [the developer guide](docs/developer-setup.md#4-local-application-development)
 for image loading, state ownership, and teardown.
+
+TFLint is part of `make lint` and `make ci`. Run `make security` separately for
+Trivy IaC reports, or `make -C modules/<name> security` for one packaged module.
+The security workflow reports failures truthfully but is initially advisory in
+merge rules; it must not mask findings or replace existing secret checks.
+See [the security runbook](docs/runbooks/security-checks.md).
+Use `make quality-report` when you want saved Markdown/log output from `make ci`.
+Security commands save Markdown alongside JSON automatically. See
+[report locations](docs/developer-setup.md#quality-and-security-reports).
 
 ## Developer dependencies
 
