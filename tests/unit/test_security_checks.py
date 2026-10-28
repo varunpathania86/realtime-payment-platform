@@ -6,6 +6,9 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+import yaml
+
+from scripts.module_catalog import ROOT
 from scripts.security_checks import scan, scan_modules
 
 
@@ -30,6 +33,50 @@ class SecurityChecksTests(unittest.TestCase):
     def test_scan_scopes_follow_packaging_and_catalog_not_type(self):
         self.assertEqual(scan_modules(self.root), ["api", "contract"])
 
+    def test_scoped_exceptions_are_explicit_and_visible_in_markdown(self):
+        exceptions = self.root / "modules" / "api" / ".trivyignore.yaml"
+        exceptions.write_text(
+            "misconfigurations:\n  - id: DS-0026\n    paths: [Dockerfile]\n"
+            "    expired_at: 2027-01-01\n    statement: Kubernetes probes own health.\n"
+        )
+
+        def execute(args, **kwargs):
+            self.assertEqual(args[args.index("--ignorefile") + 1], str(exceptions))
+            Path(args[args.index("--output") + 1]).write_text('{"Results": []}')
+            return subprocess.CompletedProcess(args, 0)
+
+        with patch("scripts.security_checks.subprocess.run", side_effect=execute):
+            self.assertEqual(scan("module", "api", self.root), 0)
+        report = (self.root / ".local/security/module-api.md").read_text()
+        self.assertIn("Configured exceptions", report)
+        self.assertIn("Kubernetes probes own health.", report)
+        self.assertIn("2027-01-01", report)
+
+    def test_current_exceptions_are_narrow_and_root_user_rule_is_not_ignored(self):
+        expected = {
+            "event-contracts": {"DS-0026": ["Dockerfile"]},
+            "payment-api": {
+                "DS-0026": ["Dockerfile"], "KSV-0110": ["chart/templates/deployment.yaml"],
+                "KSV-0125": ["chart/templates/deployment.yaml"],
+            },
+            "web-portal": {
+                "DS-0026": ["Dockerfile"], "KSV-0110": ["chart/templates/deployment.yaml"],
+                "KSV-0125": ["chart/templates/deployment.yaml"],
+            },
+        }
+        for name, rules in expected.items():
+            path = ROOT / "modules" / name
+            entries = yaml.safe_load((path / ".trivyignore.yaml").read_text())["misconfigurations"]
+            self.assertEqual({entry["id"]: entry["paths"] for entry in entries}, rules)
+            for entry in entries:
+                self.assertTrue(entry["statement"])
+                self.assertIn("expired_at", entry)
+                for target in entry["paths"]:
+                    self.assertTrue((path / target).is_file())
+                    self.assertNotIn("*", target)
+        dockerfile = (ROOT / "modules/event-contracts/Dockerfile").read_text()
+        self.assertIn("USER 65532:65532", dockerfile)
+
     def test_unknown_or_unimplemented_modules_are_rejected(self):
         for name in ("../platform", "unlisted", "catalog", None):
             with self.subTest(name=name), patch("scripts.security_checks.subprocess.run") as run:
@@ -45,6 +92,7 @@ class SecurityChecksTests(unittest.TestCase):
                     output.write_text(json.dumps({"Results": []}))
                     self.assertEqual(args[-1], str(self.root / "platform"))
                     self.assertNotIn("--exit-code", args)
+                    self.assertEqual(args[args.index("--ignorefile") + 1], "")
                     return subprocess.CompletedProcess(args, code)
 
                 with patch("scripts.security_checks.subprocess.run", side_effect=execute):

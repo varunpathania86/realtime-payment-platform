@@ -69,8 +69,30 @@ secret detection just to obtain green checks.
 On 2026-10-25, the initial solution scan had no findings and module scans reported
 eight findings: one high, two medium, and five low. The high finding flags the
 scratch contract bundle's default user; that image contains data only and has
-no executable entrypoint. Review its intended consumption rather than treating
-it as a deployed root-running service. Findings remain visible pending triage.
+no executable entrypoint.
+
+On 2026-10-28, triage resolved the default-user finding by adding numeric non-root
+`USER 65532:65532` to the contract image. No runtime, ports, or entrypoint were
+added to the data bundle.
+
+The other seven findings have module-owned, exact-file/check exceptions in
+`modules/<name>/.trivyignore.yaml`. Shared scanner rules remain in root
+`trivy.yaml`; module exception files are not independent scanner configurations.
+Each exception has a justification and expires on 2027-01-01:
+
+| Rule | Scope | Reason and review trigger |
+|---|---|---|
+| DS-0026 | Three module Dockerfiles | Contract bundle is non-executable; API/portal use chart HTTP readiness/liveness probes. Revisit for standalone Docker support or changed probes. |
+| KSV-0110 | Two application Deployment templates | Terraform supplies the `apps` release namespace; raw Helm scanning assumes `default`. Revisit for new deployment environments. |
+| KSV-0125 | Two application Deployment templates | Local images intentionally use `rpp-local` and `Never`; published packages pin verified GHCR digests. Revisit when adding registries/deployment paths. |
+
+These are accepted scope-specific exceptions, not claims that local image
+names or namespace defaults satisfy the generic policy. A scan passes only
+when no unexcepted findings remain. Markdown reports list configured exceptions
+and their review dates; they do not claim each exception matched a finding.
+The scanner explicitly selects the current scope's exception file (or disables
+ignore files when none exists), so a module exception cannot affect another
+module or the shared solution. New files/rules are not covered by these entries.
 
 Fix genuine defects, or document a narrow, reviewed exception with rationale and
 follow-up. Fix scan execution errors so the scan actually completes.

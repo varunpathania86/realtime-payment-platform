@@ -28,7 +28,10 @@ def write_report(path: Path, summary: str, details: str = "") -> None:
             stream.write(summary + "\nFull Markdown report is in this job's report artifact.\n\n")
 
 
-def security_report(path: Path, label: str, code: int, data: dict | None, error: str = "") -> None:
+def security_report(
+    path: Path, label: str, code: int, data: dict | None, error: str = "",
+    exceptions: list[dict] | None = None,
+) -> None:
     status = "PASS" if code == 0 else "FINDINGS" if code == 10 else "ERROR - scan incomplete"
     findings = [
         (result["Target"], finding)
@@ -62,6 +65,16 @@ def security_report(path: Path, label: str, code: int, data: dict | None, error:
         details = "No IaC findings reported in this scope.\n"
     elif code != 10:
         details = "The scan did not complete; this is not evidence of a clean scan. Inspect the job/terminal log.\n"
+    if exceptions:
+        details += "\n## Configured exceptions\n\n"
+        details += "These are scoped policy exceptions, not fixes or proof that a rule matched. Expired entries no longer suppress findings.\n\n"
+        details += "| Check | Paths | Review by / expiry | Justification |\n|---|---|---|---|\n"
+        for exception in exceptions:
+            row = (
+                exception["id"], ", ".join(exception["paths"]),
+                exception["expired_at"], exception["statement"],
+            )
+            details += "| " + " | ".join(markdown_text(value) for value in row) + " |\n"
     write_report(path, summary, details)
 
 

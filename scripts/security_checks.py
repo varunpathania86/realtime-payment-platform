@@ -41,10 +41,14 @@ def scan(scope: str, module: str | None = None, root: Path = ROOT) -> int:
     report.unlink(missing_ok=True)
     markdown.unlink(missing_ok=True)
     data = None
+    exceptions = target / ".trivyignore.yaml"
+    exception_entries = _load_yaml(exceptions).get("misconfigurations", []) if exceptions.is_file() else []
+    ignore_args = ["--ignorefile", str(exceptions) if exceptions.is_file() else ""]
     try:
         result = subprocess.run(
             [
                 "trivy", "config", "--config", str(root / "trivy.yaml"),
+                *ignore_args,
                 "--output", str(report), str(target),
             ],
             cwd=root, check=False,
@@ -58,7 +62,7 @@ def scan(scope: str, module: str | None = None, root: Path = ROOT) -> int:
     except (OSError, ValueError) as error:
         security_report(markdown, label, 1, None, str(error))
         raise
-    security_report(markdown, label, result.returncode, data)
+    security_report(markdown, label, result.returncode, data, exceptions=exception_entries)
     if result.returncode == 10:
         print(f"FINDINGS {label}: inspect {report}; advisory does not mean passed.", file=sys.stderr)
     elif result.returncode != 0:

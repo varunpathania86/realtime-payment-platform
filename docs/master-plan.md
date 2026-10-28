@@ -2182,7 +2182,7 @@ known_issues:
   - publication environment approval configuration remains independent of local development
   - prior remote quality failure from the Python test fixture is resolved; user confirmed pushed changes pass quality
   - chart publication requires reviewed default-branch tooling installation and package/environment permissions
-  - Trivy currently reports module packaging findings; advisory checks do not hide or automatically suppress them
+  - initial eight Trivy findings triaged on 2026-10-28: contract non-root user fixed; seven exact-file/check exceptions justified and expire 2027-01-01
   - report-enabled workflow updates require a push before GitHub exposes their summaries and artifacts
   - promotion, cleanup, solution releases, and stable-version PRs are not implemented yet
 architecture_decisions:
@@ -2191,6 +2191,8 @@ architecture_decisions:
   - ADR-013 Independently versioned modules in the monorepo
   - ADR-014 Stage 1 artifact publication and separate security checks
 verification:
+  - 2026-10-28 triage verification passed make ci with 77 shared tests and make security for solution plus all three modules
+  - contract image built with user 65532:65532 and no entrypoint/command; unexcepted scan confirms DS-0002 is resolved
   - make doctor and make ci passed locally
   - Terraform validation, Helm lint/render checks, and shared unit tests passed
   - pinned TFLint and Trivy installed through Make tooling; make doctor passed

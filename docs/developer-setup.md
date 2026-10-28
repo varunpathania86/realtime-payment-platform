@@ -124,6 +124,9 @@ automatically writes both JSON and Markdown under `.local/security/`:
 Markdown includes severity, check ID, target, scanner-reported line where
 available, finding, message, and remediation. Failed/incomplete scans write
 an error Markdown report, never a clean-scan result.
+Module-owned `.trivyignore.yaml` files contain exact-file/check exceptions with
+rationales and expiry dates, listed in each report. They do not disable scanner
+rules globally. See [the security triage record](runbooks/security-checks.md#mitigation).
 
 In GitHub Actions, open the workflow run's **Summary** for job status summaries.
 Download full reports from **Artifacts**: `quality-solution`,
