@@ -1,7 +1,7 @@
 SHELL := /usr/bin/env bash
 .DEFAULT_GOAL := help
 PYTHON := $(abspath ../../.venv/bin/python)
-.PHONY: help build test lint fmt clean
+.PHONY: help build test lint fmt clean security
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
@@ -20,3 +20,6 @@ fmt: ## Format Avro schemas and examples as JSON
 
 clean: ## Remove the generated contract archive
 	$(PYTHON) -c 'from pathlib import Path; Path("dist/contracts.tar").unlink(missing_ok=True)'
+
+security: ## Run the separate advisory IaC scan for this module
+	$(MAKE) -C ../.. security-module MODULE_NAME=$(notdir $(CURDIR))

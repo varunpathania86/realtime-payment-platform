@@ -2,7 +2,7 @@
 
 - **Severity:** Medium
 - **Owner:** varunpathania86
-- **Last reviewed:** 2026-10-21
+- **Last reviewed:** 2026-10-25
 
 ## Symptoms
 
@@ -11,14 +11,22 @@ or a partial failure leaves a revision reservation without a publication record.
 
 ## Impact
 
-This first release slice publishes module OCI images/data bundles only.
-`event-contracts` is the first implemented module; modules without Dockerfiles
-are explicitly skipped. Helm publication, promotion, cleanup, solution releases,
+Stage 1 publishes module OCI images/data bundles and accompanying Helm charts.
+Modules without Dockerfiles are explicitly skipped; modules without charts
+remain image-only, such as `event-contracts`. Promotion, cleanup, solution releases,
 Git tags/GitHub Releases, and automated stable-version PRs are **not implemented**.
 The existing deployment workflow is still a placeholder.
 
 Branch tags are replaceable; main revision tags must not change digest.
 Neither kind of publication changes stable versions in catalogs.
+
+Local application development is a separate path: `make dev-up` and
+`make dev-update` build host Docker images, load them into Minikube, and deploy
+through Terraform/Helm. They require no GHCR login, GitHub Actions, approvals,
+release reservations, or active PI. A failure here does not block local work.
+See the [developer guide](developer-setup.md#4-local-application-development).
+Application image builds receive toolchain pins from `.tool-versions` plus
+version/commit build arguments in both local and publication paths.
 
 ## Diagnosis
 
@@ -62,9 +70,15 @@ Before merging this slice:
 4. Ensure repository Actions policy permits the job's requested token permissions.
     GHCR image roots are configured explicitly in `solution.yaml`.
     Check package Actions access if reusing an already-existing package.
-5. Merge the workflows into `main`. `workflow_run` workflows must exist on the
+5. Merge reviewed workflow/tooling updates into `main`. `workflow_run` workflows must exist on the
     default branch before they can run. Pushing this feature branch alone does
-    not activate the new publication chain.
+    not activate new publication tooling. In particular, the existing image-only
+    default-branch tooling cannot publish charts just because this feature branch
+    contains chart-publication code. No unreviewed tooling bootstrap is used.
+6. Permit approved publication branches in the environment's deployment branch
+    policy if branch artifacts are desired. A `main`-only policy blocks branch
+    jobs even after PI start. Ensure Actions package access for the chart
+    repositories under `registries.charts`, as well as image repositories.
 
 No repository settings are changed automatically by this implementation.
 
@@ -117,6 +131,11 @@ They are validated against `schemas/release-state.schema.json`.
 - Idempotency: module + source commit + release line. Reruns reuse their frozen
   target, iteration, impact, registry, and reserved version even if policy or the
   current iteration subsequently changes.
+- New reservations also freeze the OCI chart registry. Existing image-only state
+  remains valid; completed legacy reservations without a chart registry rerun as
+  image-only. An incomplete old reservation with no frozen chart registry requires
+  explicit recovery rather than silently selecting today's registry. Do not rewrite
+  historical reservations.
 - The GitHub Contents API compares the existing file's blob SHA on each update.
   Conflicts reread state and retry; they cannot overwrite another reservation.
 - Distinct main commits can publish concurrently; atomic state updates allocate
@@ -131,7 +150,39 @@ publisher rereads the tag and verifies its OCI digest.
 The scratch contract bundle contains `/contracts/` and is not executable.
 There is no chart for this non-runtime module.
 
-Main state records preserve the digest, source, approved impact, CI test-run URL,
+### Helm chart publication and partial recovery
+
+For an image-producing module with `chart/Chart.yaml`, the publisher:
+
+1. Copies its chart to a temporary directory; source files stay unchanged.
+2. Requires chart name to match module name, sets `version` and `appVersion` to
+    the calculated module version, and adds source-commit/branch annotations.
+3. Sets image values to the verified GHCR repository and OCI digest, the release
+    tag for reference, and pull policy `IfNotPresent`. The Deployment must render
+    the image as `repository@sha256:...`; local `Never` defaults do not leak into
+    the published package.
+4. Lints/renders the chart, packages it, authenticates Helm using the job token
+    via stdin, and pushes to `registries.charts/<module>`.
+5. Compares the digest reported by Helm with the registry manifest digest.
+    Publication evidence records an additional `chart` object containing its
+    repository, version, and digest.
+
+Images and charts share a module version but have different OCI repositories
+and digests. Main revision chart tags are immutable; branch chart tags may move.
+Local source chart versions are packaging scaffolding, not stable catalog versions.
+Promotion will need to preserve both digests without rebuilding; it is not
+implemented by this slice.
+
+If the image succeeds but chart publication fails, no completed publication
+record is written. Rerun: matching-source image annotations allow image reuse,
+and only missing chart work is repeated. If the chart was already pushed before
+state recording failed, the publisher pulls it by digest and checks its
+source/branch metadata and exact image reference before reuse. Wrong-source
+main tags, branch-hash collisions, changed/missing recorded digests, or chart
+values that reference another image fail closed. Never delete a reservation
+or overwrite an immutable artifact to recover.
+
+Main state records preserve image and optional chart digests, source, approved impact, CI test-run URL,
 publication run URL, and SBOM/provenance index references. Every publication
 uploads JSON evidence to the Actions run for 90 days. Branch evidence is temporary;
 branch tags may move. Main state is durable; neither state nor artifacts are
@@ -166,9 +217,11 @@ make -C modules/event-contracts build
 make ci
 ```
 
-After the first approved GitHub run, compare the JSON evidence digest with GHCR,
+After the first approved GitHub run, compare the JSON evidence image and chart digests with GHCR,
 inspect the OCI index's SBOM/provenance attestations, and rerun the same main
-publication. Confirm it uses the identical version and digest without a rebuild.
+publication. Confirm it uses the identical version and both digests without a rebuild/repackage.
+For an application, inspect the pulled chart's rendered Deployment to confirm it
+references the exact verified image digest, not a local development tag.
 GitHub/GHCR publication and token/environment configuration cannot be proven by
 offline tests; a real approved run is required.
 
@@ -177,5 +230,5 @@ offline tests; a real approved run is required.
 Keep all permanent and temporary release state outside stable catalog fields.
 Never grant publication to fork PRs. Do not enable the deploy placeholder as a
 replacement for publishing or promotion.
-Next implement protected iteration/RC/production promotion with exact digest
+Stage 17 owns protected iteration/RC/production promotion with exact digest
 reuse, solution releases, stable-version PRs, and verified cleanup.

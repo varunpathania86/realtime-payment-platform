@@ -51,11 +51,24 @@ These rules apply to the whole monorepo. Details for AI tools live in `AGENTS.md
 - GitHub Actions workflows:
   - **Catalog validation** (`validate-catalog.yml`): reusable, read-only JSON Schema and cross-manifest validation.
   - **Validate/build**: PRs and trusted branch updates; discover changed modules dynamically, expand dependency impact, and test in a matrix. Fork PRs remain build/test-only with read-only permissions.
+    Same-repository changes execute checks on push only; duplicate PR-event jobs
+    are skipped. Fork PR events still execute read-only checks. Security uses
+    the same deduplication policy; successful push CI still enables branch
+    publication. Update branches from their target to test integrated source.
+  - **Advisory IaC security** (`security.yml` / `security-module.yml`): separate
+    read-only solution and catalog-driven module scans. Findings and execution
+    errors fail checks truthfully; these checks initially are not required in
+    merge rules. TFLint and existing secret detection remain required quality checks.
   - **Branch/integrated artifact workflows**: publish replaceable branch tags or immutable integrated revisions for trusted source only; reserve revision counters atomically and make reruns idempotent.
   - **Promotion**: manually dispatched and permission-controlled; promote exact OCI digests through protected environments, create manifests/releases, and perform cleanup only after verification.
   - **Stable-version recording**: after successful production promotion, create a PR updating the stable catalog version; never push directly to protected `main`.
 - Self-hosted runners are used only for explicitly approved protected work, never for pull requests from forks.
-- Current implementation status: catalog/schema validation, affected-module CI, the first synthetic Avro contract, tested version/UTC iteration calculations, atomic main revision reservations, and protected branch/main OCI publication workflows are implemented. Publication needs default-branch installation and environment configuration; see [the publication runbook](release-publication.md). Promotion, cleanup, solution releases, stable-version PRs, and Helm publication remain future work; see Section 19.
+- Current implementation status: catalog/schema validation, affected-module CI, the first synthetic Avro contract, tested version/UTC iteration calculations, atomic main revision reservations, and protected branch/main OCI publication workflows are implemented. Stage 1 adds locally verified Go/React applications, Terraform/Helm deployment, TFLint, separate Trivy IaC scans, and image/chart publication logic; see [the developer guide](developer-setup.md#4-local-application-development). Chart-publication tooling needs reviewed default-branch installation; protected publication still needs environment configuration and post-PI GHCR verification. See [the publication runbook](release-publication.md). Promotion, cleanup, solution releases, and stable-version PRs remain future work; see Section 19.
+- Local application development is independent of those workflows. Stage 0
+  supplies tools and Minikube lifecycle; Stage 1 supplies local image builds,
+  image loading, Terraform/Helm deployment, updates, and smoke checks. No GitHub
+  Actions, GHCR login, approval, release reservation, or active PI is required.
+  Initial dependency downloads may require internet.
 
 ## 0.6 AI tooling
 
@@ -619,6 +632,9 @@ Add a WSL networking and disk-usage troubleshooting runbook.
 
 **Exit criteria:** `make ci` passes locally and in GitHub Actions. A clean WSL shell can clone the repository, run `make setup` and `make doctor`, create Minikube, inspect it, and destroy it without undocumented commands.
 
+Stage 0 does not deliver runnable application implementations. The first local
+application edit/build/deploy/test loop is a mandatory Stage 1 deliverable.
+
 ---
 
 ## Stage 1: one-day Terraform foundation
@@ -637,6 +653,20 @@ Implement:
 - Minimal React status page
 - Small Helm charts
 - Local Terraform state excluded from Git
+- Host Docker image builds loaded into the selected Minikube profile, without a
+  local registry or GHCR; development-only content tags detect dirty source edits
+- Make targets for local start, update, access, smoke checks, and teardown
+- Explicit kubeconfig contexts and profile-specific local state
+- Non-root/read-only application containers, probes, resource requests and limits
+- Tests for local orchestration failures, endpoints, and frontend status/error states
+- Required TFLint quality checks, installed and pinned through the developer setup
+- Separate advisory Trivy IaC solution/module workflows and local Make commands,
+  sharing configuration without weakening existing secret detection
+- Protected image and optional module Helm OCI chart publication, using existing
+  version reservations and current-UTC PI policy; record/verify both digests
+- Published charts reference the verified image digest, not local development tags
+- Safe reruns after partial image/chart publication, without replacing immutable
+  artifacts or rebuilding an already successful matching-source image
 
 Required workflow:
 
@@ -644,6 +674,7 @@ Required workflow:
 clone
   -> make doctor
   -> make cluster-up
+  -> make dev-images
   -> make terraform-init
   -> make terraform-plan
   -> make terraform-apply
@@ -651,6 +682,24 @@ clone
 ```
 
 **Exit criteria:** Delete and recreate Minikube, then restore the endpoint using the documented workflow with no manual edits.
+
+Also demonstrate an application source edit followed by `make dev-update` changing
+the deployed image and visible output, and recovery after deleting an API pod.
+`make dev-up` wraps cluster start, local image build/load, Terraform init/plan/apply,
+and smoke checks; `make dev-access` exposes ingress on loopback for the browser.
+`make dev-down` destroys the stack but preserves the cluster.
+Smoke checks automatically use an available temporary loopback port so
+`make dev-access` can remain running during updates; refresh the browser afterward.
+The entire loop must work before PI start and while remote workflows fail.
+Initial tool/dependency/base-image/provider/chart downloads still need connectivity.
+See [the developer guide](developer-setup.md#4-local-application-development).
+
+Extended artifact exit criteria: after reviewed default-branch tooling installation
+and the configured PI start, verify one protected image/chart publication and a
+same-source rerun that preserves both digests. Offline tests cover version rules,
+packaging, collision checks, and partial recovery but do not prove GHCR settings.
+Keep Stage 1 in progress until external verification and explicit acceptance.
+See [ADR-014](adr/ADR-014-stage-1-artifact-and-security-boundaries.md).
 
 ---
 
@@ -1518,6 +1567,10 @@ Do not log complete sensitive prompts or responses by default. Do not place prom
 
 ## Stage 16: secrets, TLS, and policy
 
+Stage 1 introduces separate advisory IaC scanning only. This stage expands to
+image/dependency scanning, cluster policy, secrets, and TLS; do not treat the early
+IaC workflow as completion of this stage.
+
 **Estimated effort:** 4-7 days  
 **Outcome:** Remove plaintext secrets and enforce baseline cluster security.
 
@@ -1554,6 +1607,11 @@ Do not commit OpenBao bootstrap or unseal material.
 ---
 
 ## Stage 17: GitOps and CI/CD
+
+Stage 1 establishes image/chart publication. This stage extends that foundation
+with GitOps and protected iteration/RC/production promotion, solution releases,
+stable-version PRs, and verified cleanup. Promote the exact image and chart
+digests without rebuilding either artifact.
 
 **Estimated effort:** 4-6 days  
 **Outcome:** Pull-based, repeatable delivery.
@@ -2065,6 +2123,9 @@ When this document is supplied to an AI assistant:
 18. Keep pgvector behind a retrieval interface so Qdrant can be benchmarked later.
 19. Add or update an ADR for material architecture changes.
 20. Update the status block after each work session.
+21. Keep local development independent of publication and the PI clock. Use the
+    catalog-discovered local image workflow and an isolated verification profile;
+    never destroy a shared cluster to test recreation.
 
 ---
 
@@ -2111,16 +2172,47 @@ excluded_initially:
 Update this block after every session.
 
 ```yaml
-current_milestone: module-publication-foundation
-last_completed_task: synthetic Avro contract, tested versions and reservations, protected OCI publication workflows
-next_task: configure publication approvals, merge to main, and verify the first real GHCR run after PI start
+current_milestone: stage-1-local-terraform-foundation
+stage_status: in-progress; draft checkpoint, not final or ready to merge
+last_completed_task: Stage 1 local loop, TFLint quality, separate advisory Trivy IaC scans, and image/chart publication logic implemented
+next_task: install reviewed trusted tooling on main and verify protected post-PI image/chart publication and rerun; do not start Stage 2 or mark this PR ready until Stage 1 is explicitly accepted
 known_issues:
+  - Stage 1 remains work in progress; passing checks cover the current slice, not final stage acceptance
   - GitHub/GHCR publication has not yet been exercised; PI starts 2026-10-26
-  - promotion, cleanup, solution releases, stable-version PRs, and Helm publication are not implemented yet
+  - publication environment approval configuration remains independent of local development
+  - prior remote quality failure from the Python test fixture is resolved; user confirmed pushed changes pass quality
+  - chart publication requires reviewed default-branch tooling installation and package/environment permissions
+  - initial eight Trivy findings triaged on 2026-10-28: contract non-root user fixed; seven exact-file/check exceptions justified and expire 2027-01-01
+  - report-enabled workflow updates require a push before GitHub exposes their summaries and artifacts
+  - promotion, cleanup, solution releases, and stable-version PRs are not implemented yet
 architecture_decisions:
-  - ADR-001 HashiCorp Terraform
+  - ADR-001 HashiCorp Terraform and independent local application development
   - ADR-002 Monorepo initially
   - ADR-013 Independently versioned modules in the monorepo
-last_verified_commit: none
-last_verified_date: 2026-10-21
+  - ADR-014 Stage 1 artifact publication and separate security checks
+verification:
+  - 2026-10-28 triage verification passed make ci with 77 shared tests and make security for solution plus all three modules
+  - contract image built with user 65532:65532 and no entrypoint/command; unexcepted scan confirms DS-0002 is resolved
+  - make doctor and make ci passed locally
+  - Terraform validation, Helm lint/render checks, and shared unit tests passed
+  - pinned TFLint and Trivy installed through Make tooling; make doctor passed
+  - Trivy solution scan completed cleanly; module scans produced retained advisory JSON findings
+  - security scans retain JSON and Markdown; quality-report wraps make ci with Markdown and full logs; workflows retain scoped artifacts and compact job summaries
+  - make ci passed with 61 shared unit tests, module tests/builds, recursive TFLint, and Helm checks
+  - real offline Helm packaging tested both application charts; digest metadata, partial publication, branch replacement, and legacy image-only retries covered
+  - digest-capable charts reverified on isolated profile rpp-stage1-artifacts-check; local images retained content tags and pull policy Never
+  - temporary React heading edit rebuilt/deployed with a new image and browser output; source restored and redeployed
+  - isolated API pod recovery, clean cluster recreation, and subsequent no-change dev-update passed; test profile deleted and original rpp context restored
+  - one post-update smoke request timed out during verification; immediate standalone retry and subsequent restored-source, recreation, and no-change update checks passed
+  - smoke checks use a kubectl-assigned loopback port independently of LOCAL_PORT; occupied-port and forwarding-cleanup regressions added
+  - make smoke passed while browser forwarding occupied port 18082; kubectl selected port 33063 and browser access remained healthy
+  - test-fixture interpreter now preserves the runner virtual environment; regression verifies its prefix and PyYAML import
+  - make dev-up and make dev-update passed on isolated profile rpp-stage1-check
+  - dirty portal source changed its image tag and browser-visible heading; verification edit restored
+  - browser error state and retry recovery verified using a deliberately failed API request
+  - API pod deletion recovered and ingress smoke checks passed
+  - stack and cluster destroyed, then recreated by make dev-up without manual configuration edits
+  - repeated dev-update reported no infrastructure changes and smoke passed
+last_verified_commit: Stage 1 draft checkpoint on feature/stage-1-terraform-foundation; validation performed before commit
+last_verified_date: 2026-10-25
 ```

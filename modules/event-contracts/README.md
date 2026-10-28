@@ -43,6 +43,7 @@ make -C modules/event-contracts build
 | `lint` | Parse and validate schemas and examples |
 | `fmt` | Format JSON schemas and examples |
 | `clean` | Remove the generated archive |
+| `security` | Separate advisory Trivy IaC scan of module packaging |
 
 ## Configuration
 
@@ -56,6 +57,9 @@ The scratch OCI image is a **data bundle**, not an executable service. Consumers
 can extract `/contracts/` from it. It has no entrypoint, ports, or Helm chart.
 The catalog version remains the current stable version (`0.0.0` initially);
 published versions and source commits are OCI annotations, not catalog edits.
+The bundle declares numeric non-root user `65532:65532`. Its module-owned
+`.trivyignore.yaml` exempts Docker HEALTHCHECK only: there is no executable
+service to probe. The exception has a rationale and review/expiry date.
 
 ## Documentation
 

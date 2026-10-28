@@ -75,6 +75,12 @@ class PublicationTests(unittest.TestCase):
             metadata.write_text(json.dumps({"containerimage.digest": DIGEST}))
             self.assertIn("--sbom=true", args)
             self.assertIn("--provenance=mode=max", args)
+            self.assertIn("VERSION=0.0.1-it1-rv.1", args)
+            self.assertIn(f"COMMIT={CONTEXT['sourceCommit']}", args)
+            pins = dict(line.split() for line in (ROOT / ".tool-versions").read_text().splitlines()
+                        if line and not line.startswith("#"))
+            self.assertIn(f"GO_VERSION={pins['go']}", args)
+            self.assertIn(f"NODE_VERSION={pins['nodejs']}", args)
 
         with tempfile.TemporaryDirectory() as directory:
             with (
@@ -108,7 +114,7 @@ class PublicationTests(unittest.TestCase):
     def test_matrix_packages_only_implemented_modules_and_obeys_pi(self) -> None:
         with (
             patch("scripts.publish_modules.plan_matrix", return_value={"include": [
-                {"module": "event-contracts"}, {"module": "payment-api"},
+                {"module": "event-contracts"}, {"module": "ai-core"},
             ]}),
             patch("scripts.publish_modules.classify_rc_branch", return_value=None),
         ):

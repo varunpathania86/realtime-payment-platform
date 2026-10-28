@@ -14,6 +14,7 @@ concurrency:
 
 jobs:
   catalog:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     uses: ./.github/workflows/validate-catalog.yml
 
   quality:
@@ -28,8 +29,21 @@ jobs:
         run: |
           python -m venv .venv
           .venv/bin/pip install --no-cache-dir pre-commit -r scripts/requirements-catalog.txt
+      - name: Install pinned build toolchains
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: make tools
       - name: Lint, test, and build shared solution tooling
-        run: make ci
+        run: make quality-report
+      - name: Preserve quality report and log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-solution
+          path: .local/quality/solution.*
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 30
 
   plan:
     needs: catalog
@@ -69,7 +83,21 @@ jobs:
         run: |
           python -m venv .venv
           .venv/bin/pip install --no-cache-dir -r scripts/requirements-catalog.txt
+      - name: Install pinned build toolchains
+        if: hashFiles(format('modules/{0}/Makefile', matrix.module)) != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: make tools
       - name: Build, test, and lint module
         env:
           MODULE_NAME: ${{ matrix.module }}
-        run: .venv/bin/python scripts/module_catalog.py run-module --name "$MODULE_NAME"
+        run: make quality-module-report
+      - name: Preserve module quality report and log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-module-${{ matrix.module }}
+          path: .local/quality/module-${{ matrix.module }}.*
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 30

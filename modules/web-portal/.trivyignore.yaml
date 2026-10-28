@@ -1,0 +1,22 @@
+misconfigurations:
+  - id: DS-0026
+    paths: [Dockerfile]
+    expired_at: 2027-01-01
+    statement: >-
+      Kubernetes readiness/liveness HTTP probes in the module chart manage health.
+      The scratch runtime has no shell or probe utility. Revisit for standalone
+      Docker deployment or if chart probes change.
+  - id: KSV-0110
+    paths: [chart/templates/deployment.yaml]
+    expired_at: 2027-01-01
+    statement: >-
+      Local Terraform installs this release into apps. Raw Helm scanning assumes
+      default without release context. Keep the chart namespace reusable; revisit
+      for additional deployment environments.
+  - id: KSV-0125
+    paths: [chart/templates/deployment.yaml]
+    expired_at: 2027-01-01
+    statement: >-
+      Local development intentionally loads rpp-local images into Minikube with
+      pull policy Never. Publication replaces these defaults with verified GHCR
+      digest references. Revisit for additional registries or deployment paths.

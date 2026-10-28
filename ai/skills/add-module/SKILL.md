@@ -14,3 +14,12 @@ description: Add an independently versioned module to the solution catalog and s
 7. Update the root README and architecture documentation if the module catalog or module boundaries change.
 8. Run the repository catalog validation and `make ci` when those validation targets are available.
 9. If adding OCI packaging, read `docs/release-publication.md`. Publication discovers Dockerfiles dynamically, uses reviewed impact metadata, and skips unpackaged modules; do not add a per-module workflow. Non-runtime artifacts may use a data-only image without a Helm chart.
+10. For runnable applications, add a module-owned `chart/Chart.yaml` and chart
+    templates with probes, restricted security contexts, and resource bounds.
+    The local workflow discovers Dockerfile/chart pairs from the catalog.
+    Follow `ai/instructions/local-development.md`; verify local build/load/deploy
+    without publication credentials or an active PI.
+11. Published charts must match the module name and support digest-pinned images;
+    test that local development still clears the digest and uses loaded images.
+    A module's optional `security` target delegates to the same shared IaC scanner
+    as the separate workflow. Do not put advisory scans in its required lint target.

@@ -1,0 +1,18 @@
+severity:
+  - UNKNOWN
+  - LOW
+  - MEDIUM
+  - HIGH
+  - CRITICAL
+exit-code: 10
+format: json
+scan:
+  skip-dirs:
+    - .terraform
+    - node_modules
+    - .venv
+    - .git
+    - .local
+    - bin
+    - dist
+    - .test-dist

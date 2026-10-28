@@ -11,6 +11,10 @@ The repository foundation is in place. The catalog currently defines 15 independ
 [Event contracts](modules/event-contracts/README.md) is the first implementation:
 a synthetic Avro payment event, offline tests, and a non-runtime OCI data bundle.
 
+Stage 1 adds the minimal [Go API](modules/payment-api/README.md) and
+[React status portal](modules/web-portal/README.md), deployed locally with
+Terraform, Helm, and Traefik. Payment commands and PostgreSQL come in Stage 2.
+
 ## Repository map
 
 | Path | Purpose |
@@ -35,13 +39,43 @@ Full environment instructions: [docs/developer-setup.md](docs/developer-setup.md
 git clone git@github.com:varunpathania86/realtime-payment-platform.git
 cd realtime-payment-platform
 make setup    # install hooks and pinned tools, then check the environment
-make cluster-up  # start local Minikube (needs Docker)
 make ci       # lint, test, build
+make dev-up   # start Minikube, build/load local images, deploy, smoke-test
+make dev-access  # foreground: open http://127.0.0.1:8080; Ctrl-C stops access
 ```
+
+After editing application code, leave `dev-access` running, run `make dev-update`
+in another terminal, and refresh the browser. Smoke checks automatically use a
+temporary available loopback port, separate from browser access.
+Local work needs **no GitHub Actions, GHCR login, publication approval, or active
+PI**. A failed remote workflow does not disable local commands. Initial setup,
+image/dependency downloads, and Terraform/chart initialization need internet;
+local development is independent of publication, not a guarantee of air-gapped operation.
+
+`make dev-down` destroys the local stack but leaves Minikube running.
+`make cluster-down` deletes the cluster and all its data. See the
+[developer guide](docs/developer-setup.md#4-local-application-development) for
+profiles, image loading, Terraform commands, recovery, and recreation.
 
 Run `make help` for all targets.
 
 Catalog validation is available through `make validate-catalog`; `make ci` includes catalog validation and unit tests. CI has a dynamic affected-module matrix; root checks also validate implemented modules. Trusted push CI can trigger protected branch/main OCI publication after the workflows are merged into `main` and the environment is configured. See the [publication runbook](docs/release-publication.md). Promotion and cleanup remain later phases.
+
+Stage 1 includes required TFLint quality checks and a separate
+[advisory Trivy IaC workflow](.github/workflows/security.yml) for the solution and
+catalog-discovered module packaging. Run `make security` separately from
+`make ci`; findings are reported truthfully, not converted to passes.
+Merge enforcement depends on repository rulesets, not on workflow separation;
+see the [security runbook](docs/runbooks/security-checks.md).
+Security scans retain JSON and Markdown in `.local/security/`. Run
+`make quality-report` to retain `make ci` results as Markdown and text logs in
+`.local/quality/`. Both workflows expose job summaries and downloadable report
+artifacts; see [report locations](docs/developer-setup.md#quality-and-security-reports).
+
+Publication now supports images and module Helm charts. Packaged charts reference
+the verified image digest and have their own verified OCI digest. Actual protected
+GHCR publication/rerun verification is still pending; PI starts 2026-10-26.
+Stage 1 remains in progress.
 
 ## Workflow
 

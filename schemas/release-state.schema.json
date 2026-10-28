@@ -32,12 +32,23 @@
           "branch": {"type": "string", "minLength": 1},
           "integrated": {"const": true},
           "registry": {"type": "string", "pattern": "^ghcr\\.io/[a-z0-9][a-z0-9/_-]*$"},
+          "chartRegistry": {"type": "string", "pattern": "^oci://ghcr\\.io/[a-z0-9][a-z0-9/_-]*$"},
           "approvedImpact": {"enum": ["none", "patch", "minor", "major"]},
           "publication": {
             "type": "object",
             "required": ["module", "version", "sourceCommit", "repository", "digest", "workflowRun", "testRun", "sbom", "provenance"],
             "properties": {
               "digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+              "chart": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["repository", "version", "digest"],
+                "properties": {
+                  "repository": {"type": "string", "pattern": "^ghcr\\.io/[a-z0-9][a-z0-9/_-]*$"},
+                  "version": {"type": "string", "minLength": 1},
+                  "digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}
+                }
+              },
               "sourceCommit": {"type": "string", "pattern": "^[a-f0-9]{40}$"}
             }
           },

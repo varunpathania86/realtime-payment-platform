@@ -1,0 +1,7 @@
+misconfigurations:
+  - id: DS-0026
+    paths: [Dockerfile]
+    expired_at: 2027-01-01
+    statement: >-
+      Data-only scratch bundle with no executable, entrypoint, or service to
+      health-check. Revisit if this artifact becomes runnable.

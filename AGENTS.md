@@ -47,12 +47,28 @@ This file is the single, tool-neutral source of project instructions, using the 
 - Shared lint and format rules live at the root (`.editorconfig`, `.pre-commit-config.yaml`, `.markdownlint-cli2.yaml`). Do not create per-project variants; language linters use one shared config per language at the root.
 - Every behavior change needs unit tests in the same change. Tests must be deterministic and runnable offline.
 - Never commit secrets, `.env` files, Terraform state, or real personal/cardholder data.
+- Local application development must work without GitHub Actions, GHCR login,
+  publication approval, release reservations, or an active PI. Preserve the
+  `dev-up`, `dev-update`, `dev-access`, and `smoke` Make workflow. First-use
+  dependency downloads may need internet; do not claim air-gapped operation.
+- Read `ai/instructions/local-development.md` before changing local images,
+  Helm charts, Terraform, or local orchestration. Verify dirty-source rebuilds
+  and clean-cluster recreation when changing this path; never destroy a shared
+  Minikube profile to test it.
 
 ## CI/CD
 
 - Catalog validation (`.github/workflows/validate-catalog.yml`): reusable read-only workflow validating solution, module, and release manifests.
 - Build (`.github/workflows/build.yml`): runs `make ci` and a dynamic affected-module matrix on pull requests and branch pushes. Fork PRs remain read-only and build/test-only.
 - Publication (`publish.yml` / `publish-module.yml`): successful same-repository push CI triggers protected GHCR publication using trusted default-branch tooling. Main revisions use atomic GitHub Contents API reservations on `automation/release-state`; branch tags are replaceable. Read `docs/release-publication.md` before changing this path. Promotion, cleanup, and stable-version PRs are not implemented yet.
+- Stage 1 publication includes images and module-owned OCI Helm charts. Package
+  charts in temporary copies, pin the verified image digest, record both digests,
+  and preserve safe reruns after partial publication. Do not mutate stable catalog
+  versions or bypass the PI boundary to test live publication.
+- TFLint belongs to required quality checks. Trivy IaC scanning runs separately
+  through `make security` and read-only solution/module workflows. Findings and
+  scanner errors stay nonzero; advisory merge policy is configured in repository
+  rules, not hidden with `continue-on-error`. Preserve existing secret detection.
 - Do not add a repository-wide `v*` publishing path. Preserve idempotent versions/digests, read-only fork CI, current-UTC PI boundaries, reviewed per-module impacts, and the separation between tested source and trusted publication tooling.
 - Deploy (`deploy.yml`): manual and environment-gated; targets a self-hosted runner or VPS configured later.
 - Workflow changes must pass `actionlint` (part of `make lint`). Pin third-party actions to a major version or SHA and use least-privilege `permissions`.
