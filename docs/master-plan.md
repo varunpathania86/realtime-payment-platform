@@ -51,6 +51,10 @@ These rules apply to the whole monorepo. Details for AI tools live in `AGENTS.md
 - GitHub Actions workflows:
   - **Catalog validation** (`validate-catalog.yml`): reusable, read-only JSON Schema and cross-manifest validation.
   - **Validate/build**: PRs and trusted branch updates; discover changed modules dynamically, expand dependency impact, and test in a matrix. Fork PRs remain build/test-only with read-only permissions.
+    Same-repository changes execute checks on push only; duplicate PR-event jobs
+    are skipped. Fork PR events still execute read-only checks. Security uses
+    the same deduplication policy; successful push CI still enables branch
+    publication. Update branches from their target to test integrated source.
   - **Advisory IaC security** (`security.yml` / `security-module.yml`): separate
     read-only solution and catalog-driven module scans. Findings and execution
     errors fail checks truthfully; these checks initially are not required in

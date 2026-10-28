@@ -23,6 +23,8 @@ jobs:
           python -m venv .venv
           .venv/bin/pip install --no-cache-dir -r scripts/requirements-catalog.txt
       - name: Install pinned scanner
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: make tools TOOLS=trivy
       - name: Scan module IaC
         env:

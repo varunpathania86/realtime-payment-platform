@@ -28,6 +28,12 @@ echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
 
 To upgrade a tool, change its version in `.tool-versions` and run `make tools`.
 For a focused installation use `make tools TOOLS="tflint trivy"`.
+GitHub release checksum lookups use `GH_TOKEN` (or `GITHUB_TOKEN`) when set;
+CI supplies its scoped job token to avoid anonymous API rate limits. Local setup
+still works without a token, subject to GitHub's anonymous rate limits.
+Authentication is sent only to the GitHub API metadata request, not release
+asset redirects or other download hosts. Metadata failures stop installation
+with an explicit error; checksum verification is never skipped.
 TFLint uses its bundled Terraform ruleset and root `.tflint.hcl`; no downloaded
 provider plugin is required. Trivy uses root `trivy.yaml` and may download an
 updated public checks bundle on first use. It scans locally; no source upload,
@@ -129,6 +135,14 @@ pushed before GitHub produces the new reports.
 
 Local reports are Git-ignored and each scope's next run replaces its previous
 files. A successful report describes that run, not future source edits.
+
+Build and security checks run on pushes to same-repository branches (except
+`automation/**`). Same-repository PR events skip their jobs rather than repeating
+the push checks; GitHub may still show a skipped workflow entry. Push results on
+the PR's head commit supply its checks. Fork PRs retain read-only PR checks.
+Push CI remains the publication trigger, including for feature branches.
+Same-repository PR checks no longer test GitHub's synthetic merge commit; update
+the branch from its target when you need to verify the combined source.
 
 ## 4. Local application development
 

@@ -15,6 +15,7 @@ concurrency:
 
 jobs:
   plan:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
@@ -33,6 +34,7 @@ jobs:
         run: make security-plan
 
   solution:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -44,6 +46,8 @@ jobs:
           python -m venv .venv
           .venv/bin/pip install --no-cache-dir -r scripts/requirements-catalog.txt
       - name: Install pinned scanner
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: make tools TOOLS=trivy
       - name: Scan solution IaC
         run: make security-solution
