@@ -26,6 +26,11 @@ Make sure `~/.local/bin` is on your PATH:
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
 ```
 
+The Markdown pre-commit hook uses the installed Node runtime rather than
+downloading an independently resolved latest release. `make setup` installs the
+Node version from `.tool-versions`, `make doctor` checks it, and Make puts
+`~/.local/bin` first on PATH. CI installs the same toolchain before quality checks.
+
 To upgrade a tool, change its version in `.tool-versions` and run `make tools`.
 For a focused installation use `make tools TOOLS="tflint trivy"`.
 GitHub release checksum lookups use `GH_TOKEN` (or `GITHUB_TOKEN`) when set;

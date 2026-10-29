@@ -16,6 +16,7 @@ repos:
     rev: v0.23.3
     hooks:
       - id: markdownlint-cli2
+        language_version: system
   - repo: https://github.com/editorconfig-checker/editorconfig-checker.python
     rev: 3.11.1
     hooks:

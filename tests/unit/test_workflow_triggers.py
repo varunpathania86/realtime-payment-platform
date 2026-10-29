@@ -6,6 +6,20 @@ from scripts.module_catalog import ROOT
 
 
 class WorkflowTriggerTests(unittest.TestCase):
+    def test_markdown_hook_reuses_installed_node_instead_of_resolving_latest(self):
+        config = yaml.safe_load((ROOT / ".pre-commit-config.yaml").read_text())
+        hooks = [
+            hook for repo in config["repos"] for hook in repo["hooks"]
+            if hook["id"] == "markdownlint-cli2"
+        ]
+        self.assertEqual(len(hooks), 1)
+        self.assertEqual(hooks[0]["language_version"], "system")
+        makefile = (ROOT / "Makefile").read_text()
+        self.assertIn("export PATH := $(HOME)/.local/bin:$(PATH)", makefile)
+        workflow = yaml.safe_load((ROOT / ".github/workflows/build.yml").read_text())
+        commands = [step.get("run") for step in workflow["jobs"]["quality"]["steps"]]
+        self.assertLess(commands.index("make tools"), commands.index("make quality-report"))
+
     def test_only_push_and_fork_pr_events_start_check_jobs(self):
         guard = (
             "github.event_name != 'pull_request' || "
