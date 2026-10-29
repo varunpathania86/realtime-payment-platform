@@ -63,7 +63,7 @@ These rules apply to the whole monorepo. Details for AI tools live in `AGENTS.md
   - **Promotion**: manually dispatched and permission-controlled; promote exact OCI digests through protected environments, create manifests/releases, and perform cleanup only after verification.
   - **Stable-version recording**: after successful production promotion, create a PR updating the stable catalog version; never push directly to protected `main`.
 - Self-hosted runners are used only for explicitly approved protected work, never for pull requests from forks.
-- Current implementation status: catalog/schema validation, affected-module CI, the first synthetic Avro contract, tested version/UTC iteration calculations, atomic main revision reservations, and protected branch/main OCI publication workflows are implemented. Stage 1 adds locally verified Go/React applications, Terraform/Helm deployment, TFLint, separate Trivy IaC scans, and image/chart publication logic; see [the developer guide](developer-setup.md#4-local-application-development). Chart-publication tooling needs reviewed default-branch installation; protected publication still needs environment configuration and post-PI GHCR verification. See [the publication runbook](release-publication.md). Promotion, cleanup, solution releases, and stable-version PRs remain future work; see Section 19.
+- Current implementation status: Stage 1 is accepted: locally verified Go/React applications, Terraform/Helm deployment, TFLint, separate Trivy scans, and protected image/chart publication are implemented. Main publication and same-source reruns were verified on 2026-10-28 with unchanged versions/digests. Stage 2 adds PostgreSQL-backed synthetic payments, durable idempotency, migrations, an OpenAPI contract, and integration tests on a separate branch; see [the developer guide](developer-setup.md#4-local-application-development). Promotion, cleanup, solution releases, and stable-version PRs remain Stage 17 work; see [the publication runbook](release-publication.md) and Section 19.
 - Local application development is independent of those workflows. Stage 0
   supplies tools and Minikube lifecycle; Stage 1 supplies local image builds,
   image loading, Terraform/Helm deployment, updates, and smoke checks. No GitHub
@@ -698,7 +698,8 @@ Extended artifact exit criteria: after reviewed default-branch tooling installat
 and the configured PI start, verify one protected image/chart publication and a
 same-source rerun that preserves both digests. Offline tests cover version rules,
 packaging, collision checks, and partial recovery but do not prove GHCR settings.
-Keep Stage 1 in progress until external verification and explicit acceptance.
+Stage 1 was accepted after main publication and same-source rerun verification
+on 2026-10-28; evidence is recorded in Section 19.
 See [ADR-014](adr/ADR-014-stage-1-artifact-and-security-boundaries.md).
 
 ---
@@ -725,6 +726,24 @@ Implement:
 - Non-root image, read-only filesystem where possible, probes, resource requests and limits
 
 **Exit criteria:** Duplicate payment commands return the original result, migrations are repeatable, and database failures do not cause unbounded retries.
+
+**Implementation closeout (2026-10-29):** All listed features are implemented on
+`feature/stage-2-production-go-backend`. Local verification covered payment
+creation/read/replay/conflict, repeatable migrations, concurrent deduplication,
+bounded database failures, dirty-source updates with persisted data, and isolated
+clean-cluster recreation. See [the LLD](architecture/payment-api-lld.md),
+[ADR-015](adr/ADR-015-stage-2-payment-storage-and-idempotency.md), and
+[database runbook](runbooks/payment-database.md).
+
+Liveness is independent of PostgreSQL when checked directly against the API pod,
+as Kubernetes does. Once database-aware readiness fails, ingress has no ready API
+backend and can return 503 for every API route, including `/api/healthz`.
+This is expected traffic gating, not a liveness failure.
+
+Final local validation passed on 2026-10-29: `make ci`,
+`make -C modules/payment-api test INTEGRATION=1`, `make security`, and `make doctor`.
+Stage 2 remains awaiting remote CI/publication verification, PR merge, and
+acceptance. Stage 3 has not started.
 
 ---
 
@@ -2172,25 +2191,38 @@ excluded_initially:
 Update this block after every session.
 
 ```yaml
-current_milestone: stage-1-local-terraform-foundation
-stage_status: in-progress; draft checkpoint, not final or ready to merge
-last_completed_task: Stage 1 local loop, TFLint quality, separate advisory Trivy IaC scans, and image/chart publication logic implemented
-next_task: install reviewed trusted tooling on main and verify protected post-PI image/chart publication and rerun; do not start Stage 2 or mark this PR ready until Stage 1 is explicitly accepted
+current_milestone: stage-2-production-go-backend
+stage_status: Stage 1 accepted; Stage 2 implemented and locally validated, awaiting remote checks and PR acceptance
+last_completed_task: Stage 2 implementation and local verification; documentation closeout includes user replay/conflict and direct-pod outage evidence
+next_task: publish the Stage 2 PR, verify remote CI/publication, then merge and accept the stage
 known_issues:
-  - Stage 1 remains work in progress; passing checks cover the current slice, not final stage acceptance
-  - GitHub/GHCR publication has not yet been exercised; PI starts 2026-10-26
-  - publication environment approval configuration remains independent of local development
+  - remote Stage 2 CI/publication and PR acceptance remain pending
+  - publication runs automatically after successful trusted push CI; required publication reviewers are not configured, an accepted optional policy choice
   - prior remote quality failure from the Python test fixture is resolved; user confirmed pushed changes pass quality
-  - chart publication requires reviewed default-branch tooling installation and package/environment permissions
   - initial eight Trivy findings triaged on 2026-10-28: contract non-root user fixed; seven exact-file/check exceptions justified and expire 2027-01-01
-  - report-enabled workflow updates require a push before GitHub exposes their summaries and artifacts
   - promotion, cleanup, solution releases, and stable-version PRs are not implemented yet
 architecture_decisions:
   - ADR-001 HashiCorp Terraform and independent local application development
   - ADR-002 Monorepo initially
   - ADR-013 Independently versioned modules in the monorepo
   - ADR-014 Stage 1 artifact publication and separate security checks
+  - ADR-015 PostgreSQL-backed synthetic payments and idempotency
 verification:
+  - 2026-10-29 final make ci passed with 83 shared tests and module checks/builds; make -C modules/payment-api test INTEGRATION=1, make security, and make doctor also passed
+  - Stage 2 local make ci, make doctor, make security, and make -C modules/payment-api test INTEGRATION=1 passed before the final smoke propagation changes
+  - Testcontainers verified repeatable migrations, persisted data after migration rerun, concurrent same-key inserts, payload conflicts, checksum drift, and bounded database outage behavior
+  - isolated rpp-stage2-check ingress verified create, replay, GET, and changed-payload conflict
+  - original payment identity survived PostgreSQL/API pod replacement and dev-update; a temporary portal heading edit appeared in the rebuilt served bundle and was restored
+  - initial clean recreation encountered transient ingress 503 after apply; bounded logged smoke retries were added and focused regression tests passed
+  - clean dev-down, cluster-down, and dev-up recreation passed after the smoke propagation fix
+  - 2026-10-29 user verified replay preserves payment ID and timestamp, and changed amount under the same key returns 409
+  - 2026-10-29 direct API pod checks on rpp-try returned healthz 200 and readyz 503 while PostgreSQL was scaled to zero; API pod had zero restarts
+  - during that outage the API EndpointSlice was ready=false and ingress returned 503 no available server, confirming expected readiness traffic gating
+  - Stage 1 PR 4 merged as 912b9737287fed389f5a0ca97c7852e7587f0c63
+  - https://github.com/varunpathania86/realtime-payment-platform/actions/runs/40749346520 succeeded on attempts 1 and 2
+  - both attempts published or reused event-contracts, payment-api, and web-portal version 0.0.1-it1-rv.1 from the same main source commit
+  - first and second attempt JSON evidence matched sourceCommit, version, repository, image digest, and both application chart digests
+  - application rerun logs confirmed chart pulls by digest without rebuilding images or repackaging/pushing charts
   - 2026-10-28 triage verification passed make ci with 77 shared tests and make security for solution plus all three modules
   - contract image built with user 65532:65532 and no entrypoint/command; unexcepted scan confirms DS-0002 is resolved
   - make doctor and make ci passed locally
@@ -2213,6 +2245,6 @@ verification:
   - API pod deletion recovered and ingress smoke checks passed
   - stack and cluster destroyed, then recreated by make dev-up without manual configuration edits
   - repeated dev-update reported no infrastructure changes and smoke passed
-last_verified_commit: Stage 1 draft checkpoint on feature/stage-1-terraform-foundation; validation performed before commit
-last_verified_date: 2026-10-25
+last_verified_commit: 912b9737287fed389f5a0ca97c7852e7587f0c63 (Stage 1 main publication; Stage 2 evidence is from uncommitted branch changes, not a released commit)
+last_verified_date: 2026-10-29
 ```

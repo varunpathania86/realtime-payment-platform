@@ -13,7 +13,11 @@ a synthetic Avro payment event, offline tests, and a non-runtime OCI data bundle
 
 Stage 1 adds the minimal [Go API](modules/payment-api/README.md) and
 [React status portal](modules/web-portal/README.md), deployed locally with
-Terraform, Helm, and Traefik. Payment commands and PostgreSQL come in Stage 2.
+Terraform, Helm, and Traefik. Stage 1 publication and identical-digest reruns are
+verified. Stage 2 adds PostgreSQL-backed initiated payment create/read operations,
+durable idempotency, migrations, an OpenAPI contract, and Testcontainers tests.
+See the [API guide](modules/payment-api/README.md) and
+[database runbook](docs/runbooks/payment-database.md).
 
 ## Repository map
 
@@ -52,7 +56,9 @@ PI**. A failed remote workflow does not disable local commands. Initial setup,
 image/dependency downloads, and Terraform/chart initialization need internet;
 local development is independent of publication, not a guarantee of air-gapped operation.
 
-`make dev-down` destroys the local stack but leaves Minikube running.
+`make dev-down` destroys the local stack, including its database namespace/PVC
+and payment data, but leaves Minikube running. Use `make dev-update`, not teardown,
+for normal iteration.
 `make cluster-down` deletes the cluster and all its data. See the
 [developer guide](docs/developer-setup.md#4-local-application-development) for
 profiles, image loading, Terraform commands, recovery, and recreation.
@@ -73,9 +79,10 @@ Security scans retain JSON and Markdown in `.local/security/`. Run
 artifacts; see [report locations](docs/developer-setup.md#quality-and-security-reports).
 
 Publication now supports images and module Helm charts. Packaged charts reference
-the verified image digest and have their own verified OCI digest. Actual protected
-GHCR publication/rerun verification is still pending; PI starts 2026-10-26.
-Stage 1 remains in progress.
+the verified image digest and have their own verified OCI digest. Main publication
+and same-source reruns were verified on 2026-10-28 with unchanged image/chart
+digests at version `0.0.1-it1-rv.1`. Stage 1 is accepted; Stage 2 work is on a
+separate branch. Promotion and Git release tagging remain Stage 17 work.
 
 ## Workflow
 

@@ -1,6 +1,10 @@
 *
 !go.mod
+!go.sum
 !*.go
+!internal/
+!internal/**
+internal/**/*_test.go
 **/.env
 **/.env.*
 **/*.pem

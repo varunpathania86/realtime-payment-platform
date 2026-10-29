@@ -50,6 +50,12 @@ else
   ok "docker $(installed_version docker)"
 fi
 
+if [[ "$(pinned_version postgres)" =~ ^[0-9]+\.[0-9]+-alpine$ ]]; then
+  ok "PostgreSQL container pin $(pinned_version postgres) (pulled by local deployment/integration tests)"
+else
+  bad "PostgreSQL container pin is missing/invalid in .tool-versions; restore it before make dev-up or module integration"
+fi
+
 case ":$PATH:" in
   *":$BIN_DIR:"*) ;;
   *) bad "$BIN_DIR is not on PATH (add it in ~/.bashrc)" ;;

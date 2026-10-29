@@ -197,7 +197,10 @@ def publish_chart(
             container["image"]
             for document in yaml.safe_load_all(rendered)
             if document and document.get("kind") == "Deployment"
-            for container in document["spec"]["template"]["spec"]["containers"]
+            for container in (
+                document["spec"]["template"]["spec"]["containers"]
+                + document["spec"]["template"]["spec"].get("initContainers", [])
+            )
         ]
         if not images or any(image != f"{image_repository}@{image_digest}" for image in images):
             raise ValueError("published chart must render the approved image by immutable digest")

@@ -56,7 +56,7 @@ resource "helm_release" "application" {
   wait            = true
   atomic          = true
   cleanup_on_fail = true
-  depends_on      = [helm_release.ingress]
+  depends_on      = [helm_release.ingress, kubernetes_stateful_set_v1.postgres, kubernetes_secret_v1.payment_database]
 
   values = [yamlencode({
     image = {

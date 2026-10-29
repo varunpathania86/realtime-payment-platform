@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 from scripts.check_local_chart import validate
 from scripts.module_catalog import ROOT, local_modules
-from scripts.smoke import check
+from scripts.smoke import check, wait_check
 
 
 class LocalDiscoveryTests(unittest.TestCase):
@@ -59,6 +59,17 @@ class LocalChartTests(unittest.TestCase):
     def test_contract_accepts_local_deployment(self):
         validate([None, self.deployment])
 
+    def test_init_containers_are_restricted_but_need_no_http_probes(self):
+        pod = self.deployment["spec"]["template"]["spec"]
+        migration = copy.deepcopy(pod["containers"][0])
+        del migration["readinessProbe"]
+        del migration["livenessProbe"]
+        pod["initContainers"] = [migration]
+        validate([self.deployment])
+        migration["imagePullPolicy"] = "Always"
+        with self.assertRaisesRegex(ValueError, "loaded images"):
+            validate([self.deployment])
+
     def test_missing_deployment_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "no Deployment"):
             validate([{"kind": "Service"}])
@@ -84,7 +95,7 @@ class LocalCommandTests(unittest.TestCase):
         self.addCleanup(self.directory.cleanup)
         self.root = Path(self.directory.name)
         (self.root / "scripts").mkdir()
-        for name in ("local-dev.sh", "lib.sh", "module_catalog.py", "smoke.py"):
+        for name in ("local-dev.sh", "lib.sh", "module_catalog.py", "smoke.py", "local_database.py"):
             shutil.copy(ROOT / "scripts" / name, self.root / "scripts" / name)
         shutil.copy(ROOT / ".tool-versions", self.root / ".tool-versions")
         (self.root / ".venv" / "bin").mkdir(parents=True)
@@ -275,6 +286,33 @@ if name == "kubectl" and "port-forward" in sys.argv:
 
 
 class SmokeTests(unittest.TestCase):
+    def test_ingress_propagation_is_retried_with_a_deadline(self):
+        from urllib.error import HTTPError
+
+        with (
+            patch("scripts.smoke.check", side_effect=[HTTPError("local", 503, "not ready", {}, None), None]) as run,
+            patch("scripts.smoke.time.sleep") as sleep,
+        ):
+            wait_check("http://localhost", {}, 30)
+        self.assertEqual(run.call_count, 2)
+        self.assertEqual(run.call_args_list[0].kwargs["deadline"], run.call_args_list[1].kwargs["deadline"])
+        sleep.assert_called_once()
+
+    def test_ingress_wait_fails_at_deadline_and_does_not_retry_contract_errors(self):
+        from urllib.error import HTTPError
+
+        for error in (HTTPError("local", 503, "not ready", {}, None), ValueError("wrong API build")):
+            with (
+                self.subTest(error=type(error).__name__),
+                patch("scripts.smoke.check", side_effect=error) as run,
+                patch("scripts.smoke.time.monotonic", side_effect=[0, 31]),
+                patch("scripts.smoke.time.sleep") as sleep,
+            ):
+                with self.assertRaises(type(error)):
+                    wait_check("http://localhost", {}, 30)
+                run.assert_called_once()
+                sleep.assert_not_called()
+
     def test_stale_api_build_fails_even_when_endpoints_are_healthy(self):
         from io import BytesIO
 

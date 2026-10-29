@@ -66,5 +66,8 @@ acceptance procedure, see the [developer guide](../developer-setup.md).
 ## Prevention and follow-up
 
 Keep source-derived local image identities, explicit kubeconfig contexts,
-profile-specific state, probes, and smoke checks. Add database backup/recovery
-procedures when persistent application data is introduced in Stage 2.
+profile-specific state, probes, and smoke checks. Stage 2 now stores payments
+on a PostgreSQL PVC. `make dev-update` preserves data; `make dev-down` deletes
+the database namespace/PVC and all local payments. See
+[database recovery](payment-database.md) before changing credentials, storage,
+or migration SQL. Do not repair a routine outage by deleting state or a PVC.

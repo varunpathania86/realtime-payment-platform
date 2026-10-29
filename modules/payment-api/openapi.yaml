@@ -1,0 +1,205 @@
+openapi: 3.0.3
+info:
+  title: Synthetic Payment API
+  version: 0.0.0
+  description: >-
+    Stage 2 creates initiated synthetic payments only. No authorization,
+    settlement, cardholder data, or event publication. Money uses integer minor
+    units. All timestamps are UTC. Idempotency keys are global to this local
+    educational API, persist for the lifetime of the payment, and are not logged.
+servers:
+  - url: /
+  - url: /api
+paths:
+  /payments:
+    post:
+      operationId: createPayment
+      description: >-
+        Creates a payment atomically. Replaying a key with identical account,
+        amount and currency returns the original payment and HTTP 201, including
+        its original ID and timestamp. Reusing the key with a different payload
+        returns 409. Comparison is semantic, not JSON byte order.
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: '^[!-~]+$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePayment'
+      responses:
+        '201':
+          description: Created or replayed original payment
+          headers:
+            Location:
+              schema:
+                type: string
+              description: Payment read URL, preserving the /api prefix if used
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Key already belongs to a different payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: JSON body exceeds 4096 bytes
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '415':
+          description: Content-Type must be application/json
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /payments/{id}:
+    get:
+      operationId: getPayment
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUID'
+      responses:
+        '200':
+          description: Persisted payment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          description: Payment not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /healthz:
+    get:
+      operationId: liveness
+      responses:
+        '200':
+          description: Process is live, independent of PostgreSQL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+  /readyz:
+    get:
+      operationId: readiness
+      responses:
+        '200':
+          description: Database reachable with expected migration checksum
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /version:
+    get:
+      operationId: version
+      responses:
+        '200':
+          description: Build identity
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [version, commit]
+                properties:
+                  version:
+                    type: string
+                  commit:
+                    type: string
+components:
+  schemas:
+    UUID:
+      type: string
+      format: uuid
+      pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+    CreatePayment:
+      type: object
+      additionalProperties: false
+      required: [account_id, amount_minor, currency]
+      properties:
+        account_id:
+          $ref: '#/components/schemas/UUID'
+        amount_minor:
+          type: integer
+          format: int64
+          minimum: 1
+        currency:
+          type: string
+          enum: [USD, EUR, GBP, INR, JPY, CAD, AUD, CHF, SGD]
+    Payment:
+      type: object
+      additionalProperties: false
+      required: [id, account_id, amount_minor, currency, status, created_at]
+      properties:
+        id:
+          $ref: '#/components/schemas/UUID'
+        account_id:
+          $ref: '#/components/schemas/UUID'
+        amount_minor:
+          type: integer
+          format: int64
+          minimum: 1
+        currency:
+          type: string
+          enum: [USD, EUR, GBP, INR, JPY, CAD, AUD, CHF, SGD]
+        status:
+          type: string
+          enum: [initiated]
+        created_at:
+          type: string
+          format: date-time
+    Health:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+    Error:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: string
+  responses:
+    BadRequest:
+      description: Invalid JSON, unsupported fields/values, malformed UUID or idempotency key
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unavailable:
+      description: Database unavailable or migration missing/incompatible; no unbounded retry
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

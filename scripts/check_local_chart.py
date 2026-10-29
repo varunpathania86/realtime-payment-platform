@@ -16,15 +16,16 @@ def validate(documents):
             raise ValueError("local application must not mount service-account tokens")
         if pod["securityContext"].get("runAsNonRoot") is not True:
             raise ValueError("local application must run as non-root")
-        for container in pod["containers"]:
+        for container in pod["containers"] + pod.get("initContainers", []):
             security = container["securityContext"]
             if security.get("readOnlyRootFilesystem") is not True:
                 raise ValueError("application filesystem must be read-only")
             if security.get("allowPrivilegeEscalation") is not False:
                 raise ValueError("privilege escalation must be disabled")
-            for probe in ("readinessProbe", "livenessProbe"):
-                if not container.get(probe):
-                    raise ValueError(f"missing {probe}")
+            if container in pod["containers"]:
+                for probe in ("readinessProbe", "livenessProbe"):
+                    if not container.get(probe):
+                        raise ValueError(f"missing {probe}")
             for bound in ("requests", "limits"):
                 if not {"cpu", "memory"} <= container["resources"][bound].keys():
                     raise ValueError(f"missing resource {bound}")

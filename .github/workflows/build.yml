@@ -91,6 +91,7 @@ jobs:
       - name: Build, test, and lint module
         env:
           MODULE_NAME: ${{ matrix.module }}
+          INTEGRATION: "1"
         run: make quality-module-report
       - name: Preserve module quality report and log
         if: always()

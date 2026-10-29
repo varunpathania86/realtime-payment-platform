@@ -3,6 +3,8 @@ image:
   tag: dev
   digest: ""
   pullPolicy: Never
+database:
+  existingSecret: payment-api-database
 resources:
   requests:
     cpu: 50m
