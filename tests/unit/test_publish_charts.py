@@ -86,6 +86,24 @@ class ChartPublicationTests(unittest.TestCase):
         for path, content in originals.items():
             self.assertEqual(path.read_bytes(), content)
 
+    def test_unpinned_migration_init_image_is_rejected(self):
+        def command(args, **kwargs):
+            if args[:2] == ["helm", "template"]:
+                return subprocess.CompletedProcess(args, 0, stdout=yaml.safe_dump({
+                    "kind": "Deployment", "spec": {"template": {"spec": {
+                        "containers": [{"image": f"{REPOSITORY}@{IMAGE}"}],
+                        "initContainers": [{"image": f"{REPOSITORY}:latest"}],
+                    }}},
+                }), stderr="")
+            return self.command(args, **kwargs)
+
+        with (
+            patch("scripts.publish_modules.registry_manifest", return_value=None),
+            patch("scripts.publish_modules.subprocess.run", side_effect=command),
+            self.assertRaisesRegex(ValueError, "image"),
+        ):
+            publish_chart(self.source, CONTEXT, RESERVATION, VERSION, REPOSITORY, IMAGE)
+
     def test_real_helm_packages_both_application_charts_and_metadata_is_read_by_digest(self):
         real_run = subprocess.run
         for name in ("payment-api", "web-portal"):

@@ -14,6 +14,9 @@ All design documentation lives here, written in Markdown with Mermaid diagrams. 
 | [runbooks/security-checks.md](runbooks/security-checks.md) | Separate solution/module IaC scans and advisory merge policy |
 | [adr/ADR-014-stage-1-artifact-and-security-boundaries.md](adr/ADR-014-stage-1-artifact-and-security-boundaries.md) | Stage 1 image/chart publication and quality/security separation |
 | [architecture/](architecture/) | SDD, LLD, C4 and data-flow diagrams |
+| [architecture/payment-api-lld.md](architecture/payment-api-lld.md) | Stage 2 HTTP, persistence, migrations, and idempotency design |
+| [adr/ADR-015-stage-2-payment-storage-and-idempotency.md](adr/ADR-015-stage-2-payment-storage-and-idempotency.md) | UUIDs, PostgreSQL, local credentials, and concurrency decisions |
+| [runbooks/payment-database.md](runbooks/payment-database.md) | Payment readiness, migration failures, and database recovery |
 | [adr/](adr/) | Architecture Decision Records |
 | [runbooks/](runbooks/) | Operational procedures |
 

@@ -79,7 +79,9 @@ PY
 
 plan() {
   require_images
-  tf plan -input=false -var-file="$STATE_DIR/images.tfvars.json" -out="$STATE_DIR/tfplan"
+  "$PYTHON" scripts/local_database.py "$STATE_DIR/database.tfvars.json"
+  tf plan -input=false -var-file="$STATE_DIR/images.tfvars.json" \
+    -var-file="$STATE_DIR/database.tfvars.json" -out="$STATE_DIR/tfplan"
 }
 
 apply() {
@@ -107,7 +109,7 @@ smoke() (
     sleep 1
   done
   [ "$ready" = true ] || { echo "Timed out starting ingress port-forward" >&2; return 1; }
-  "$PYTHON" scripts/smoke.py --url "http://127.0.0.1:$port" --images "$STATE_DIR/images.tfvars.json"
+  "$PYTHON" scripts/smoke.py --url "http://127.0.0.1:$port" --images "$STATE_DIR/images.tfvars.json" --wait-seconds 30
 )
 
 charts() {
@@ -148,8 +150,10 @@ case "${1:-}" in
     ;;
   down)
     require_images
+    "$PYTHON" scripts/local_database.py "$STATE_DIR/database.tfvars.json"
     init
-    tf destroy -input=false -auto-approve -var-file="$STATE_DIR/images.tfvars.json"
+    tf destroy -input=false -auto-approve -var-file="$STATE_DIR/images.tfvars.json" \
+      -var-file="$STATE_DIR/database.tfvars.json"
     ;;
   access)
     exec kubectl --context "$PROFILE" -n platform port-forward --address 127.0.0.1 service/traefik "$LOCAL_PORT:80"

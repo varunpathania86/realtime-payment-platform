@@ -26,6 +26,11 @@ Make sure `~/.local/bin` is on your PATH:
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
 ```
 
+The Markdown pre-commit hook uses the installed Node runtime rather than
+downloading an independently resolved latest release. `make setup` installs the
+Node version from `.tool-versions`, `make doctor` checks it, and Make puts
+`~/.local/bin` first on PATH. CI installs the same toolchain before quality checks.
+
 To upgrade a tool, change its version in `.tool-versions` and run `make tools`.
 For a focused installation use `make tools TOOLS="tflint trivy"`.
 GitHub release checksum lookups use `GH_TOKEN` (or `GITHUB_TOKEN`) when set;
@@ -153,7 +158,12 @@ Stage 0 prepares the workstation and cluster lifecycle. Stage 1 supplies the
 first runnable applications and the local edit/build/deploy/test loop.
 The Go API exposes `/healthz`, `/readyz`, and `/version`; ingress exposes them
 under `/api`. The React page displays API health, readiness, and build identity.
-There is no database or payment-command implementation yet.
+Stage 2 adds PostgreSQL-backed `/api/payments` POST and `/api/payments/{id}` GET,
+repeatable migrations, and durable idempotency. See
+[the payment API guide](../modules/payment-api/README.md) for a synthetic curl
+example and supported currencies; [OpenAPI](../modules/payment-api/openapi.yaml)
+is the checked-in HTTP contract. Apicurio is introduced in Stage 3, not required
+to define or test the HTTP contract now.
 
 ### Start and update
 
@@ -179,6 +189,11 @@ Refresh the browser after the update. Smoke checks use an automatically assigned
 temporary loopback port and stop only their own forwarding process afterward.
 `LOCAL_PORT` selects the browser port for `dev-access` (default 8080); it does not
 select the smoke-test port.
+Smoke checks allow up to 30 seconds for transient ingress propagation failures
+(HTTP 404/502/503/504, connection errors, or timeouts), logging retries and
+returning nonzero if readiness never recovers. Invalid response bodies and stale
+API build identities fail immediately. This is deployment verification, not
+application-level database retry behavior.
 
 `dev-up` starts Minikube, builds images using the host Docker daemon, loads them
 into Minikube, initializes Terraform, plans/applies the stack, and runs smoke
@@ -197,8 +212,53 @@ These tags are development identities, not stable catalog or PI release versions
 The catalog discovers runnable modules by the presence of both a Dockerfile and
 a Helm chart. Catalog-only and non-runtime modules are not deployed.
 The applications run non-root with read-only filesystems, restricted capabilities,
-probes, and resource requests/limits. Stage 1 creates no persistent application
-data; persistent databases are introduced in later stages.
+probes, and resource requests/limits.
+
+### PostgreSQL, migrations, and integration tests
+
+The local workflow now provisions a private PostgreSQL StatefulSet/service in
+`data`, with a 1 GiB volume and an exact image tag from `.tool-versions`.
+It generates a random 64-character password in private
+`.local/<profile>/database.tfvars.json` (mode 0600), preserved across updates.
+Terraform injects a database URL into an apps-namespace Secret; the API migration
+init container applies embedded SQL before the runtime starts. Published charts
+require an externally provisioned database and Secret; no credentials are
+packaged. Local cluster connections use `sslmode=disable` and a database-owner
+role for this educational environment, not production credential/TLS policy.
+
+`make dev-update` preserves payments and reuses the migration ledger/password.
+Losing the private credential file with existing database state is an explicit
+recovery error, not an automatic password reset. Terraform state also contains
+local secrets and must never be committed or shared.
+`make dev-down` deletes namespaces and their PVCs/data. `make cluster-down`
+deletes the selected cluster and all data. Do not use teardown as a restart.
+
+```bash
+make -C modules/payment-api build
+make -C modules/payment-api test
+make -C modules/payment-api integration
+```
+
+`test` remains offline after Go dependencies have been cached by a build.
+`integration` starts its own disposable PostgreSQL container through the pinned
+Testcontainers Go library, and fails rather than skips when Docker is unavailable.
+The first integration run may download PostgreSQL and the Testcontainers cleanup
+helper. No manual PostgreSQL CLI/server installation is needed.
+The dynamic module CI passes `INTEGRATION=1` to enable this module's integration
+target as part of its normal test contract; other modules keep their own Make
+behavior. Root `make ci` remains cluster/Docker-independent for unit checks.
+
+Migration SQL lives with the API. It is checksum-tracked and transactionally
+serialized; never edit applied SQL or clear the ledger to force a rollout.
+For database recovery, see [the runbook](runbooks/payment-database.md).
+
+During a database outage, the API's direct `/healthz` remains 200 and direct
+`/readyz` returns 503. Kubernetes then marks the API pod unready, so ingress can
+return 503 for **all** `/api` routes, including health. Verify independent
+liveness by forwarding directly to the API pod as described in the runbook,
+not through `make dev-access`. Restoring PostgreSQL should recover readiness
+without restarting the API. Only run deliberate outage tests on an isolated
+profile; manual scaling is Terraform drift and is restored by a subsequent apply.
 
 ### Explicit Terraform workflow
 
@@ -215,8 +275,9 @@ make smoke
 ```
 
 `terraform-apply` calculates a fresh saved plan, then applies that exact plan.
-Terraform owns the six namespaces, Traefik Helm release, and application Helm
-releases. Do not also use manual `helm upgrade` or `kubectl apply` to manage those
+Terraform owns the six namespaces, Traefik Helm release, application Helm
+releases, and local PostgreSQL resources/Secrets. Do not also use manual
+`helm upgrade` or `kubectl apply` to manage those
 objects. Argo CD is not introduced until its roadmap stage.
 Helm installs are atomic and upgrades clean up newly created resources on failure,
 so an unsuccessful installation does not leave an untracked failed release.

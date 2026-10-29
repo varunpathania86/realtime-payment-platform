@@ -4,22 +4,72 @@
   "namespace": "platform.payments.v1",
   "doc": "Synthetic payment initiation contract. No cardholder or personal data.",
   "fields": [
-    {"name": "event_id", "type": {"type": "string", "logicalType": "uuid"}},
-    {"name": "event_type", "type": "string", "doc": "payment.initiated.v1"},
-    {"name": "event_time", "type": "string", "doc": "RFC3339 UTC timestamp ending in Z."},
-    {"name": "producer", "type": "string"},
-    {"name": "correlation_id", "type": {"type": "string", "logicalType": "uuid"}},
-    {"name": "causation_id", "type": ["null", {"type": "string", "logicalType": "uuid"}], "default": null},
-    {"name": "schema_version", "type": "int"},
+    {
+      "name": "event_id",
+      "type": {
+        "type": "string",
+        "logicalType": "uuid"
+      }
+    },
+    {
+      "name": "event_type",
+      "type": "string",
+      "doc": "payment.initiated.v1"
+    },
+    {
+      "name": "event_time",
+      "type": "string",
+      "doc": "RFC3339 UTC timestamp ending in Z."
+    },
+    {
+      "name": "producer",
+      "type": "string"
+    },
+    {
+      "name": "correlation_id",
+      "type": {
+        "type": "string",
+        "logicalType": "uuid"
+      }
+    },
+    {
+      "name": "causation_id",
+      "type": [
+        "null",
+        {
+          "type": "string",
+          "logicalType": "uuid"
+        }
+      ],
+      "default": null
+    },
+    {
+      "name": "schema_version",
+      "type": "int"
+    },
     {
       "name": "payload",
       "type": {
         "type": "record",
         "name": "PaymentInitiatedPayload",
         "fields": [
-          {"name": "payment_id", "type": {"type": "string", "logicalType": "uuid"}},
-          {"name": "amount_minor", "type": "long", "doc": "Positive integer minor currency units; never floating point."},
-          {"name": "currency", "type": "string", "doc": "ISO 4217 alphabetic currency code."}
+          {
+            "name": "payment_id",
+            "type": {
+              "type": "string",
+              "logicalType": "uuid"
+            }
+          },
+          {
+            "name": "amount_minor",
+            "type": "long",
+            "doc": "Positive integer minor currency units; never floating point."
+          },
+          {
+            "name": "currency",
+            "type": "string",
+            "doc": "ISO 4217 alphabetic currency code."
+          }
         ]
       }
     }

@@ -1,3 +1,13 @@
+variable "postgres_password" {
+  description = "Generated profile-local credential; never commit this or local Terraform state."
+  type        = string
+  sensitive   = true
+  validation {
+    condition     = can(regex("^[a-f0-9]{64}$", var.postgres_password))
+    error_message = "Use make dev-up/dev-update to generate a 64-character hexadecimal local database password."
+  }
+}
+
 variable "kube_context" {
   description = "Explicit Minikube profile/context; never use an implicit current context."
   type        = string
