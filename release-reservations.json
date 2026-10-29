@@ -93,6 +93,20 @@
       "reservedVersion": "0.0.1-it1-rv.1",
       "sourceCommit": "912b9737287fed389f5a0ca97c7852e7587f0c63",
       "targetVersion": "0.0.1"
+    },
+    {
+      "approvedImpact": "patch",
+      "branch": "main",
+      "chartRegistry": "oci://ghcr.io/varunpathania86/charts",
+      "counter": 2,
+      "integrated": true,
+      "iteration": 1,
+      "module": "web-portal",
+      "registry": "ghcr.io/varunpathania86",
+      "releaseLine": "main",
+      "reservedVersion": "0.0.1-it1-rv.2",
+      "sourceCommit": "67947e67c57cf122df325d45d1d4e4dffbb4cb63",
+      "targetVersion": "0.0.1"
     }
   ],
   "schemaVersion": 1
