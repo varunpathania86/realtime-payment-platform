@@ -21,3 +21,10 @@ cnpg-chart 0.29.1
 cnpg-chart-sha256 b53d3991fe84bcf38767e7702cae78666265427a127a26fff168ab4207d2b1df
 cnpg-postgres 16.6-standard-bookworm
 actions-runner 2.338.0
+# Opt-in observability containers (installed as Kubernetes workloads, not host CLIs).
+otelcol 0.139.0
+prometheus 3.7.3
+alertmanager 0.28.1
+loki 3.5.7
+tempo 2.9.0
+grafana 12.2.1

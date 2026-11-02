@@ -1,0 +1,5 @@
+apiVersion: v2
+name: observability
+description: Shared local telemetry backends and portable per-cluster collectors
+type: application
+version: 0.1.0

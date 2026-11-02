@@ -63,7 +63,7 @@ These rules apply to the whole monorepo. Details for AI tools live in `AGENTS.md
   - **Promotion**: manually dispatched and permission-controlled; promote exact OCI digests through protected environments, create manifests/releases, and perform cleanup only after verification.
   - **Stable-version recording**: after successful production promotion, create a PR updating the stable catalog version; never push directly to protected `main`.
 - Self-hosted runners are used only for explicitly approved protected work, never for pull requests from forks.
-- Current implementation status: Stages 1 and 2 are accepted, including local Go/React development, PostgreSQL payments/idempotency, and verified main image/chart publication. Stage 3 adds TLS/SCRAM Kafka, SQL-backed Apicurio, an atomic outbox, relay and idempotent receipt consumer on a separate branch; real broker crash/replay and local end-to-end checks have passed. See [the developer guide](developer-setup.md#4-local-application-development) and Section 19 for current verification and remaining acceptance work. Promotion, cleanup, solution releases, and stable-version PRs remain Stage 17 work; see [the publication runbook](release-publication.md).
+- Current implementation status: Stages 1-3 are accepted, including verified main image/chart publication and local replicated payment/event recovery. Stage 4 implements baseline observability and, by explicit scope extension, iteration-baseline module/solution releases. Deployment, GitOps, RC/production promotion, cleanup and stable-version PRs remain deferred. See Section 19 and [the publication runbook](release-publication.md).
 - Local application development is independent of those workflows. Stage 0
   supplies tools and Minikube lifecycle; Stage 1 supplies local image builds,
   image loading, Terraform/Helm deployment, updates, and smoke checks. No GitHub
@@ -588,8 +588,9 @@ owned Docker bridge, not a control plane. Broker requests start at 100m CPU /
 This is a low-load learning baseline, not production
 capacity or physical HA. The optional setup raises host inotify instances to
 at least 1024 with sudo. See [the developer guide](developer-setup.md#stage-3-optional-three-cluster-kafka-lab)
-and [ADR-016](adr/ADR-016-local-cross-cluster-kafka.md). Stress-test observability
-remains Stage 4 work.
+and [ADR-016](adr/ADR-016-local-cross-cluster-kafka.md). Stage 4 adds an opt-in
+observability topology with a larger cluster-A budget; this does not certify
+sustained-load capacity.
 
 The local lab exposes Docker node usage and per-workload-container CPU/RAM
 usage plus requests/limits through `make dev-status`. Minikube's bundled
@@ -924,6 +925,15 @@ benchmark capacity.
 **Estimated effort:** 2-4 days  
 **Outcome:** Diagnose a request across the API, outbox relay, Kafka, and consumer.
 
+**Approved scope extension:** Implement protected iteration-baseline releases
+now rather than waiting for Stage 17. Freeze tested main publications into
+module/solution manifests and namespaced tags/releases without rebuilding.
+Keep the current date-derived PI schedule and production-only catalog versions
+unchanged. Deployment is explicitly deferred, as are GitOps and RC/production
+promotion. See [ADR-020](adr/ADR-020-iteration-baseline-release.md) and the
+[baseline runbook](runbooks/iteration-baseline.md). Release acceptance requires
+an approved live dispatch and a rerun proving unchanged digests.
+
 Implement:
 
 - OpenTelemetry SDK for Go
@@ -940,6 +950,34 @@ Implement:
 - Trace propagation through Kafka headers
 - Structured logs with `trace_id`, `span_id`, `event_id`, and `payment_id`
 - Exemplars linking metrics to traces
+
+**Selected deployment:** Run an OpenTelemetry Collector in each Kubernetes
+cluster, sending telemetry to shared Prometheus, Alertmanager, Loki, Tempo,
+and Grafana backends in **cluster A**. The opt-in example budgets 5120 MiB/3 CPUs
+for A and 3072 MiB/2 CPUs for B/C; these are learning defaults, not capacity
+certification. Keep local resource budgets explicit and the deployment
+Kubernetes-portable. Application replication remains unchanged. Telemetry
+export failures must not prevent payment processing. Reuse compatible HTTP,
+database and infrastructure instrumentation; add custom instrumentation for
+outbox and receipt semantics and portal interactions.
+
+Use W3C Trace Context across HTTP and Kafka, preserving context through the
+transactional outbox. Apply uniform resource identity and structured JSON logs
+across the API, workers and portal. Correlation fields include `trace_id`,
+`span_id`, `event_id`, and `payment_id` when available; these identifiers must
+not become metric labels. Trace and log attributes must not contain credentials,
+SQL parameter values, payment payloads, or browser request bodies.
+
+**Data lineage follow-up:** Stage 4 provides operational tracing, not durable
+data lineage or an audit ledger. During Stage 5, define source-topic, job,
+schema-version and output-dataset identities for Flink transformations. With
+the first persistent Flink-to-ClickHouse pipeline in Stage 6, add durable
+dataset/job lineage linking sources, transformation versions and outputs;
+extend it to Iceberg/lakehouse transformations when those are implemented.
+Choose the storage/integration approach in a reviewed ADR before adding
+lineage tooling. Sampled, retained-for-a-limited-time traces are not a
+substitute for durable lineage. This follow-up does not add lineage
+infrastructure to Stage 4.
 
 Initial alerts:
 
@@ -1776,9 +1814,10 @@ Do not commit OpenBao bootstrap or unseal material.
 
 ## Stage 17: GitOps and CI/CD
 
-Stage 1 establishes image/chart publication. This stage extends that foundation
-with GitOps and protected iteration/RC/production promotion, solution releases,
-stable-version PRs, and verified cleanup. Promote the exact image and chart
+Stage 1 establishes image/chart publication; Stage 4 brings forward protected
+module/solution iteration-baseline releases. This stage extends that foundation
+with GitOps, RC/production promotion, stable-version PRs, and verified cleanup.
+Deployment remains deferred until explicitly implemented. Promote the exact image and chart
 digests without rebuilding either artifact.
 
 **Estimated effort:** 4-6 days  
@@ -2337,21 +2376,23 @@ excluded_initially:
 Update this block after every session.
 
 ```yaml
-current_milestone: stage-3-reliable-event-publication
-stage_status: Stages 1 and 2 accepted; Stage 3 default full-stack topology, recovery checks, asymmetric live count verification, and make ci passed locally; review, remote checks/publication, and PR acceptance remain pending
-last_completed_task: Verified asymmetric live counts, restored the default rpp lab, and prepared the Stage 3 PR with final CI, Docker integration, doctor, and advisory IaC scan evidence
-next_task: Complete Stage 3 PR review, remote checks/publication, and acceptance before starting Stage 4
+current_milestone: stage-4-baseline-observability
+stage_status: Stages 1-3 accepted; Stage 4 local observability acceptance passed and baseline release automation passed offline checks; remote acceptance and approved live baseline release remain pending
+last_completed_task: Verified cluster-A shared backends, three collectors, payment/browser traces, correlated logs, native metrics, Grafana navigation, dirty-source rebuild, clean recreation and API pod recovery
+next_task: Review and merge the combined Stage 4 changes, then approve a main-only iteration-baseline release dispatch; deployment and GitOps remain deferred
 known_issues:
   - one cold ingress CRD installation encountered a transient etcd timeout; ordinary dev-update recovered with state and node budgets unchanged
   - a stale pending-install Traefik Helm revision interrupted the first scale-check attempt; removing only that release allowed Terraform to recreate ingress and the retry passed
-  - Stage 3 remote checks/publication, PR review, and acceptance remain pending
+  - Trivy skips parameterized CNPG/observability charts without runtime values; an additional rendered observability scan reported KSV-0109 on the Kafka password environment reference, not a plaintext credential; no check was suppressed
   - three-cluster host inotify blocker resolved by developer setting 1024; optional setup documents persistent configuration
   - pinned Minikube/Docker reports host node capacity and emits a gateway-inspection warning; explicit Docker quotas/memory caps were verified
   - publication runs automatically after successful trusted push CI; required publication reviewers are not configured, an accepted optional policy choice
   - prior remote quality failure from the Python test fixture is resolved; user confirmed pushed changes pass quality
   - initial eight Trivy findings triaged on 2026-10-28: contract non-root user fixed; seven exact-file/check exceptions justified and expire 2027-01-01
-  - promotion, cleanup, solution releases, and stable-version PRs are not implemented yet
+  - iteration-baseline release automation is not yet merged or verified live; deployment, RC/production promotion, cleanup and stable-version PRs remain deferred
 architecture_decisions:
+  - ADR-020 Iteration baseline releases brought forward to Stage 4 without deployment or PI schedule changes
+  - ADR-019 Per-cluster OpenTelemetry collectors with shared backends and a separate lineage boundary
   - ADR-017 Full-stack replication across three independent clusters
   - ADR-003 Transactional outbox and idempotent payment receipts
   - ADR-016 Kafka across three local Kubernetes clusters
@@ -2361,6 +2402,17 @@ architecture_decisions:
   - ADR-014 Stage 1 artifact publication and separate security checks
   - ADR-015 PostgreSQL-backed synthetic payments and idempotency
 verification:
+  - 2026-11-02 verification-only forwards and rpp-observe-check clusters/network were removed; preserved rpp-a/b/c restarted without redeployment or migration; regular smoke/status passed with original API dev-9b99ed4dbd52677a and three 2-CPU / 3072-MiB node budgets; kubectl context restored to rpp-a
+  - 2026-11-02 owned rpp-observe-check-a/b/c were destroyed and recreated; confirmed make dev-up, smoke, repeated payment/trace/log/exemplar/native-metric acceptance and API pod deletion/recovery passed; warmed make dev-status included all telemetry workloads with no missing samples
+  - 2026-11-02 recreated low-load node snapshot used approximately 3.35 GiB / 5 GiB in A and 2.46 / 2.50 GiB of 3 GiB in B/C; these are measured development snapshots, not sustained-load guarantees
+  - 2026-11-02 final Stage 4 make ci passed with 158 shared tests, module lint/tests/builds and Terraform checks; focused resource-status/topology/observability tests (18), explicit new-file pre-commit hooks, make doctor and make security passed
+  - 2026-11-02 make -C modules/payment-api fmt lint test INTEGRATION=1 and make -C modules/web-portal fmt lint test passed; SQL spans require a valid parent and omit query text/errors; unparented probes and idle polling do not flood tracing
+  - 2026-11-02 isolated rpp-observe-check live acceptance verified a 650 ms synthetic payment delay, exact latency exemplar, API/business/SQL/Kafka producer/consumer spans, correlated logs, PostgreSQL metrics from three clusters, native Kafka lag and three healthy alert rules
+  - 2026-11-02 actual Grafana UI navigation passed from dashboard exemplar to distributed trace and matching logs; browser status spans reached Tempo; datasource provisioning required escaped dollar variables and native Kafka lag uses kafka_consumer_group_lag_ratio (record counts)
+  - 2026-11-02 dirty portal heading rebuilt and was visibly served; verification-only change was restored and redeployed; smoke/status passed; Tempo stabilized near 211 MiB and 35m CPU in a low-load snapshot after a 768 MiB limit and reduced idle tracing
+  - 2026-11-02 iteration-baseline release make ci passed with 152 shared tests including 19 deterministic release tests; explicit new-file pre-commit checks passed, including actionlint and secret detection; no live GHCR promotion, Git tagging or GitHub Release was performed
+  - 2026-11-02 Stage 4 tracing foundation make ci and make -C modules/payment-api test INTEGRATION=1 passed; tests verified OTLP wire export, collector-rejection logging, bounded HTTP attributes, SQL text/error suppression, idempotent outbox context preservation and actual Kafka producer-to-consumer replay trace parentage
+  - 2026-11-02 Stage 3 PR 6 merged as 2843f3cf1be4bd1e42e71f5eaa05441c8ef50117; main build, advisory security and tested-module publication workflows succeeded
   - 2026-11-02 pre-PR make ci passed with 133 shared tests, module tests/builds and three Kafka Terraform tests; make -C modules/payment-api test INTEGRATION=1 and MULTI_CLUSTER=1 make doctor passed
   - 2026-11-02 pre-PR make security passed for solution and three packaged modules; Trivy warned that the parameterized CNPG chart was skipped without runtime values and that Terraform root variables were unset, so this is not complete rendered-topology coverage
   - 2026-11-02 make dev-up, make smoke, and warmed make dev-status passed for default rpp-a/b/c; all workloads were ready with 3072 MiB / two-CPU node limits

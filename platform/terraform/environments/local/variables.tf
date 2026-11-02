@@ -1,3 +1,11 @@
+variable "telemetry_enabled" {
+  type    = bool
+  default = false
+}
+variable "telemetry_cluster" {
+  type    = string
+  default = ""
+}
 variable "postgres_password" {
   description = "Generated profile-local credential; never commit this or local Terraform state."
   type        = string

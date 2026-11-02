@@ -36,11 +36,11 @@ export async function loadStatus(
   fetcher: Fetcher = fetch,
   signal?: AbortSignal,
 ): Promise<PlatformStatus> {
-  const [health, ready, version] = await Promise.all([
+  const [health, ready, version] = await statusInteraction(() => Promise.all([
     request(fetcher, "/api/healthz", signal),
     request(fetcher, "/api/readyz", signal),
     request(fetcher, "/api/version", signal),
-  ]);
+  ]));
   if (health.status !== "ok" || ready.status !== "ok") {
     throw new Error("The API is not healthy and ready");
   }
@@ -52,3 +52,4 @@ export async function loadStatus(
   }
   return { health: "ok", ready: "ok", version: version.version, commit: version.commit };
 }
+import { statusInteraction } from "./telemetry.js";

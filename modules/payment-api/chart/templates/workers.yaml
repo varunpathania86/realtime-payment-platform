@@ -12,8 +12,10 @@ spec:
       app.kubernetes.io/name: {{ $.Release.Name }}-{{ $mode }}
   template:
     metadata:
-      {{- if $.Values.database.revision }}
       annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+      {{- if $.Values.database.revision }}
         database-configuration: {{ $.Values.database.revision | quote }}
       {{- end }}
       labels:
@@ -48,6 +50,7 @@ spec:
           args: [{{ $mode | quote }}]
           env:
             {{- include "payment-api.databaseEnv" $ | nindent 12 }}
+            {{- include "payment-api.telemetryEnv" $ | nindent 12 }}
             - name: KAFKA_BROKERS
               value: {{ required "events.brokers is required" $.Values.events.brokers | quote }}
             - name: KAFKA_CA_FILE

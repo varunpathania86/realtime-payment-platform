@@ -8,10 +8,67 @@ import (
 	"testing"
 
 	"github.com/varunpathania86/realtime-payment-platform/modules/payment-api/internal/payment"
+	"github.com/varunpathania86/realtime-payment-platform/modules/payment-api/internal/telemetry"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 )
+
+func testTraceContext(t *testing.T, ctx context.Context, store *Store) {
+	t.Helper()
+	origin := telemetry.Propagator.Extract(ctx, propagation.MapCarrier{
+		"traceparent": "00-01000000000000000000000000000000-0200000000000000-01",
+		"tracestate":  "rpp=synthetic",
+	})
+	command := payment.Command{AccountID: "00000000-0000-4000-8000-000000000004", AmountMinor: 100, Currency: "USD"}
+	p, err := store.Create(origin, "traced-payment", command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := telemetry.Propagator.Extract(ctx, propagation.MapCarrier{
+		"traceparent": "00-03000000000000000000000000000000-0400000000000000-01",
+	})
+	replay, err := store.Create(other, "traced-payment", command)
+	if err != nil || replay.ID != p.ID {
+		t.Fatalf("idempotent retry: %v", err)
+	}
+	var persistedParent, persistedState string
+	if err := store.db.QueryRowContext(ctx, `SELECT traceparent, tracestate FROM payment_outbox WHERE payment_id = $1`,
+		p.ID).Scan(&persistedParent, &persistedState); err != nil {
+		t.Fatal(err)
+	}
+	if persistedParent != "00-01000000000000000000000000000000-0200000000000000-01" || persistedState != "rpp=synthetic" {
+		t.Fatal("retry replaced the original outbox trace context")
+	}
+	found := false
+	for range 3 {
+		_, err := store.RelayOne(ctx, 3, func(publishCtx context.Context, message Publication) error {
+			if message.Event.Payload.PaymentID == p.ID {
+				found = true
+				got := trace.SpanContextFromContext(publishCtx)
+				if got.TraceID().String() != "01000000000000000000000000000000" || !got.IsRemote() {
+					t.Fatal("outbox relay lost the persisted originating context")
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if found {
+			break
+		}
+	}
+	if !found {
+		t.Fatal("traced outbox event was not published")
+	}
+}
 
 func testOutbox(t *testing.T, ctx context.Context, store *Store, first payment.Payment) {
 	t.Helper()
+	pending, age, err := store.backlogSnapshot(ctx)
+	if err != nil || pending != 2 || age < 0 {
+		t.Fatalf("backlog observation: count=%v age=%v error=%v", pending, age, err)
+	}
 	var count int
 	if err := store.db.QueryRowContext(ctx, `SELECT count(*) FROM payment_outbox`).Scan(&count); err != nil || count != 2 {
 		t.Fatalf("expected one legacy backfill and one new payment event despite 12 concurrent retries: %d %v", count, err)

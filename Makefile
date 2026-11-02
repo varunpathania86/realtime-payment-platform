@@ -4,8 +4,8 @@
 SHELL := /usr/bin/env bash
 export PATH := $(HOME)/.local/bin:$(PATH)
 .DEFAULT_GOAL := help
-.PHONY: security security-solution security-module security-plan publication-login quality-report quality-module-report
-.PHONY: dev-metrics db-switchover db-failover db-rejoin
+.PHONY: security security-solution security-module security-plan publication-login quality-report quality-module-report release-baseline
+.PHONY: dev-metrics dev-observability db-switchover db-failover db-rejoin
 
 # Use a system pre-commit if present, otherwise the one installed by `make setup`.
 VENV       := .venv
@@ -84,6 +84,9 @@ publication-plan: ## Plan trusted OCI publication (requires workflow environment
 publish-module: ## Publish one approved module artifact (requires workflow environment variables)
 	$(VENV)/bin/python -m scripts.publish_modules publish
 
+release-baseline: ## Freeze tested main artifacts as an iteration baseline (protected workflow only)
+	$(VENV)/bin/python -m scripts.release_baseline
+
 publication-login: ## Authenticate Helm to GHCR using the job token through stdin
 	@printf '%s' "$$GH_TOKEN" | helm registry login ghcr.io --username "$$GITHUB_ACTOR" --password-stdin
 
@@ -98,6 +101,9 @@ dev-status: ## Show cluster/container CPU, RAM, readiness, requests and limits
 
 dev-metrics: ## Enable bundled metrics-server on the three owned clusters
 	@bash scripts/multi-cluster.sh metrics
+
+dev-observability: ## Forward opt-in Grafana to http://127.0.0.1:3000 (foreground)
+	@bash scripts/multi-cluster.sh observability
 
 db-switchover: ## Move the CNPG writer using demotion/promotion tokens (DATABASE_TARGET=pg-b)
 	@bash scripts/multi-cluster.sh switchover

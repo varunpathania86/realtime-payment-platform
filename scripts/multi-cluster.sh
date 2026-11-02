@@ -51,9 +51,16 @@ configuration() {
 
 resize_profile() {
   local profile="$1"
+  node_budget "$profile"
   [ "$(docker inspect "$profile" --format '{{index .Config.Labels "name.minikube.sigs.k8s.io"}}')" = "$profile" ] ||
     { echo "Refusing node budget update: container identity mismatch for $profile" >&2; return 1; }
   docker update --cpus="$NODE_CPUS" --memory="${NODE_MEMORY}m" --memory-swap="$((NODE_MEMORY * 2))m" "$profile"
+}
+
+node_budget() {
+  local profile="$1" settings
+  settings=$(jq -r --arg key "${profile: -1}" '(.nodes[$key] // .node) | "\(.cpus) \(.memory_mib)"' "$STATE/configuration.json")
+  read -r NODE_CPUS NODE_MEMORY <<< "$settings"
 }
 
 require_owned() {
@@ -109,6 +116,7 @@ start_profiles() {
   gateway=$(docker network inspect "$NETWORK" --format '{{(index .IPAM.Config 0).Gateway}}')
   prefix="${gateway%.*}"
   for profile in "${PROFILES[@]}"; do
+    node_budget "$profile"
     if [ -n "${REJOIN_PROFILE:-}" ] && [ "$profile" != "$REJOIN_PROFILE" ]; then
       index=$((index + 1))
       continue
@@ -155,7 +163,7 @@ inventory() {
   fi
   mv "$STATE/topology.pending.json" "$STATE/topology.tfvars.json"
   if [ -f "$STATE/configuration.json" ]; then
-    jq --slurpfile config "$STATE/configuration.json" '. + {cluster_sizes:$config[0].clusters}' \
+    jq --slurpfile config "$STATE/configuration.json" '. + {cluster_sizes:$config[0].clusters, observability_enabled:($config[0].observability // false)}' \
       "$STATE/topology.tfvars.json" > "$STATE/topology.pending.json"
     mv "$STATE/topology.pending.json" "$STATE/topology.tfvars.json"
   fi
@@ -271,6 +279,13 @@ rejoin() {
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   case "$ACTION" in
+    observability)
+      require_owned
+      jq -e '.observability == true' "$STATE/configuration.json" >/dev/null ||
+        { echo "Observability is disabled; select an explicit DEV_CONFIG with make dev-up first" >&2; exit 1; }
+      exec kubectl --context "${PROFILES[0]}" -n telemetry port-forward --address 127.0.0.1 \
+        service/grafana "${GRAFANA_PORT:-3000}:3000"
+      ;;
     up)
       claim
       [ ! -f "$STATE/database-fence.json" ] || { echo "Fenced member must not be restarted; use dev-update or db-rejoin" >&2; exit 1; }
@@ -358,7 +373,7 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
       tf validate
       ;;
     *)
-      echo "Usage: $0 up|update|status|metrics|switchover|failover|rejoin|down|cluster-down|validate" >&2
+      echo "Usage: $0 up|update|status|metrics|observability|switchover|failover|rejoin|down|cluster-down|validate" >&2
       exit 2
       ;;
   esac

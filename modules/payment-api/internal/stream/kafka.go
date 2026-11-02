@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 	"time"
@@ -14,6 +15,10 @@ import (
 	"github.com/segmentio/kafka-go/sasl/scram"
 	"github.com/varunpathania86/realtime-payment-platform/modules/payment-api/internal/event"
 	"github.com/varunpathania86/realtime-payment-platform/modules/payment-api/internal/postgres"
+	"github.com/varunpathania86/realtime-payment-platform/modules/payment-api/internal/telemetry"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type Kafka struct {
@@ -149,14 +154,65 @@ func validateReplicas(partitions []kafka.Partition, factor int) error {
 }
 
 func (k *Kafka) Publish(ctx context.Context, topic string, id uint32, codec *event.Codec, message postgres.Publication) error {
+	ctx, span := telemetry.Start(ctx, "payment.initiated publish", trace.SpanKindProducer,
+		attribute.String("messaging.system", "kafka"),
+		attribute.String("messaging.destination.name", topic),
+		attribute.String("messaging.operation.type", "send"),
+		attribute.String("event_id", message.Event.ID),
+		attribute.String("payment_id", message.Event.Payload.PaymentID))
+	defer span.End()
+	start := time.Now()
 	data, err := codec.Encode(id, message.Event)
 	if err != nil {
+		span.SetStatus(codes.Error, "event_encoding_failed")
 		return err
 	}
-	return k.writer.WriteMessages(ctx, kafka.Message{
+	headers := Headers{{Key: "event_id", Value: []byte(message.Event.ID)}}
+	telemetry.Propagator.Inject(ctx, &headers)
+	err = k.writer.WriteMessages(ctx, kafka.Message{
 		Topic: topic, Key: []byte(message.AccountID), Value: data,
-		Headers: []kafka.Header{{Key: "event_id", Value: []byte(message.Event.ID)}},
+		Headers: []kafka.Header(headers),
 	})
+	if err != nil {
+		span.SetStatus(codes.Error, "publication_failed")
+	}
+	outcome := "success"
+	if err != nil {
+		outcome = "error"
+	}
+	telemetry.Observe(ctx, telemetry.PublishDuration.WithLabelValues(outcome), time.Since(start).Seconds())
+	slog.InfoContext(ctx, "kafka_publication", "event_id", message.Event.ID,
+		"payment_id", message.Event.Payload.PaymentID, "success", err == nil)
+	return err
+}
+
+type Headers []kafka.Header
+
+func (h *Headers) Get(key string) string {
+	for _, header := range *h {
+		if header.Key == key {
+			return string(header.Value)
+		}
+	}
+	return ""
+}
+
+func (h *Headers) Set(key, value string) {
+	for index := range *h {
+		if (*h)[index].Key == key {
+			(*h)[index].Value = []byte(value)
+			return
+		}
+	}
+	*h = append(*h, kafka.Header{Key: key, Value: []byte(value)})
+}
+
+func (h *Headers) Keys() []string {
+	keys := make([]string, len(*h))
+	for index, header := range *h {
+		keys[index] = header.Key
+	}
+	return keys
 }
 
 func (k *Kafka) Reader(topic, group string) *kafka.Reader {

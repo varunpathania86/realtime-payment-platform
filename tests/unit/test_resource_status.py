@@ -32,6 +32,16 @@ STATS = {"CPUPerc": "45.00%", "MemUsage": "1.5GiB / 3GiB", "MemPerc": "50.00%"}
 
 
 class ResourceStatusTests(unittest.TestCase):
+    def test_opt_in_telemetry_workloads_are_included(self):
+        pod = deepcopy(POD)
+        pod["metadata"] = {"namespace": "telemetry", "name": "tempo"}
+        metrics = deepcopy(METRICS)
+        metrics["items"][0]["metadata"] = pod["metadata"]
+        rows, missing = workload_rows("lab-a", {"items": [pod]}, metrics)
+        self.assertEqual(missing, [])
+        self.assertEqual(rows[0][1:3], ["telemetry", "tempo"])
+        self.assertEqual(rows[0][7:9], ["123.5", "341.8"])
+
     def test_quantity_units_and_exact_resource_format(self):
         for value in ("1", "1000m", "1000000u", "1000000000n", "1e0"):
             self.assertEqual(resource(value, "cpu"), "1000.0")

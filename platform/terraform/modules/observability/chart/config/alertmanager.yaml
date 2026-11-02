@@ -1,0 +1,8 @@
+route:
+  receiver: local
+  group_by: [alertname, cluster]
+  group_wait: 10s
+  group_interval: 1m
+  repeat_interval: 1h
+receivers:
+  - name: local

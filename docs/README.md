@@ -22,6 +22,10 @@ All design documentation lives here, written in Markdown with Mermaid diagrams. 
 | [adr/ADR-016-local-cross-cluster-kafka.md](adr/ADR-016-local-cross-cluster-kafka.md) | Three independent Minikube clusters, replicated Kafka, budgets and shared-host limitations |
 | [adr/ADR-017-full-stack-cross-cluster-replication.md](adr/ADR-017-full-stack-cross-cluster-replication.md) | Opt-in full-stack placement, distributed CNPG, required synchronous durability and controlled recovery |
 | [adr/ADR-018-configurable-kubernetes-topology.md](adr/ADR-018-configurable-kubernetes-topology.md) | Portable per-cluster workload counts, local node budgets and unified developer commands |
+| [adr/ADR-019-shared-observability-backends.md](adr/ADR-019-shared-observability-backends.md) | Per-cluster OpenTelemetry collectors, shared backends, correlation standards and future lineage boundary |
+| [runbooks/observability.md](runbooks/observability.md) | Opt-in Grafana access, metrics-to-traces-to-logs investigation and initial alerts |
+| [adr/ADR-020-iteration-baseline-release.md](adr/ADR-020-iteration-baseline-release.md) | Stage 4 frozen module/solution baselines without deployment or PI schedule changes |
+| [runbooks/iteration-baseline.md](runbooks/iteration-baseline.md) | Protected manual baseline release, exact digests, conflicts and safe reruns |
 | [adr/](adr/) | Architecture Decision Records |
 | [runbooks/](runbooks/) | Operational procedures |
 

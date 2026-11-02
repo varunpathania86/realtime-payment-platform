@@ -14,6 +14,7 @@ import (
 	"github.com/varunpathania86/realtime-payment-platform/modules/payment-api/internal/httpapi"
 	"github.com/varunpathania86/realtime-payment-platform/modules/payment-api/internal/postgres"
 	"github.com/varunpathania86/realtime-payment-platform/modules/payment-api/internal/stream"
+	"github.com/varunpathania86/realtime-payment-platform/modules/payment-api/internal/telemetry"
 )
 
 var (
@@ -56,7 +57,7 @@ func run(ctx context.Context, server *http.Server) error {
 }
 
 func main() {
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+	slog.SetDefault(slog.New(telemetry.CorrelationHandler{Handler: slog.NewJSONHandler(os.Stdout, nil)}))
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	if err := execute(ctx); err != nil {
@@ -73,6 +74,22 @@ func execute(ctx context.Context) error {
 	if len(os.Args) > 2 || (mode != "" && mode != "migrate" && mode != "relay" && mode != "consumer") {
 		return errors.New("usage: payment-api [migrate|relay|consumer]")
 	}
+	service := "payment-api"
+	if mode != "" {
+		service += "-" + mode
+	}
+	slog.SetDefault(slog.Default().With("service.name", service, "service.version", version))
+	shutdown, err := telemetry.Configure(ctx, service, version)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		stop, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		if err := shutdown(stop); err != nil {
+			slog.Warn("telemetry_shutdown_failed", "error_type", "dependency_unavailable")
+		}
+	}()
 	store, err := postgres.Open(os.Getenv("DATABASE_URL"))
 	if err != nil {
 		return err
@@ -125,6 +142,17 @@ func runWorker(ctx context.Context, store *postgres.Store, mode string) error {
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	backlogStopped := make(chan struct{})
+	go func() {
+		defer close(backlogStopped)
+		if mode == "relay" {
+			store.ObserveBacklog(ctx)
+		}
+	}()
+	defer func() {
+		cancel()
+		<-backlogStopped
+	}()
 	finished := make(chan error, 1)
 	go func() {
 		if mode == "relay" {
@@ -135,6 +163,7 @@ func runWorker(ctx context.Context, store *postgres.Store, mode string) error {
 		cancel()
 	}()
 	mux := http.NewServeMux()
+	mux.Handle("GET /metrics", telemetry.Metrics())
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
 		probe, cancel := context.WithTimeout(r.Context(), 2*time.Second)

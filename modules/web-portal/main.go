@@ -5,7 +5,7 @@ import (
 	"context"
 	"errors"
 	"io/fs"
-	"log"
+	"log/slog"
 	"mime"
 	"net/http"
 	"os"
@@ -16,8 +16,18 @@ import (
 	"time"
 )
 
+var version = "dev"
+
 func handler(files fs.FS) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	proxy := &telemetryProxy{endpoint: strings.TrimRight(os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"), "/"),
+		client: &http.Client{Timeout: 2 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		}}}
+	return instrumentPortal(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/telemetry/") {
+			proxy.serve(w, r)
+			return
+		}
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Cache-Control", "no-store")
 		if r.URL.Path == "/healthz" || r.URL.Path == "/readyz" {
@@ -57,7 +67,7 @@ func handler(files fs.FS) http.Handler {
 			w.Header().Set("Content-Type", contentType)
 		}
 		http.ServeContent(w, r, name, time.Time{}, bytes.NewReader(content))
-	})
+	}))
 }
 
 func newServer(addr string, files fs.FS) *http.Server {
@@ -82,7 +92,7 @@ func run(ctx context.Context, server *http.Server) error {
 		shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := server.Shutdown(shutdown); err != nil {
-			log.Printf("graceful shutdown: %v", err)
+			slog.Error("graceful_shutdown_failed")
 			_ = server.Close()
 		}
 	}()
@@ -95,8 +105,22 @@ func run(ctx context.Context, server *http.Server) error {
 }
 
 func main() {
+	slog.SetDefault(slog.New(correlationHandler{slog.NewJSONHandler(os.Stdout, nil)}).
+		With("service.name", "web-portal", "service.version", version))
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+	shutdown, err := configureTelemetry(ctx)
+	if err != nil {
+		slog.Error("telemetry_configuration_failed")
+		os.Exit(1)
+	}
+	defer func() {
+		ctx, stop := context.WithTimeout(context.Background(), 3*time.Second)
+		defer stop()
+		if err := shutdown(ctx); err != nil {
+			slog.Warn("telemetry_shutdown_failed")
+		}
+	}()
 	addr := os.Getenv("HTTP_ADDR")
 	if addr == "" {
 		addr = ":8080"
@@ -107,10 +131,12 @@ func main() {
 	}
 	files := os.DirFS(dir)
 	if _, err := fs.Stat(files, "index.html"); err != nil {
-		log.Fatalf("static build unavailable; run make build: %v", err)
+		slog.Error("static_build_unavailable", "hint", "run make build")
+		os.Exit(1)
 	}
-	log.Printf("web-portal listening on %s", addr)
+	slog.Info("server_listening", "service.name", "web-portal", "address", addr)
 	if err := run(ctx, newServer(addr, files)); err != nil {
-		log.Fatal(err)
+		slog.Error("server_failed")
+		os.Exit(1)
 	}
 }

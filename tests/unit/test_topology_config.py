@@ -11,6 +11,37 @@ from scripts.module_catalog import ROOT
 
 
 class TopologyConfigurationTests(unittest.TestCase):
+    def test_explicit_observability_and_per_node_budgets(self):
+        config = json.loads((ROOT / "templates/observability-topology.json").read_text())
+        settings = validate(config)
+        self.assertTrue(settings["observability"])
+        self.assertEqual(settings["nodes"]["a"], {"cpus": 3, "memory_mib": 5120})
+        self.assertEqual(settings["node"]["memory_mib"], 3072)
+        inherited = validate({"node": {"cpus": 4}, "nodes": {"a": {"memory_mib": 5120}}})
+        self.assertEqual(inherited["nodes"]["a"]["cpus"], 4)
+        for invalid in (
+            {"observability": "yes"}, {"nodes": {"d": {}}},
+            {"nodes": {"a": {"memory_mib": 1024}}}, {"nodes": []},
+        ):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                validate(invalid)
+
+    def test_shell_selects_each_node_budget_before_starting(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / "configuration.json"
+            config.write_text(json.dumps(validate({
+                "nodes": {"a": {"cpus": 3, "memory_mib": 5120}},
+            })))
+            script = shlex.quote(str(ROOT / "scripts/multi-cluster.sh"))
+            command = (
+                f". {script}; STATE={shlex.quote(directory)}; "
+                'node_budget verify-a; echo "$NODE_CPUS $NODE_MEMORY"; '
+                'node_budget verify-b; echo "$NODE_CPUS $NODE_MEMORY"'
+            )
+            result = subprocess.run(["bash", "-c", command], capture_output=True, text=True, cwd=ROOT)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.strip().splitlines(), ["3 5120", "2 3072"])
+
     def test_defaults_and_independent_cluster_counts(self):
         self.assertEqual(validate({}), {"node": {"cpus": 2, "memory_mib": 3072}, "clusters": {}})
         sizes = {"a": {
@@ -69,7 +100,8 @@ class TopologyConfigurationTests(unittest.TestCase):
                 "/usr/bin/env",
                 "bash",
                 "-lc",
-                f"DEV_PROFILE=rpp-stale . {script_path}; STATE={state_value}; stale_lock_cleanup; test ! -e {lock_value}",
+                f"DEV_PROFILE=rpp-stale . {script_path}; STATE={state_value}; "
+                f"pgrep() {{ return 1; }}; stale_lock_cleanup; test ! -e {lock_value}",
             ]
             result = subprocess.run(command, capture_output=True, text=True, cwd=ROOT)
             self.assertEqual(result.returncode, 0, result.stderr)

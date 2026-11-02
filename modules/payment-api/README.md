@@ -98,6 +98,44 @@ payment lifetime; tenant scoping is deferred until identity is introduced.
 | `VERSION` | `dev` | Make variable / image build argument |
 | `COMMIT` | `unknown` | Make variable / image build argument |
 | `GO_VERSION` | None | Required image build argument from root `.tool-versions` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Unset (export disabled) | Optional OTLP/HTTP collector origin; no credentials, query, or path |
+| `OTEL_CLUSTER_NAME` | Unset | Cluster resource identity when exporting traces |
+
+### Stage 4 telemetry
+
+The API and worker processes use OpenTelemetry for bounded-route HTTP spans,
+standard `otelhttp` server instrumentation with privacy-safe request metadata,
+ready-made `database/sql` tracing through `otelsql`, and custom Kafka
+producer/receipt-processing spans. SQL text, parameter values, and raw database
+errors are excluded. The optional exporter uses a bounded asynchronous queue
+and short export/shutdown deadlines; collector availability does not gate
+application startup. Export failures are logged explicitly without endpoint
+credentials. The initial local trace sampling rate is 100%, not a production
+sampling policy.
+Unparented health probes and idle SQL polling do not create traces; HTTP RED
+metrics still include probes, and browser-propagated status requests retain
+their trace. SQL spans are recorded only inside an existing valid trace,
+avoiding a stream of unrelated polling roots.
+
+Migration 5 adds trace-context columns to the outbox without changing event
+schemas or applied migrations. The creation transaction persists W3C
+`traceparent`/`tracestate`; an idempotent retry cannot replace the original
+context. The relay restores it and injects producer context into Kafka headers;
+receipt processing continues that trace. Older/backfilled events with no
+context remain valid and start a new trace. Unrestricted baggage is not copied.
+Structured JSON request, publication and receipt logs correlate trace/span
+IDs and relevant event/payment IDs without logging payloads or raw URLs.
+
+`GET /metrics` exports bounded HTTP request counters/duration histograms,
+Kafka publication duration/outcomes, receipt effects/deduplication and pending
+outbox count/age. Sampled trace IDs appear only in exemplars, not metric labels.
+Relays observe backlog every 15 seconds with a two-second SQL deadline.
+The opt-in local workflow wires Collector origins and cluster identity into the
+API/workers; existing commands work without monitoring. See the
+[developer guide](../../docs/developer-setup.md#stage-4-opt-in-shared-observability)
+and [observability runbook](../../docs/runbooks/observability.md).
+For architecture and lineage boundaries, see
+[ADR-019](../../docs/adr/ADR-019-shared-observability-backends.md).
 
 Status routes accept only `GET`, including rejection of `HEAD` with `405` and
 `Allow: GET`. Responses are JSON and are not cached:

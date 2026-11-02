@@ -13,8 +13,11 @@ or a partial failure leaves a revision reservation without a publication record.
 
 Stage 1 publishes module OCI images/data bundles and accompanying Helm charts.
 Modules without Dockerfiles are explicitly skipped; modules without charts
-remain image-only, such as `event-contracts`. Promotion, cleanup, solution releases,
-Git tags/GitHub Releases, and automated stable-version PRs are **not implemented**.
+remain image-only, such as `event-contracts`. Stage 4 adds a separate manual
+iteration-baseline release workflow for module/solution manifests and namespaced
+Git tags/GitHub prereleases. See [the baseline runbook](runbooks/iteration-baseline.md).
+Deployment, RC/production promotion, cleanup and automated stable-version PRs
+remain **not implemented**.
 The existing deployment workflow is still a placeholder.
 
 Branch tags are replaceable; main revision tags must not change digest.
@@ -170,8 +173,9 @@ For an image-producing module with `chart/Chart.yaml`, the publisher:
 Images and charts share a module version but have different OCI repositories
 and digests. Main revision chart tags are immutable; branch chart tags may move.
 Local source chart versions are packaging scaffolding, not stable catalog versions.
-Promotion will need to preserve both digests without rebuilding; it is not
-implemented by this slice.
+The separate Stage 4 baseline workflow preserves both digests without rebuilding:
+it adds an image baseline tag and references the original chart version/digest
+in the release manifest instead of repackaging the chart.
 
 If the image succeeds but chart publication fails, no completed publication
 record is written. Rerun: matching-source image annotations allow image reuse,
@@ -187,7 +191,8 @@ publication run URL, and SBOM/provenance index references. Every publication
 uploads JSON evidence to the Actions run for 90 days. Branch evidence is temporary;
 branch tags may move. Main state is durable; neither state nor artifacts are
 deleted by this slice. These are publication records, not promoted release
-manifests; promotion will create the immutable release records and namespaced tags.
+manifests; the separate baseline workflow creates release records and namespaced
+tags from verified selections.
 
 ## Mitigation
 
@@ -230,5 +235,7 @@ offline tests; a real approved run is required.
 Keep all permanent and temporary release state outside stable catalog fields.
 Never grant publication to fork PRs. Do not enable the deploy placeholder as a
 replacement for publishing or promotion.
-Stage 17 owns protected iteration/RC/production promotion with exact digest
-reuse, solution releases, stable-version PRs, and verified cleanup.
+Stage 4 brings forward iteration-baseline releases with exact digest reuse;
+chart packages keep their original integrated versions/digests. Stage 17 retains
+GitOps, RC/production promotion, stable-version PRs and verified cleanup.
+Deployment is deferred; the Deploy workflow remains a placeholder.

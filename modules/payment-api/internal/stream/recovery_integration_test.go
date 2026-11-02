@@ -27,6 +27,11 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 	"github.com/varunpathania86/realtime-payment-platform/modules/payment-api/internal/payment"
 	"github.com/varunpathania86/realtime-payment-platform/modules/payment-api/internal/postgres"
+	"github.com/varunpathania86/realtime-payment-platform/modules/payment-api/internal/telemetry"
+	"go.opentelemetry.io/otel"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func containerPin(t *testing.T, name string) string {
@@ -72,6 +77,13 @@ func startContainer(t *testing.T, ctx context.Context, request testcontainers.Co
 func TestKafkaCrashRecovery(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 	defer cancel()
+	recorder := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	previous := otel.GetTracerProvider()
+	otel.SetTracerProvider(provider)
+	t.Cleanup(func() { otel.SetTracerProvider(previous) })
+	ctx, origin := telemetry.Start(ctx, "synthetic payment request", trace.SpanKindServer)
+	defer origin.End()
 	pg := startContainer(t, ctx, testcontainers.ContainerRequest{
 		Image: "postgres:" + containerPin(t, "postgres"), ExposedPorts: []string{"5432/tcp"},
 		Env:        map[string]string{"POSTGRES_USER": "synthetic", "POSTGRES_PASSWORD": "integration-only", "POSTGRES_DB": "payments"},
@@ -269,6 +281,11 @@ group.initial.rebalance.delay.ms=0
 	if err != nil || redelivered != decoded || string(second.Key) != p.AccountID {
 		t.Fatalf("unstable redelivery: %+v %v", redelivered, err)
 	}
+	headers := Headers(second.Headers)
+	producerContext := trace.SpanContextFromContext(telemetry.Propagator.Extract(context.Background(), &headers))
+	if producerContext.TraceID() != origin.SpanContext().TraceID() || !producerContext.IsRemote() {
+		t.Fatal("real Kafka redelivery lost the original request trace")
+	}
 	inserted, err = store.RecordReceipt(ctx, postgres.Publication{Event: redelivered, AccountID: string(second.Key)})
 	if err != nil || inserted {
 		t.Fatalf("duplicate effect: %v %v", inserted, err)
@@ -300,6 +317,16 @@ group.initial.rebalance.delay.ms=0
 	var count int
 	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM payment_event_receipts").Scan(&count); err != nil || count != 1 {
 		t.Fatalf("not exactly one consumer effect after broker replay: %d %v", count, err)
+	}
+	correlated := false
+	for _, span := range recorder.Ended() {
+		if span.Name() == "payment.initiated process" && span.Parent().SpanID() == producerContext.SpanID() &&
+			span.SpanContext().TraceID() == origin.SpanContext().TraceID() {
+			correlated = true
+		}
+	}
+	if !correlated {
+		t.Fatal("consumer processing span was not a child of the redelivered Kafka producer")
 	}
 }
 

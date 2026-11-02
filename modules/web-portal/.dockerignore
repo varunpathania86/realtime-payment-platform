@@ -6,6 +6,7 @@
 !src/
 !src/**
 !go.mod
+!go.sum
 !*.go
 **/.env
 **/.env.*

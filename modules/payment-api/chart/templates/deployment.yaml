@@ -9,8 +9,10 @@ spec:
       app.kubernetes.io/name: {{ .Release.Name }}
   template:
     metadata:
-      {{- if .Values.database.revision }}
       annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+      {{- if .Values.database.revision }}
         database-configuration: {{ .Values.database.revision | quote }}
       {{- end }}
       labels:
@@ -45,6 +47,7 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
             {{- include "payment-api.databaseEnv" . | nindent 12 }}
+            {{- include "payment-api.telemetryEnv" . | nindent 12 }}
           ports:
             - name: http
               containerPort: 8080

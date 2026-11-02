@@ -1,0 +1,10 @@
+{
+  "uid": "payments", "title": "Payment execution", "schemaVersion": 39,
+  "time": {"from": "now-15m", "to": "now"}, "refresh": "10s",
+  "panels": [
+    {"id": 1, "type": "timeseries", "title": "API latency p95 (open exemplars for traces)", "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8}, "datasource": {"uid": "prometheus", "type": "prometheus"}, "targets": [{"refId": "A", "expr": "histogram_quantile(0.95, sum by (le, route) (rate(rpp_http_request_duration_seconds_bucket[5m])))", "exemplar": true}]},
+    {"id": 2, "type": "timeseries", "title": "HTTP request rate", "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8}, "datasource": {"uid": "prometheus", "type": "prometheus"}, "targets": [{"refId": "A", "expr": "sum by (status) (rate(rpp_http_requests_total[5m]))"}]},
+    {"id": 3, "type": "timeseries", "title": "Oldest pending outbox age", "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8}, "datasource": {"uid": "prometheus", "type": "prometheus"}, "targets": [{"refId": "A", "expr": "max(rpp_outbox_oldest_pending_age_seconds)"}]},
+    {"id": 4, "type": "timeseries", "title": "Receipt consumer lag (records; -1 = no offset)", "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8}, "datasource": {"uid": "prometheus", "type": "prometheus"}, "targets": [{"refId": "A", "expr": "kafka_consumer_group_lag_ratio"}]}
+  ]
+}
