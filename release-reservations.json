@@ -318,6 +318,25 @@
       "integrated": true,
       "iteration": 1,
       "module": "web-portal",
+      "publication": {
+        "approvedImpact": "patch",
+        "branch": "main",
+        "chart": {
+          "digest": "sha256:906cb25dc305319a1f335a60694364f69e45212979a860372d6b518cd9619b84",
+          "repository": "ghcr.io/varunpathania86/charts/web-portal",
+          "version": "0.0.1-it1-rv.4"
+        },
+        "digest": "sha256:9adb54051419586b9484fa47c07924311f2d26acad9e4cf4d026c6748888ac58",
+        "module": "web-portal",
+        "provenance": "ghcr.io/varunpathania86/web-portal@sha256:9adb54051419586b9484fa47c07924311f2d26acad9e4cf4d026c6748888ac58",
+        "repository": "ghcr.io/varunpathania86/web-portal",
+        "sbom": "ghcr.io/varunpathania86/web-portal@sha256:9adb54051419586b9484fa47c07924311f2d26acad9e4cf4d026c6748888ac58",
+        "schemaVersion": 1,
+        "sourceCommit": "ba14bb56fc81d99238740f9bd7ff888a85ff1301",
+        "testRun": "https://github.com/varunpathania86/realtime-payment-platform/actions/runs/41541070609",
+        "version": "0.0.1-it1-rv.4",
+        "workflowRun": "https://github.com/varunpathania86/realtime-payment-platform/actions/runs/41541649938"
+      },
       "registry": "ghcr.io/varunpathania86",
       "releaseLine": "main",
       "reservedVersion": "0.0.1-it1-rv.4",
