@@ -281,6 +281,20 @@
       "reservedVersion": "0.0.1-it1-rv.3",
       "sourceCommit": "2843f3cf1be4bd1e42e71f5eaa05441c8ef50117",
       "targetVersion": "0.0.1"
+    },
+    {
+      "approvedImpact": "patch",
+      "branch": "main",
+      "chartRegistry": "oci://ghcr.io/varunpathania86/charts",
+      "counter": 4,
+      "integrated": true,
+      "iteration": 1,
+      "module": "event-contracts",
+      "registry": "ghcr.io/varunpathania86",
+      "releaseLine": "main",
+      "reservedVersion": "0.0.1-it1-rv.4",
+      "sourceCommit": "ba14bb56fc81d99238740f9bd7ff888a85ff1301",
+      "targetVersion": "0.0.1"
     }
   ],
   "schemaVersion": 1
