@@ -6,7 +6,7 @@
 
 ## Symptoms
 
-- `make cluster-up` hangs or fails pulling images
+- `make dev-up` hangs or fails pulling images
 - `docker info` cannot reach the daemon
 - Disk full inside WSL, or `ext4.vhdx` keeps growing
 - Slow file access or builds
@@ -20,20 +20,26 @@ Local cluster and builds are unavailable. No data loss unless the disk is full d
 1. Name resolution and connectivity: `curl -sI https://github.com | head -1`. A failure points at DNS or VPN.
 2. Docker daemon: `docker info | head -5`. If it fails, start Docker Desktop or `sudo service docker start`.
 3. Disk usage inside WSL: `df -h /` and `docker system df`.
-4. Cluster state: `make cluster-status`.
+4. Cluster state: `make dev-status DEV_PROFILE=<owned-base>`.
 5. Location of the repo: `pwd` must start with `/home/`, not `/mnt/c`.
 
 ## Mitigation
 
 - **DNS or VPN problems:** restart WSL from Windows with `wsl --shutdown`. If DNS stays broken, set `generateResolvConf = false` in `/etc/wsl.conf` and write a working nameserver to `/etc/resolv.conf`.
 - **Docker not reachable:** enable WSL integration in Docker Desktop for this distribution, or start the Docker Engine service.
-- **Disk pressure:** `docker system prune -af` (removes unused images and containers), or `make cluster-down` then `make cluster-up` to recreate the cluster.
+- **Disk pressure:** inspect Docker usage and remove only reviewed unused resources.
+  To deliberately recreate a disposable owned lab, run `make dev-down`, then
+  `make cluster-down`, then `make dev-up` with the same `DEV_PROFILE`.
+  This destroys its database/Kafka data; never use another developer's base.
 - **Shrink the WSL disk:** run `wsl --shutdown`, then in Windows PowerShell run `Optimize-VHD -Path <path to ext4.vhdx> -Mode Full` (requires Hyper-V tools).
-- **Not enough memory:** raise limits in `%UserProfile%\.wslconfig` (`memory=`, `processors=`) and run `wsl --shutdown`; lower cluster size with `MINIKUBE_MEMORY=6144 make cluster-up`.
+- **Not enough memory:** raise limits in `%UserProfile%\.wslconfig` (`memory=`, `processors=`) and run `wsl --shutdown`.
+  Configure node budgets using `DEV_CONFIG` as described in the
+  [developer guide](../developer-setup.md#configuring-counts-and-benchmark-node-budgets);
+  the default is 3072 MiB / two CPUs for each of three independent nodes.
 
 ## Verification
 
-`make doctor` passes and `make cluster-status` shows the node `Ready`.
+`make doctor` passes and `make dev-status` shows all three nodes `Ready`.
 
 ## Prevention and follow-up
 

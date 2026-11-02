@@ -1,0 +1,117 @@
+{{- if .Values.events.enabled }}
+{{- range $mode := list "relay" "consumer" }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $.Release.Name }}-{{ $mode }}
+spec:
+  replicas: {{ index $.Values.events (printf "%sReplicas" $mode) }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $.Release.Name }}-{{ $mode }}
+  template:
+    metadata:
+      {{- if $.Values.database.revision }}
+      annotations:
+        database-configuration: {{ $.Values.database.revision | quote }}
+      {{- end }}
+      labels:
+        app.kubernetes.io/name: {{ $.Release.Name }}-{{ $mode }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: migrate
+          image: "{{ include "payment-api.image" $ }}"
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          args: ["migrate"]
+          {{- include "payment-api.databaseMount" $ | nindent 10 }}
+          env:
+            {{- include "payment-api.databaseEnv" $ | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            {{- toYaml $.Values.resources | nindent 12 }}
+      containers:
+        - name: {{ $mode }}
+          image: "{{ include "payment-api.image" $ }}"
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          args: [{{ $mode | quote }}]
+          env:
+            {{- include "payment-api.databaseEnv" $ | nindent 12 }}
+            - name: KAFKA_BROKERS
+              value: {{ required "events.brokers is required" $.Values.events.brokers | quote }}
+            - name: KAFKA_CA_FILE
+              value: /etc/payment-events/ca.pem
+            - name: KAFKA_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.events.existingSecret | quote }}
+                  key: KAFKA_USERNAME
+            - name: KAFKA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.events.existingSecret | quote }}
+                  key: KAFKA_PASSWORD
+            - name: REGISTRY_URL
+              value: {{ required "events.registryURL is required" $.Values.events.registryURL | quote }}
+            - name: PAYMENT_TOPIC
+              value: {{ $.Values.events.topic | quote }}
+            - name: KAFKA_REPLICATION_FACTOR
+              value: {{ $.Values.events.replicationFactor | quote }}
+            - name: EVENT_SCHEMA_FILE
+              value: /etc/payment-schema/payment-initiated-v1.avsc
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            {{- toYaml $.Values.resources | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 2
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 3
+          volumeMounts:
+            {{- if $.Values.database.tls }}
+            - name: database-ca
+              mountPath: /etc/payment-database
+              readOnly: true
+            {{- end }}
+            - name: events
+              mountPath: /etc/payment-events
+              readOnly: true
+            - name: schema
+              mountPath: /etc/payment-schema
+              readOnly: true
+      volumes:
+        {{- include "payment-api.databaseVolume" $ | nindent 8 }}
+        - name: events
+          secret:
+            secretName: {{ $.Values.events.existingSecret | quote }}
+            items:
+              - key: ca.pem
+                path: ca.pem
+        - name: schema
+          configMap:
+            name: {{ $.Values.events.schemaConfigMap | quote }}
+{{- end }}
+{{- end }}

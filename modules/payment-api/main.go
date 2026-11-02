@@ -7,11 +7,13 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
 	"github.com/varunpathania86/realtime-payment-platform/modules/payment-api/internal/httpapi"
 	"github.com/varunpathania86/realtime-payment-platform/modules/payment-api/internal/postgres"
+	"github.com/varunpathania86/realtime-payment-platform/modules/payment-api/internal/stream"
 )
 
 var (
@@ -64,15 +66,19 @@ func main() {
 }
 
 func execute(ctx context.Context) error {
-	if len(os.Args) > 2 || (len(os.Args) == 2 && os.Args[1] != "migrate") {
-		return errors.New("usage: payment-api [migrate]")
+	mode := ""
+	if len(os.Args) == 2 {
+		mode = os.Args[1]
+	}
+	if len(os.Args) > 2 || (mode != "" && mode != "migrate" && mode != "relay" && mode != "consumer") {
+		return errors.New("usage: payment-api [migrate|relay|consumer]")
 	}
 	store, err := postgres.Open(os.Getenv("DATABASE_URL"))
 	if err != nil {
 		return err
 	}
 	defer store.Close()
-	if len(os.Args) == 2 {
+	if mode == "migrate" {
 		migrationCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
 		if err := store.Migrate(migrationCtx); err != nil {
@@ -82,10 +88,75 @@ func execute(ctx context.Context) error {
 		slog.Info("migrations_applied")
 		return nil
 	}
+	if mode == "relay" || mode == "consumer" {
+		return runWorker(ctx, store, mode)
+	}
 	addr := os.Getenv("HTTP_ADDR")
 	if addr == "" {
 		addr = ":8080"
 	}
+
 	slog.Info("server_listening", "address", addr)
 	return run(ctx, newServer(addr, httpapi.New(store, slog.Default(), version, commit)))
+}
+
+func runWorker(ctx context.Context, store *postgres.Store, mode string) error {
+	k, err := stream.NewKafka(os.Getenv("KAFKA_BROKERS"), os.Getenv("KAFKA_CA_FILE"), os.Getenv("KAFKA_USERNAME"), os.Getenv("KAFKA_PASSWORD"))
+	if err != nil {
+		return err
+	}
+	defer k.Close()
+	if raw := os.Getenv("KAFKA_REPLICATION_FACTOR"); raw != "" {
+		factor, err := strconv.Atoi(raw)
+		if err != nil {
+			return errors.New("invalid KAFKA_REPLICATION_FACTOR")
+		}
+		if err := k.SetReplicationFactor(factor); err != nil {
+			return err
+		}
+	}
+	registry, err := stream.NewRegistry(os.Getenv("REGISTRY_URL"))
+	if err != nil {
+		return err
+	}
+	topic := os.Getenv("PAYMENT_TOPIC")
+	if topic == "" {
+		return errors.New("PAYMENT_TOPIC is required for workers")
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	finished := make(chan error, 1)
+	go func() {
+		if mode == "relay" {
+			finished <- stream.RunRelay(ctx, store, k, registry, topic, os.Getenv("EVENT_SCHEMA_FILE"))
+		} else {
+			finished <- stream.RunConsumer(ctx, store, k, registry, topic)
+		}
+		cancel()
+	}()
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
+	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
+		probe, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+		if err := store.Ready(probe); err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+	addr := os.Getenv("HTTP_ADDR")
+	if addr == "" {
+		addr = ":8080"
+	}
+	serverErr := run(ctx, newServer(addr, mux))
+	cancel()
+	workerErr := <-finished
+	if serverErr != nil {
+		return serverErr
+	}
+	if errors.Is(workerErr, context.Canceled) && ctx.Err() != nil {
+		return nil
+	}
+	return workerErr
 }

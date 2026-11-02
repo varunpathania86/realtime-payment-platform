@@ -63,7 +63,7 @@ These rules apply to the whole monorepo. Details for AI tools live in `AGENTS.md
   - **Promotion**: manually dispatched and permission-controlled; promote exact OCI digests through protected environments, create manifests/releases, and perform cleanup only after verification.
   - **Stable-version recording**: after successful production promotion, create a PR updating the stable catalog version; never push directly to protected `main`.
 - Self-hosted runners are used only for explicitly approved protected work, never for pull requests from forks.
-- Current implementation status: Stage 1 is accepted: locally verified Go/React applications, Terraform/Helm deployment, TFLint, separate Trivy scans, and protected image/chart publication are implemented. Main publication and same-source reruns were verified on 2026-10-28 with unchanged versions/digests. Stage 2 adds PostgreSQL-backed synthetic payments, durable idempotency, migrations, an OpenAPI contract, and integration tests on a separate branch; see [the developer guide](developer-setup.md#4-local-application-development). Promotion, cleanup, solution releases, and stable-version PRs remain Stage 17 work; see [the publication runbook](release-publication.md) and Section 19.
+- Current implementation status: Stages 1 and 2 are accepted, including local Go/React development, PostgreSQL payments/idempotency, and verified main image/chart publication. Stage 3 adds TLS/SCRAM Kafka, SQL-backed Apicurio, an atomic outbox, relay and idempotent receipt consumer on a separate branch; real broker crash/replay and local end-to-end checks have passed. See [the developer guide](developer-setup.md#4-local-application-development) and Section 19 for current verification and remaining acceptance work. Promotion, cleanup, solution releases, and stable-version PRs remain Stage 17 work; see [the publication runbook](release-publication.md).
 - Local application development is independent of those workflows. Stage 0
   supplies tools and Minikube lifecycle; Stage 1 supplies local image builds,
   image loading, Terraform/Helm deployment, updates, and smoke checks. No GitHub
@@ -136,7 +136,7 @@ Initially exclude:
 
 Minikube is not a production infrastructure environment. Therefore, describe the project as:
 
-> **Production-style code, automation, security, observability, testing, and operational practices running on local single-node infrastructure.**
+> **Production-style code, automation, security, observability, testing, and operational practices running on local infrastructure, with an opt-in three-cluster Kafka learning lab.**
 
 Do not claim local high availability. Demonstrate how the same deployment model can later move to an AWS development environment.
 
@@ -224,10 +224,12 @@ Do not make the community Minikube Terraform provider foundational.
 Use an idempotent bootstrap command:
 
 ```text
-make cluster-up
+make dev-up
 ```
 
-which runs an appropriately sized `minikube start --driver=docker` command. Terraform begins after the Kubernetes context exists.
+which bootstraps the three owned Kubernetes contexts with appropriately sized
+`minikube start --driver=docker` commands, then applies Terraform. Terraform
+begins after the contexts exist; reusable workload modules do not provision Minikube.
 
 This keeps Terraform learning focused on official Kubernetes, Helm, cloud, and infrastructure providers rather than coupling cluster lifecycle to a community provider.
 
@@ -577,6 +579,61 @@ Full profile
 
 These are starting estimates, not guarantees. Tune resource requests and limits from observed usage. `make full-up` must not be required for normal backend work.
 
+Stage 3 uses a three-cluster development lab: **three independent
+Minikube profiles, each 3072 MiB RAM and 2 CPUs**. Total node memory is 9216 MiB,
+with host/build overhead in addition. Each cluster runs one combined KRaft
+broker/controller by default; each also runs the application stack described below. The profiles share an
+owned Docker bridge, not a control plane. Broker requests start at 100m CPU /
+384 MiB with limits of 1 CPU / 512 MiB and a 256 MiB maximum JVM heap.
+This is a low-load learning baseline, not production
+capacity or physical HA. The optional setup raises host inotify instances to
+at least 1024 with sudo. See [the developer guide](developer-setup.md#stage-3-optional-three-cluster-kafka-lab)
+and [ADR-016](adr/ADR-016-local-cross-cluster-kafka.md). Stress-test observability
+remains Stage 4 work.
+
+The local lab exposes Docker node usage and per-workload-container CPU/RAM
+usage plus requests/limits through `make dev-status`. Minikube's bundled
+metrics-server addon supplies current pod metrics; `dev-up` enables it and
+`dev-metrics` upgrades existing labs. This is a read-only resource snapshot,
+not the Stage 4 instrumentation, historical monitoring, or dashboard stack.
+Missing metrics are explicitly unavailable and nonzero, not reported as zero.
+
+On 2026-11-02 the developer clarified that the target lab must replicate every
+implemented application across all three independent clusters, not just Kafka.
+The required extension is [ADR-017](adr/ADR-017-full-stack-cross-cluster-replication.md):
+API, portal, relay, consumer, Apicurio and ingress in each cluster, plus
+CloudNativePG distributed PostgreSQL with one primary and two standbys.
+Require acknowledgement from at least one synchronous standby and controlled
+cross-cluster promotion with fencing; do not silently fall back to asynchronous
+commits. Existing lab data is disposable only after separate replacement
+verification. This supersedes the A-only placement as the target. An unused base
+uses the full stack by default with `make dev-up`; the mode persists.
+Terraform installs a pinned CNPG operator and a distributed-cluster declaration
+in each Kubernetes cluster, initially with one instance each. Existing owned
+Kafka-only bases are preserved and cannot be converted in place. See
+[full-stack setup](developer-setup.md#stage-3-full-stack-three-cluster-lab)
+and [controlled recovery](runbooks/event-publication.md#cross-cluster-postgresql-recovery).
+Retain the 3072 MiB / two-CPU node budgets subject to full-stack verification.
+
+[ADR-018](adr/ADR-018-configurable-kubernetes-topology.md) extends Stage 3 with
+per-cluster Kafka broker, CNPG instance, application, relay, consumer, registry
+and ingress counts. `DEV_CONFIG` selects validated JSON settings and persists
+them for updates/rejoin. Node CPU/RAM budgets remain separate local-adapter
+settings. Additional Kafka brokers have independent identities/endpoints/PVCs;
+only the initial broker in each cluster is a controller, retaining three voters.
+Rack-aware placement spans Kubernetes clusters, but adding brokers does not
+rebalance existing partitions. Required remote synchronous PostgreSQL
+acknowledgement remains unchanged with additional local cascading replicas.
+Recovery follows CNPG's designated primary rather than assuming a pod ordinal.
+The public lifecycle is `dev-up`, `dev-update`, `dev-status`, `dev-down`,
+`cluster-down`, with `dev-access`/`smoke` selecting one member through
+`MINIKUBE_PROFILE`. The default base is `rpp` (`rpp-a/b/c`); `DEV_PROFILE` is
+an optional override for isolated labs. Historical verification records below
+retain the names actually tested. The earlier `rpp-multi` lab was intentionally
+retired on 2026-11-02; its data was not migrated. The old `multi-*` and
+single-cluster orchestration targets are removed; quality, setup and
+publication commands remain.
+
 ---
 
 # 7. Staged delivery roadmap
@@ -621,8 +678,9 @@ Create:
 ```text
 make setup           installs pinned tools from .tool-versions (scripts/install-tools.sh)
 make doctor          verifies the environment (scripts/doctor.sh)
-make cluster-up
-make cluster-status
+make dev-up
+make dev-status
+make dev-down
 make cluster-down
 ```
 
@@ -673,11 +731,8 @@ Required workflow:
 ```text
 clone
   -> make doctor
-  -> make cluster-up
-  -> make dev-images
-  -> make terraform-init
-  -> make terraform-plan
-  -> make terraform-apply
+  -> make dev-up
+  -> make dev-access
   -> make smoke
 ```
 
@@ -742,8 +797,9 @@ This is expected traffic gating, not a liveness failure.
 
 Final local validation passed on 2026-10-29: `make ci`,
 `make -C modules/payment-api test INTEGRATION=1`, `make security`, and `make doctor`.
-Stage 2 remains awaiting remote CI/publication verification, PR merge, and
-acceptance. Stage 3 has not started.
+Stage 2 was merged through PR #5 as `67947e67c57cf122df325d45d1d4e4dffbb4cb63`.
+Main build run `40946895197`, security run `40946895116`, and publication run
+`40947435530` succeeded. Stage 2 is accepted; Stage 3 started on its own branch.
 
 ---
 
@@ -763,10 +819,103 @@ Implement:
 - Dead-letter handling
 - Idempotent consumers keyed by event ID
 - Contract compatibility checks in CI
+- Kafka spanning three independent 3072 MiB / 2 CPU Minikube clusters by default,
+  controller quorum three, replication factor three, minimum ISR two, and
+  deliberate one-cluster outage/recovery learning
+- Full implemented application stack on each independent cluster, with
+  CloudNativePG distributed primary/two-standby PostgreSQL, required synchronous
+  acknowledgement, shared payment/registry identity, and controlled database
+  promotion/fencing/rejoin as specified in ADR-017
+- Configurable per-cluster broker, CNPG instance, API/portal, worker, registry
+  and ingress counts using portable Terraform/Helm inputs, with separately
+  configurable local node budgets and unified development commands (ADR-018)
 
 Partition by `account_id` where account-level ordering matters. Do not partition by event type.
 
 **Failure test:** Kill the publisher between publication and outbox acknowledgement, restart it, and prove that no committed outbox event is lost and no duplicate business effect occurs.
+
+**Implementation:** Relay and receipt-consumer modes stay in payment-api, as
+selected for this stage; they do not authorize or settle payments. Kafka and
+SQL-backed Apicurio remain shared infrastructure, with local Kafka TLS/SCRAM.
+The receipt is the consumer's event-ID-deduplicated business effect. Dead letters
+are durable SQL records, including exhausted outbox rows and invalid consumer
+records; no separate Kafka dead-letter topic is required for broker outages.
+See [ADR-003](adr/ADR-003-transactional-outbox.md) and
+[event recovery](runbooks/event-publication.md).
+
+The real-broker integration test passed a child-process kill after broker
+acknowledgement, followed by stable-ID redelivery and one receipt. Local
+end-to-end publication and registry/worker restarts were verified on isolated
+profile `rpp-stage3-check`. Final `make ci` (85 shared tests), module
+`test INTEGRATION=1`, `make doctor`, and `make security` passed. Dirty-source
+rebuilds, persisted state across updates/restarts, and clean-cluster recreation
+passed; the temporary profile was deleted and the original `rpp-try` context
+restored. Those results cover the original single-cluster implementation.
+The subsequently requested three-cluster extension has passed focused Go,
+orchestration fixtures, Terraform validation/lint, and broker integration.
+Initial cluster startup reached a host inotify limit of 128; the third kubelet
+failed before Kafka was provisioned. After the developer raised it to 1024,
+the isolated topology deployed with actual 3072 MiB / two-CPU Docker caps per
+node. The three-voter quorum and three partitions with RF three/minimum ISR two
+were confirmed. Stopping C, the active controller, still allowed a new payment
+to reach published state and one receipt; restarting C restored every ISR to
+three. Broker cgroup memory was about 340-393 MiB at low load; node A used
+about 1.73 GiB and B/C about 0.93-0.99 GiB. Dirty-source/restored-source updates,
+API pod recovery, full three-cluster teardown/recreation, and a new post-recreation
+payment/receipt passed. Temporary profiles/forwarding were removed and
+`rpp-try` restored; other profiles were preserved. Sustained stress/metrics and
+two-cluster outage tests are not claimed.
+Stage 3 also awaits review, remote checks/publication, and PR acceptance.
+
+The subsequent full-stack extension was verified separately on
+`rpp-full-check-a/b/c` on 2026-11-02. Each profile ran ingress, API, portal,
+relay, consumer, SQL-backed Apicurio, CNPG operator/PostgreSQL and one Kafka
+broker/controller. Concurrent requests through all three APIs shared idempotent
+payment IDs; registries returned shared schema IDs; all three relays preserved
+observed same-account receipt ordering. Checks accumulated twenty-four
+acknowledged payments; each subsequent check retained all prior payment IDs and
+one receipt per payment across token-based A-to-B switchover, fenced B-to-C
+promotion, destructive B rebuild from C, and updates retaining C as writer.
+With one standby absent, new payments still published and received receipts;
+with neither standby present, PostgreSQL reported `SyncRep` waits and HTTP writes
+failed with 503 in about two seconds rather than asynchronously succeeding.
+Dirty-source portal bundles appeared in all three profiles and disappeared after
+source restoration; API pod deletion recovered with smoke and receipt checks.
+Full teardown/recreation reset the initial writer to A and passed fresh
+three-API payment/registry/receipt checks and RF3/ISR3 on all three Kafka
+partitions. One cold C ingress installation hit
+a visible etcd timeout; ordinary `dev-update` recovered without state deletion
+or increased budgets. Low-load full-stack usage was about 2.1-2.2 GiB per node,
+with actual 3072 MiB / two-CPU Docker caps and no cold-recreation cgroup OOM kills.
+These results do not establish physical HA, automatic global failover, backup
+recovery, or sustained-load capacity. The original `rpp-multi` lab was
+subsequently retired by explicit request; no data was migrated to `rpp`.
+On 2026-11-02, the default was consolidated to `rpp` (`rpp-a/b/c`). The
+remaining `rpp-multi` Terraform state and its stopped member state were removed
+after confirming their active states were empty and the Minikube profiles and
+network were already absent. `make dev-up` created the full stack from scratch,
+`make smoke` passed through the default `rpp-a` ingress, and `make dev-status`
+passed after metrics-server's initial sampling interval. All three nodes
+reported the configured 3072 MiB / two-CPU limits and workload containers ready.
+To provide host memory, `rpp-full-a/b/c` and `rpp-scale-check-a/b/c` were
+stopped at the user's request; their profiles and local state remain intact.
+
+Live asymmetric scaling was verified on `rpp-scale-check-a/b/c` using 2 CPUs /
+4096 MiB per node. A had two Kafka brokers, two CNPG instances, two API/portal,
+relay and consumer replicas, and one registry/ingress replica. B had one broker,
+one CNPG instance, one API/relay/consumer/registry replica, two portal and
+ingress replicas. C had two brokers, one CNPG instance, two API and registry
+replicas, and one portal/relay/consumer/ingress replica. All requested
+StatefulSet, CNPG, Deployment, and ingress counts became ready. `make smoke
+MINIKUBE_PROFILE=rpp-scale-check-a` and `make dev-status
+DEV_PROFILE=rpp-scale-check` passed; peak observed node memory was 3.01 GiB of
+4096 MiB. The first startup encountered a stale pending-install Traefik Helm
+revision on A; only that ingress release was removed and Terraform recreated
+it on retry. No database or Kafka resources were destroyed. The scale-check
+profiles were stopped after verification, preserving their state and saved
+configuration, and the normal `rpp-a/b/c` lab was restored and re-verified.
+Earlier single-instance results do not certify multi-instance recovery or
+benchmark capacity.
 
 ---
 
@@ -1950,9 +2099,12 @@ LLM enrichment dead-letter replay
 
 ```text
 make doctor
-make cluster-up
+make dev-up
+make dev-update
+make dev-access
+make dev-status
+make dev-down
 make cluster-down
-make cluster-status
 make core-up
 make streaming-up
 make analytics-up
@@ -1960,11 +2112,6 @@ make observability-up
 make security-up
 make ai-up
 make full-up
-make terraform-init
-make terraform-validate
-make terraform-plan
-make terraform-apply
-make terraform-destroy
 make fmt
 make lint
 make test
@@ -2109,8 +2256,7 @@ The project complements, but does not replace:
 ```text
 clone
   -> make doctor
-  -> make cluster-up
-  -> make terraform-apply
+  -> make dev-up
   -> make smoke
 ```
 
@@ -2191,23 +2337,60 @@ excluded_initially:
 Update this block after every session.
 
 ```yaml
-current_milestone: stage-2-production-go-backend
-stage_status: Stage 1 accepted; Stage 2 implemented and locally validated, awaiting remote checks and PR acceptance
-last_completed_task: Stage 2 implementation and local verification; documentation closeout includes user replay/conflict and direct-pod outage evidence
-next_task: publish the Stage 2 PR, verify remote CI/publication, then merge and accept the stage
+current_milestone: stage-3-reliable-event-publication
+stage_status: Stages 1 and 2 accepted; Stage 3 default full-stack topology, recovery checks, asymmetric live count verification, and make ci passed locally; review, remote checks/publication, and PR acceptance remain pending
+last_completed_task: Verified asymmetric live counts, restored the default rpp lab, and prepared the Stage 3 PR with final CI, Docker integration, doctor, and advisory IaC scan evidence
+next_task: Complete Stage 3 PR review, remote checks/publication, and acceptance before starting Stage 4
 known_issues:
-  - remote Stage 2 CI/publication and PR acceptance remain pending
+  - one cold ingress CRD installation encountered a transient etcd timeout; ordinary dev-update recovered with state and node budgets unchanged
+  - a stale pending-install Traefik Helm revision interrupted the first scale-check attempt; removing only that release allowed Terraform to recreate ingress and the retry passed
+  - Stage 3 remote checks/publication, PR review, and acceptance remain pending
+  - three-cluster host inotify blocker resolved by developer setting 1024; optional setup documents persistent configuration
+  - pinned Minikube/Docker reports host node capacity and emits a gateway-inspection warning; explicit Docker quotas/memory caps were verified
   - publication runs automatically after successful trusted push CI; required publication reviewers are not configured, an accepted optional policy choice
   - prior remote quality failure from the Python test fixture is resolved; user confirmed pushed changes pass quality
   - initial eight Trivy findings triaged on 2026-10-28: contract non-root user fixed; seven exact-file/check exceptions justified and expire 2027-01-01
   - promotion, cleanup, solution releases, and stable-version PRs are not implemented yet
 architecture_decisions:
+  - ADR-017 Full-stack replication across three independent clusters
+  - ADR-003 Transactional outbox and idempotent payment receipts
+  - ADR-016 Kafka across three local Kubernetes clusters
   - ADR-001 HashiCorp Terraform and independent local application development
   - ADR-002 Monorepo initially
   - ADR-013 Independently versioned modules in the monorepo
   - ADR-014 Stage 1 artifact publication and separate security checks
   - ADR-015 PostgreSQL-backed synthetic payments and idempotency
 verification:
+  - 2026-11-02 pre-PR make ci passed with 133 shared tests, module tests/builds and three Kafka Terraform tests; make -C modules/payment-api test INTEGRATION=1 and MULTI_CLUSTER=1 make doctor passed
+  - 2026-11-02 pre-PR make security passed for solution and three packaged modules; Trivy warned that the parameterized CNPG chart was skipped without runtime values and that Terraform root variables were unset, so this is not complete rendered-topology coverage
+  - 2026-11-02 make dev-up, make smoke, and warmed make dev-status passed for default rpp-a/b/c; all workloads were ready with 3072 MiB / two-CPU node limits
+  - 2026-11-02 asymmetric rpp-scale-check verification passed: A broker/CNPG/API/portal/relay/consumer counts 2/2/2/2/2/2, B 1/1/1/2/1/1, C 2/1/2/1/1/1; registry counts 1/1/2 and ingress counts 1/2/1; all desired replicas ready
+  - 2026-11-02 make smoke MINIKUBE_PROFILE=rpp-scale-check-a and make dev-status DEV_PROFILE=rpp-scale-check passed; scale-check nodes stopped with state/config preserved, default rpp restored and smoke/status passed again
+  - 2026-11-02 Gitleaks false positive on the synthetic Terraform test credential resolved by composing its test-only value; secret scanning was not disabled
+  - 2026-11-02 focused kafka-broker terraform test passed (3 tests); make ci passed after Terraform formatting
+  - 2026-11-02 rpp-full-a/b/c and rpp-scale-check-a/b/c stopped at user request to free host memory; profiles and state preserved
+  - 2026-11-02 resource-status make ci passed with 99 shared tests and module checks/builds; new-file pre-commit checks passed
+  - make dev-metrics enabled bundled metrics-server v0.9.0 on rpp-multi-a/b/c; make dev-status returned actual CPU/RAM samples for all three nodes and ten workload containers
+  - initial missing metrics on C remained N/A with explicit warnings/nonzero status; subsequent warmed snapshot passed and existing port-forward readiness stayed HTTP 200
+  - final three-cluster make ci passed with 91 shared tests and module checks/builds; Docker-backed integration, MULTI_CLUSTER=1 make doctor, and make security passed
+  - rpp-multi-check used three independent profiles, each verified at 3221225472 bytes RAM and 2000000000 NanoCPUs
+  - Kafka reported three voters, three partitions, RF 3, min.insync.replicas 2, and all ISR sets at three
+  - stopping active-controller cluster C retained publication and one receipt per payment at ISR two; restarting C restored ISR three
+  - dirty portal heading was served from a changed image while browser forwarding remained active; source restored and API pod recovery passed
+  - dev-down, cluster-down and dev-up recreated all three clusters; a new payment reached one published event and one receipt
+  - verification-only forwarding/profiles/network removed and rpp-try context restored; existing user profiles preserved
+  - low-load broker cgroup memory measured about 340-393 MiB and whole nodes about 1.73 GiB for A and 0.93-0.99 GiB for B/C; no stress sizing claim
+  - Stage 3 final make ci passed with 85 shared tests and module checks/builds; make -C modules/payment-api test INTEGRATION=1, make doctor, and make security passed
+  - real broker integration also rejected incompatible schema registration and incorrect SCRAM credentials, and verified idempotent topic/schema setup
+  - SQL integration proved failed event insertion rolls back the payment, and direct old-API-style writes still queue an event through migration 4 write guards
+  - temporary portal source edit changed the served bundle after dev-update; publication, receipt and registry state survived the update, then source was restored
+  - isolated dev-down, cluster-down and dev-up recreated all resources; migrations 1-4 applied and a new ingress payment reached one published outbox event and one receipt
+  - test forwarding stopped, only rpp-stage3-check stack/profile deleted, and user rpp-try context restored without modifying that environment
+  - Stage 2 PR 5 merged as 67947e67c57cf122df325d45d1d4e4dffbb4cb63; main build 40946895197, security 40946895116, and publication 40947435530 succeeded
+  - Stage 3 Testcontainers verified actual TLS/SCRAM Kafka publication, publisher process kill before SQL acknowledgement, stable-ID redelivery, one receipt, and poison-record quarantine
+  - isolated rpp-stage3-check deployed Kafka 4.1.0, SQL-backed Apicurio 3.3.3, API, relay and consumer; ingress payment produced one published outbox event and one receipt
+  - registry and worker restarts retained one schema version and original publication/receipt state
+  - initial registry probes used API port 8080 and failed; corrected to management port 9000, and dev-update succeeded
   - 2026-10-29 final make ci passed with 83 shared tests and module checks/builds; make -C modules/payment-api test INTEGRATION=1, make security, and make doctor also passed
   - Stage 2 local make ci, make doctor, make security, and make -C modules/payment-api test INTEGRATION=1 passed before the final smoke propagation changes
   - Testcontainers verified repeatable migrations, persisted data after migration rerun, concurrent same-key inserts, payload conflicts, checksum drift, and bounded database outage behavior
@@ -2245,6 +2428,6 @@ verification:
   - API pod deletion recovered and ingress smoke checks passed
   - stack and cluster destroyed, then recreated by make dev-up without manual configuration edits
   - repeated dev-update reported no infrastructure changes and smoke passed
-last_verified_commit: 912b9737287fed389f5a0ca97c7852e7587f0c63 (Stage 1 main publication; Stage 2 evidence is from uncommitted branch changes, not a released commit)
-last_verified_date: 2026-10-29
+last_verified_commit: 67947e67c57cf122df325d45d1d4e4dffbb4cb63 (Stage 2 main publication; Stage 3 local evidence is from uncommitted branch changes)
+last_verified_date: 2026-10-30
 ```

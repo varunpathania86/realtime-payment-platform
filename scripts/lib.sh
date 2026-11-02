@@ -16,6 +16,23 @@ pinned_version() {
   awk -v t="$1" '$1 == t { print $2 }' "$REPO_ROOT/.tool-versions"
 }
 
+refuse_fenced_profile() {
+  local profile="$1" base="${1%-?}" state
+  state="$REPO_ROOT/.local/$base"
+  if [[ "$profile" =~ -[abc]$ ]] && [ -f "$state/owned" ] &&
+    [ -f "$state/database-fence.json" ]; then
+    [ "$(cat "$state/owned")" = "$base" ] || { echo "Invalid topology ownership marker" >&2; return 1; }
+    if [ "$(jq -r '.old' "$state/database-fence.json")" = "pg-${profile: -1}" ]; then
+      if [ "${REJOINING:-0}" = 1 ] &&
+        [ "$(jq -r '.phase' "$state/database-fence.json")" = rebuild-start ]; then
+        return 0
+      fi
+      echo "Profile $profile is fenced. Use make db-rejoin DEV_PROFILE=$base; never restart the old database." >&2
+      return 1
+    fi
+  fi
+}
+
 # Print the installed version of a tool (empty if missing). Prefers $BIN_DIR over PATH.
 installed_version() {
   local bin="$BIN_DIR:$PATH" out

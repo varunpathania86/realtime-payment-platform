@@ -3,8 +3,9 @@ info:
   title: Synthetic Payment API
   version: 0.0.0
   description: >-
-    Stage 2 creates initiated synthetic payments only. No authorization,
-    settlement, cardholder data, or event publication. Money uses integer minor
+    Creates initiated synthetic payments only. No authorization, settlement,
+    or cardholder data. Each new payment atomically queues an outbox event;
+    asynchronous Kafka publication does not gate the HTTP response. Money uses integer minor
     units. All timestamps are UTC. Idempotency keys are global to this local
     educational API, persist for the lifetime of the payment, and are not logged.
 servers:

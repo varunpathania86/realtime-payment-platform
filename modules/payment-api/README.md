@@ -5,8 +5,9 @@ PostgreSQL-backed synthetic payment API. Part of [realtime-payment-platform](../
 ## Responsibilities
 
 Create/read initiated payments, persist idempotency keys, and serve health/build
-metadata. Stage 2 does not authorize or settle payments, publish events, or
-introduce Kafka/Apicurio. Only synthetic UUIDs and integer money amounts are used.
+metadata. Stage 3 atomically adds an outbox event per payment and provides relay
+and receipt-consumer worker modes. Neither mode authorizes or settles payments.
+Only synthetic UUIDs and integer money amounts are used.
 
 ## Layout
 
@@ -21,6 +22,8 @@ introduce Kafka/Apicurio. Only synthetic UUIDs and integer money amounts are use
 ├── internal/
 │   ├── httpapi/
 │   ├── payment/
+│   ├── event/
+│   ├── stream/
 │   └── postgres/migrations/
 ├── main.go
 └── main_test.go
@@ -29,8 +32,8 @@ introduce Kafka/Apicurio. Only synthetic UUIDs and integer money amounts are use
 ## Prerequisites
 
 Run root `make setup` and `make doctor`; see [developer setup](../../docs/developer-setup.md).
-Go and PostgreSQL container versions come from root `.tool-versions`.
-The pgx driver, OpenAPI validator, and Testcontainers library are pinned in
+Go and PostgreSQL/Kafka/Apicurio container versions come from root `.tool-versions`.
+The pgx driver, Kafka/Avro libraries, OpenAPI validator, and Testcontainers are pinned in
 `go.mod`/`go.sum`. Docker is already installed/verified by the shared setup.
 The first build resolves Go libraries; offline unit tests require that cache.
 Integration tests require a reachable Docker daemon and may first download images.
@@ -47,6 +50,15 @@ From the repository root, `make dev-up` deploys the local environment,
 `make dev-update` rebuilds local images, and `make smoke` checks the routed endpoints.
 This provisions PostgreSQL, generates private profile-local credentials, and
 runs migrations before the API starts. Keep `make dev-access` running for ingress.
+New development bases run the stack in three independent clusters. Select a
+member for access/smoke with `MINIKUBE_PROFILE=<base>-a` (or `-b`/`-c`).
+Set chart `replicaCount`, `events.relayReplicas` and `events.consumerReplicas`
+independently to positive integers; each defaults to one. The development
+`DEV_CONFIG` maps these to per-cluster `applications.payment-api`, `relay`
+and `consumer`; see [topology sizing](../../docs/developer-setup.md#configuring-counts-and-benchmark-node-budgets).
+Replicas share database migration/outbox locks, durable idempotency, one consumer
+group and event-ID-deduplicated receipts. Consumer replicas beyond the topic's
+partition count may remain idle.
 For a process outside Kubernetes, provide `DATABASE_URL` from your environment,
 run `make migrate`, then `./bin/payment-api`. Do not commit credentials.
 
@@ -70,7 +82,7 @@ payment lifetime; tenant scoping is deferred until identity is introduced.
 |---|---|
 | `build` | Build `bin/payment-api` |
 | `test` | Run offline unit tests |
-| `integration` | Run Docker-backed PostgreSQL migration/concurrency/outage tests |
+| `integration` | Run Docker-backed PostgreSQL/Kafka/Apicurio migration, crash/replay and quarantine tests |
 | `migrate` | Build and apply embedded migration using `DATABASE_URL`, bounded to 30 seconds |
 | `lint` | Run `go vet` and verify formatting |
 | `fmt` | Format Go source |
@@ -116,8 +128,47 @@ Do not edit applied migration files; add a new version and extend the runner.
 The chart uses the same restricted/digest-pinned image for init and runtime.
 Published chart users must provision PostgreSQL and an existing Secret
 (`database.existingSecret`, default `payment-api-database`) containing `DATABASE_URL`.
+For verified PostgreSQL TLS, enable `database.tls` and include `ca.crt` in that
+Secret. The chart mounts it at `/etc/payment-database/ca.crt` in API, workers and
+all migration containers; reference it with `sslrootcert` in `DATABASE_URL`.
+Terraform wires this automatically for the
+[distributed CNPG lab](../../docs/developer-setup.md#stage-3-full-stack-three-cluster-lab).
 The server bounds header/read/write/idle time and allows ten seconds for graceful
 shutdown on `SIGTERM` or `SIGINT`. The static binary runs as non-root in scratch.
+
+### Event worker modes
+
+The same binary supports `payment-api relay` and `payment-api consumer`.
+Terraform enables both as separate Deployments from the same local image;
+no new product module or public Service is introduced.
+The API itself never calls Kafka or the registry in the request path.
+Existing Stage 2 payments are backfilled once by migration 2.
+
+Workers require `DATABASE_URL`, `KAFKA_BROKERS` (comma-separated host:port),
+`KAFKA_CA_FILE`, `KAFKA_USERNAME`, `KAFKA_PASSWORD`, `REGISTRY_URL`
+(including `/apis/ccompat/v7`), and `PAYMENT_TOPIC`.
+The relay also requires `EVENT_SCHEMA_FILE`, mounted from the canonical
+event-contracts schema. TLS hostname verification and SCRAM-SHA-512 are mandatory.
+No plaintext or verification-disabled client fallback exists.
+`KAFKA_REPLICATION_FACTOR` defaults to 1 and accepts only 1 or 3. The chart's
+`events.replicationFactor` supplies it; the optional
+[three-cluster lab](../../docs/developer-setup.md#stage-3-optional-three-cluster-kafka-lab)
+sets 3 with minimum ISR 2. Relay startup tries all configured bootstrap brokers
+and rejects mismatched existing topic replica assignments/configuration rather
+than claiming to migrate them automatically.
+
+The relay retains event identity through redelivery, partitions by account ID,
+and retries at most eight times with persisted exponential delays capped at
+60 seconds. Exhausted rows become durable SQL dead letters and block that
+account's later events. The consumer persists receipts before offset commits,
+rejects reused IDs with changed content, and quarantines invalid records in SQL.
+See [event recovery](../../docs/runbooks/event-publication.md) for inspection
+and deliberate requeue procedures.
+
+Published chart workers are opt-in (`events.enabled: true`); consumers must
+provide broker/registry settings, the existing credential Secret and CA, and the
+schema ConfigMap described by `events` values. Default charts still deploy only
+the API. All worker/init images use the same verified image digest.
 
 ## Documentation
 
@@ -135,5 +186,7 @@ images. Rationales and expiry dates appear in the report; see the
 - [Master plan, Stage 1](../../docs/master-plan.md#stage-1-one-day-terraform-foundation)
 - [Stage 2 LLD](../../docs/architecture/payment-api-lld.md)
 - [Database recovery](../../docs/runbooks/payment-database.md)
+- [Event publication recovery](../../docs/runbooks/event-publication.md)
+- [Transactional outbox ADR](../../docs/adr/ADR-003-transactional-outbox.md)
 - [Module development](../../docs/module-development.md)
 - [Developer setup](../../docs/developer-setup.md)

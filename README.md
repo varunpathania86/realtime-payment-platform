@@ -16,6 +16,11 @@ Stage 1 adds the minimal [Go API](modules/payment-api/README.md) and
 Terraform, Helm, and Traefik. Stage 1 publication and identical-digest reruns are
 verified. Stage 2 adds PostgreSQL-backed initiated payment create/read operations,
 durable idempotency, migrations, an OpenAPI contract, and Testcontainers tests.
+Stage 2 is merged and its main build/publication verified. Stage 3 work adds
+TLS/SCRAM Kafka, SQL-backed Apicurio, the transactional outbox, relay and
+idempotent receipt-consumer modes. See
+[event recovery](docs/runbooks/event-publication.md) and
+[ADR-003](docs/adr/ADR-003-transactional-outbox.md).
 See the [API guide](modules/payment-api/README.md) and
 [database runbook](docs/runbooks/payment-database.md).
 
@@ -42,9 +47,9 @@ Full environment instructions: [docs/developer-setup.md](docs/developer-setup.md
 ```bash
 git clone git@github.com:varunpathania86/realtime-payment-platform.git
 cd realtime-payment-platform
-make setup    # install hooks and pinned tools, then check the environment
+MULTI_CLUSTER=1 make setup  # tools plus host prerequisites for three clusters
 make ci       # lint, test, build
-make dev-up   # start Minikube, build/load local images, deploy, smoke-test
+make dev-up   # three full-stack clusters: rpp-a/b/c
 make dev-access  # foreground: open http://127.0.0.1:8080; Ctrl-C stops access
 ```
 
@@ -56,12 +61,39 @@ PI**. A failed remote workflow does not disable local commands. Initial setup,
 image/dependency downloads, and Terraform/chart initialization need internet;
 local development is independent of publication, not a guarantee of air-gapped operation.
 
-`make dev-down` destroys the local stack, including its database namespace/PVC
-and payment data, but leaves Minikube running. Use `make dev-update`, not teardown,
+`make dev-down` destroys all three clusters' application/database resources
+and data, but leaves their Minikube nodes running. Use `make dev-update`, not teardown,
 for normal iteration.
-`make cluster-down` deletes the cluster and all its data. See the
+`make cluster-down` deletes the three owned cluster nodes/network after teardown. See the
 [developer guide](docs/developer-setup.md#4-local-application-development) for
 profiles, image loading, Terraform commands, recovery, and recreation.
+
+Development now defaults to three independent clusters, each **3072 MiB / 2 CPUs**,
+with the full application stack, one Kafka broker/controller and one CNPG instance
+per cluster. PostgreSQL has one global writer and two remote standbys; this is
+one Kafka cluster and one shared payment database, not three separate datasets.
+All nodes still share one host. No profile argument is required.
+`DEV_PROFILE` optionally selects a different topology base (default `rpp`);
+`MINIKUBE_PROFILE` selects one member for access/smoke only (default `<base>-a`).
+Read the [host prerequisites](docs/developer-setup.md#stage-3-optional-three-cluster-kafka-lab).
+The [configuration template](templates/development-topology.json) illustrates
+larger CPU/RAM budgets and independent per-cluster broker, CNPG and application
+counts: `make dev-up DEV_PROFILE=rpp-bench DEV_CONFIG=templates/development-topology.json`.
+Omitted counts default to one; omitted budgets default to two CPUs / 3072 MiB.
+The [full-stack guide](docs/developer-setup.md#stage-3-full-stack-three-cluster-lab)
+explains required synchronous commits, Terraform-installed operators/charts,
+and explicit switchover, fenced failover and destructive former-primary rejoin.
+An existing explicitly selected base is never converted or destroyed
+automatically. Stop unrelated labs to avoid doubled host resource usage.
+The superseded `multi-*`, single-cluster lifecycle and low-level Terraform Make
+targets have been removed; `dev-*`, `db-*` and `cluster-down` are the public workflow.
+The isolated full-stack lab passed synchronous write-blocking, shared identity,
+planned switchover, fenced promotion/rebuild, dirty-source updates and clean
+recreation checks; see the [verification record](docs/master-plan.md#stage-3-kafka-and-reliable-event-publication).
+`make dev-status` prints node and workload-container
+CPU/RAM usage alongside configured limits/requests, readiness, and restarts.
+For existing labs, run `make dev-metrics` with the appropriate optional base override once to enable
+the bundled metrics-server; new `dev-up` runs enable it automatically.
 
 Run `make help` for all targets.
 
@@ -81,8 +113,8 @@ artifacts; see [report locations](docs/developer-setup.md#quality-and-security-r
 Publication now supports images and module Helm charts. Packaged charts reference
 the verified image digest and have their own verified OCI digest. Main publication
 and same-source reruns were verified on 2026-10-28 with unchanged image/chart
-digests at version `0.0.1-it1-rv.1`. Stage 1 is accepted; Stage 2 work is on a
-separate branch. Promotion and Git release tagging remain Stage 17 work.
+digests at version `0.0.1-it1-rv.1`. Stages 1 and 2 are accepted; Stage 3 work is
+on a separate branch. Promotion and Git release tagging remain Stage 17 work.
 
 ## Workflow
 

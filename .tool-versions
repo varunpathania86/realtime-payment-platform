@@ -12,4 +12,12 @@ tflint 0.65.0
 trivy 0.76.1
 # Container image tag used by local PostgreSQL and integration tests (not a CLI).
 postgres 16.6-alpine
+# Shared local event infrastructure container tags (not host CLIs).
+kafka 4.1.0
+apicurio 3.3.3
+# Opt-in distributed PostgreSQL lab (chart archive is checksum-verified by setup).
+cnpg 1.30.1
+cnpg-chart 0.29.1
+cnpg-chart-sha256 b53d3991fe84bcf38767e7702cae78666265427a127a26fff168ab4207d2b1df
+cnpg-postgres 16.6-standard-bookworm
 actions-runner 2.338.0

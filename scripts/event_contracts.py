@@ -13,8 +13,19 @@ from uuid import UUID
 
 import avro.io
 import avro.schema
+from avro.compatibility import ReaderWriterCompatibilityChecker, SchemaCompatibilityType
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def validate_compatibility(schema: avro.schema.Schema, baselines: list[Path]) -> None:
+    if not baselines:
+        raise ValueError("event contract must have an immutable compatibility baseline")
+    for path in baselines:
+        writer = avro.schema.parse(path.read_text(encoding="utf-8"))
+        result = ReaderWriterCompatibilityChecker().get_compatibility(schema, writer)
+        if result.compatibility != SchemaCompatibilityType.compatible:
+            raise ValueError(f"event schema is not backward compatible with {path.name}: {result.messages}")
 
 
 def validate_event(schema: avro.schema.Schema, event: dict) -> None:
@@ -48,6 +59,7 @@ def validate_event(schema: avro.schema.Schema, event: dict) -> None:
 def package(module: Path, build: bool) -> None:
     for path in sorted((module / "schemas").glob("*.avsc")):
         schema = avro.schema.parse(path.read_text(encoding="utf-8"))
+        validate_compatibility(schema, sorted((module / "compatibility" / path.stem).glob("*.avsc")))
         event = json.loads((module / "examples" / f"{path.stem}.json").read_text(encoding="utf-8"))
         validate_event(schema, event)
     if build:
@@ -57,6 +69,7 @@ def package(module: Path, build: bool) -> None:
             module / "README.md", module / "module.yaml",
             *(module / "schemas").glob("*.avsc"),
             *(module / "examples").glob("*.json"),
+            *(module / "compatibility").glob("*/*.avsc"),
         ])
         with tarfile.open(output, "w", format=tarfile.USTAR_FORMAT) as archive:
             for path in paths:

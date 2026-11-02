@@ -4,6 +4,7 @@ package postgres
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -73,6 +74,21 @@ func TestPostgres(t *testing.T) {
 	if store.Ready(ctx) == nil {
 		t.Fatal("unmigrated database was ready")
 	}
+	oldSQL, err := migrationSQL("001_payments.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.ExecContext(ctx, oldSQL); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.ExecContext(ctx, `CREATE TABLE schema_migrations (version integer PRIMARY KEY, checksum text NOT NULL);
+		INSERT INTO payments (id, account_id, amount_minor, currency, status, idempotency_key)
+		VALUES ('00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002', 500, 'USD', 'initiated', 'legacy')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.ExecContext(ctx, `INSERT INTO schema_migrations VALUES (1, $1)`, fmt.Sprintf("%x", sha256.Sum256([]byte(oldSQL)))); err != nil {
+		t.Fatal(err)
+	}
 	for range 2 {
 		if err := store.Migrate(ctx); err != nil {
 			t.Fatal(err)
@@ -113,7 +129,7 @@ func TestPostgres(t *testing.T) {
 		}
 	}
 	var count int
-	if err := store.db.QueryRowContext(ctx, "SELECT count(*) FROM payments").Scan(&count); err != nil || count != 1 {
+	if err := store.db.QueryRowContext(ctx, "SELECT count(*) FROM payments WHERE idempotency_key = 'concurrent-key'").Scan(&count); err != nil || count != 1 {
 		t.Fatalf("expected one persisted payment: %d %v", count, err)
 	}
 	read, err := store.Get(ctx, first.ID)
@@ -133,6 +149,9 @@ func TestPostgres(t *testing.T) {
 	if _, err := store.Get(ctx, "00000000-0000-0000-0000-000000000000"); !errors.Is(err, payment.ErrNotFound) {
 		t.Fatalf("wanted not found, got %v", err)
 	}
+	t.Run("transactional outbox and crash recovery", func(t *testing.T) {
+		testOutbox(t, ctx, store, first)
+	})
 	if _, err := store.db.ExecContext(ctx, "UPDATE schema_migrations SET checksum = 'changed'"); err != nil {
 		t.Fatal(err)
 	}

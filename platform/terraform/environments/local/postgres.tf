@@ -1,4 +1,7 @@
 locals {
+  database_host = var.external_database == null ? "payments-postgres" : var.external_database.address
+  database_port = var.external_database == null ? 5432 : 30432
+  database_tls  = var.external_database == null ? "disable" : "verify-full"
   tool_versions = {
     for line in split("\n", trimspace(file("${local.root}/.tool-versions"))) :
     split(" ", trimspace(line))[0] => split(" ", trimspace(line))[1]
@@ -14,7 +17,8 @@ resource "kubernetes_secret_v1" "postgres" {
   data = {
     POSTGRES_USER     = "payments"
     POSTGRES_DB       = "payments"
-    POSTGRES_PASSWORD = var.postgres_password
+    POSTGRES_PASSWORD = var.external_database == null ? var.postgres_password : var.external_database.password
+    "ca.crt"          = var.external_database == null ? "" : var.external_database.certificate
   }
 }
 
@@ -24,11 +28,13 @@ resource "kubernetes_secret_v1" "payment_database" {
     namespace = kubernetes_namespace_v1.foundation["apps"].metadata[0].name
   }
   data = {
-    DATABASE_URL = "postgres://payments:${var.postgres_password}@payments-postgres.data.svc.cluster.local:5432/payments?sslmode=disable&connect_timeout=2"
+    DATABASE_URL = var.external_database == null ? "postgres://payments:${var.postgres_password}@payments-postgres.data.svc.cluster.local:5432/payments?sslmode=disable&connect_timeout=2" : "postgres://payments:${var.external_database.password}@${var.external_database.address}:30432/payments?sslmode=verify-full&sslrootcert=/etc/payment-database/ca.crt&connect_timeout=2"
+    "ca.crt"     = var.external_database == null ? "" : var.external_database.certificate
   }
 }
 
 resource "kubernetes_service_v1" "postgres" {
+  count = nonsensitive(var.external_database == null) ? 1 : 0
   metadata {
     name      = "payments-postgres"
     namespace = kubernetes_namespace_v1.foundation["data"].metadata[0].name
@@ -43,12 +49,13 @@ resource "kubernetes_service_v1" "postgres" {
 }
 
 resource "kubernetes_stateful_set_v1" "postgres" {
+  count = nonsensitive(var.external_database == null) ? 1 : 0
   metadata {
     name      = "payments-postgres"
     namespace = kubernetes_namespace_v1.foundation["data"].metadata[0].name
   }
   spec {
-    service_name = kubernetes_service_v1.postgres.metadata[0].name
+    service_name = kubernetes_service_v1.postgres[0].metadata[0].name
     replicas     = 1
     selector {
       match_labels = { "app.kubernetes.io/name" = "payments-postgres" }

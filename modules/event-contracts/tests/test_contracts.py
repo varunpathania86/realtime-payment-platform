@@ -9,7 +9,7 @@ from shutil import copytree
 import avro.errors
 import avro.schema
 
-from scripts.event_contracts import ROOT, package, validate_event
+from scripts.event_contracts import ROOT, package, validate_event, validate_compatibility
 
 MODULE = ROOT / "modules" / "event-contracts"
 
@@ -25,6 +25,18 @@ class PaymentContractTests(unittest.TestCase):
 
     def test_example_round_trips(self) -> None:
         validate_event(self.schema, self.event)
+
+    def test_backward_compatibility_rejects_breaking_changes(self) -> None:
+        baselines = sorted((MODULE / "compatibility" / "payment-initiated-v1").glob("*.avsc"))
+        validate_compatibility(self.schema, baselines)
+        changed = json.loads(str(self.schema))
+        changed["fields"].append({"name": "new_required_field", "type": "string"})
+        with self.assertRaisesRegex(ValueError, "not backward compatible"):
+            validate_compatibility(avro.schema.parse(json.dumps(changed)), baselines)
+        changed["fields"][-1]["default"] = ""
+        validate_compatibility(avro.schema.parse(json.dumps(changed)), baselines)
+        with self.assertRaisesRegex(ValueError, "baseline"):
+            validate_compatibility(self.schema, [])
 
     def test_rejects_invalid_events(self) -> None:
         for field, value in [

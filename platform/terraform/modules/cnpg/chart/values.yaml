@@ -1,0 +1,8 @@
+name: pg-a
+instances: 1
+maxConnections: 128
+primary: pg-a
+bootstrapSource: ""
+promotionToken: ""
+addresses: {}
+image: ""

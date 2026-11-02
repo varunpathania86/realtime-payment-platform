@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "replicaCount": { "type": "integer", "minimum": 1 },
+    "events": {
+      "type": "object",
+      "properties": {
+        "relayReplicas": { "type": "integer", "minimum": 1 },
+        "consumerReplicas": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}

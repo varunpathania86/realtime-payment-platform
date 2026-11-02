@@ -14,6 +14,7 @@ Copy a template instead of writing a document from scratch, so every sub-project
 | [module.yaml](module.yaml) | Independently versioned module catalog entry | `modules/<module-name>/module.yaml` |
 | [module-release.yaml](module-release.yaml) | Immutable module release record | `releases/modules/<module-name>/<version>.yaml` |
 | [solution-release.yaml](solution-release.yaml) | Immutable integrated solution release record | `releases/solutions/<version>.yaml` |
+| [development-topology.json](development-topology.json) | Example configurable three-cluster workload/node sizing | Private JSON passed through `DEV_CONFIG` |
 
 Rules:
 

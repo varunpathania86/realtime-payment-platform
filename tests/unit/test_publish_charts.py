@@ -33,6 +33,37 @@ METADATA = {
 
 
 class ChartPublicationTests(unittest.TestCase):
+    def test_worker_deployments_share_digest_secret_and_restricted_init_image(self):
+        rendered = subprocess.run([
+            "helm", "template", "payment-api", str(ROOT / "modules/payment-api/chart"),
+            "--set", "events.enabled=true",
+            "--set", "events.brokers=kafka:9092",
+            "--set", "events.replicationFactor=3",
+            "--set", "database.tls=true",
+            "--set", "events.registryURL=http://registry:8080/apis/ccompat/v7",
+            "--set", f"image.repository={REPOSITORY}",
+            "--set", f"image.digest={IMAGE}",
+        ], check=True, capture_output=True, text=True)
+        deployments = [
+            item for item in yaml.safe_load_all(rendered.stdout)
+            if item and item.get("kind") == "Deployment"
+        ]
+        self.assertEqual(len(deployments), 3)
+        for deployment in deployments:
+            pod = deployment["spec"]["template"]["spec"]
+            for container in pod["containers"] + pod["initContainers"]:
+                self.assertEqual(container["image"], f"{REPOSITORY}@{IMAGE}")
+                self.assertTrue(container["securityContext"]["readOnlyRootFilesystem"])
+                database = next(env for env in container["env"] if env["name"] == "DATABASE_URL")
+                self.assertEqual(database["valueFrom"]["secretKeyRef"]["name"], "payment-api-database")
+                ca = next(mount for mount in container["volumeMounts"] if mount["name"] == "database-ca")
+                self.assertEqual(ca["mountPath"], "/etc/payment-database")
+                self.assertTrue(ca["readOnly"])
+            for container in pod["containers"]:
+                if container.get("args") in (["relay"], ["consumer"]):
+                    factor = next(env for env in container["env"] if env["name"] == "KAFKA_REPLICATION_FACTOR")
+                    self.assertEqual(factor["value"], "3")
+
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
