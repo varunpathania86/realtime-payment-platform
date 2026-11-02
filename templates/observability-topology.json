@@ -1,0 +1,5 @@
+{
+  "node": { "cpus": 2, "memory_mib": 3072 },
+  "nodes": { "a": { "cpus": 3, "memory_mib": 5120 } },
+  "observability": true
+}

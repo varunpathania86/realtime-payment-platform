@@ -14,7 +14,7 @@ node_modules/.package-lock.json: package.json package-lock.json
 
 build: node_modules/.package-lock.json ## Build static assets and bin/web-portal
 	VITE_APP_VERSION="$(VERSION)" VITE_APP_COMMIT="$(COMMIT)" npm run build
-	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o bin/web-portal .
+	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o bin/web-portal .
 
 test: node_modules/.package-lock.json ## Run offline Node and Go unit tests
 	npm test

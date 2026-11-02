@@ -10,7 +10,7 @@ import subprocess
 import sys
 
 
-NAMESPACES = {"apps", "data", "kafka", "platform", "postgres", "cnpg-system"}
+NAMESPACES = {"apps", "data", "kafka", "platform", "postgres", "cnpg-system", "telemetry"}
 SCALES = {
     "": Decimal(1), "n": Decimal("1e-9"), "u": Decimal("1e-6"),
     "m": Decimal("1e-3"), "k": Decimal(1000), "K": Decimal(1000),

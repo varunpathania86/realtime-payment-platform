@@ -223,5 +223,7 @@ output "workload_vars" {
     worker_replicas      = { relay = size.relay, consumer = size.consumer }
     registry_replicas    = size.registry
     ingress_replicas     = size.ingress
+    telemetry_enabled    = var.observability_enabled
+    telemetry_cluster    = var.profiles[index(["a", "b", "c"], key)]
   } }
 }

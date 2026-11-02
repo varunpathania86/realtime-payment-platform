@@ -56,7 +56,7 @@ else
   bad "PostgreSQL container pin is missing/invalid in .tool-versions; restore it before make dev-up or module integration"
 fi
 
-for runtime in kafka apicurio; do
+for runtime in kafka apicurio otelcol prometheus alertmanager loki tempo grafana; do
   if [[ "$(pinned_version "$runtime")" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     ok "$runtime container pin $(pinned_version "$runtime") (pulled by local deployment/integration tests)"
   else

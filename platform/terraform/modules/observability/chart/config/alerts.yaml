@@ -1,0 +1,24 @@
+groups:
+  - name: payment-platform
+    rules:
+      - alert: APIElevatedErrorRate
+        expr: sum(rate(rpp_http_requests_total{status=~"5.."}[5m])) / clamp_min(sum(rate(rpp_http_requests_total[5m])), 0.001) > 0.05
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: API server error ratio exceeds five percent
+          runbook_url: https://github.com/varunpathania86/realtime-payment-platform/blob/main/docs/runbooks/observability.md#api-errors
+      - alert: SustainedConsumerLag
+        expr: max(kafka_consumer_group_lag_ratio) > 100
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: Receipt consumer lag exceeds 100 records
+          runbook_url: https://github.com/varunpathania86/realtime-payment-platform/blob/main/docs/runbooks/observability.md#consumer-lag
+      - alert: OutboxBacklog
+        expr: max(rpp_outbox_pending) > 100 or max(rpp_outbox_oldest_pending_age_seconds) > 60
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: Outbox backlog exceeds count or age threshold
+          runbook_url: https://github.com/varunpathania86/realtime-payment-platform/blob/main/docs/runbooks/observability.md#outbox-backlog

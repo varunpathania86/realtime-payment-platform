@@ -20,8 +20,8 @@ def positive_integer(value, name):
 
 
 def validate(data):
-    if not isinstance(data, dict) or set(data) - {"node", "clusters"}:
-        raise ValueError("configuration must contain only node and clusters objects")
+    if not isinstance(data, dict) or set(data) - {"node", "clusters", "nodes", "observability"}:
+        raise ValueError("configuration accepts only node, nodes, clusters and observability")
     node = data.get("node", {})
     if not isinstance(node, dict) or set(node) - {"cpus", "memory_mib"}:
         raise ValueError("node accepts only cpus and memory_mib")
@@ -55,7 +55,21 @@ def validate(data):
             if module not in implemented:
                 raise ValueError(f"application {module} is not a runnable catalog module")
             positive_integer(count, f"{cluster}.applications.{module}")
-    return {"node": {"cpus": cpus, "memory_mib": memory}, "clusters": clusters}
+    result = {"node": {"cpus": cpus, "memory_mib": memory}, "clusters": clusters}
+    if "nodes" in data:
+        nodes = data["nodes"]
+        if not isinstance(nodes, dict) or set(nodes) - {"a", "b", "c"}:
+            raise ValueError("nodes accepts only a, b and c budget overrides")
+        result["nodes"] = {}
+        for key, value in nodes.items():
+            if not isinstance(value, dict):
+                raise ValueError(f"nodes.{key} must be a node budget object")
+            result["nodes"][key] = validate({"node": {**result["node"], **value}})["node"]
+    if "observability" in data:
+        if not isinstance(data["observability"], bool):
+            raise ValueError("observability must be a boolean")
+        result["observability"] = data["observability"]
+    return result
 
 
 def main():

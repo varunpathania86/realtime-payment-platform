@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/varunpathania86/realtime-payment-platform/modules/payment-api/internal/event"
+	"github.com/varunpathania86/realtime-payment-platform/modules/payment-api/internal/telemetry"
+	"go.opentelemetry.io/otel/propagation"
 )
 
 var ErrReceiptConflict = errors.New("event ID reused with different content")
@@ -36,8 +38,10 @@ func (s *Store) Quarantine(ctx context.Context, topic string, partition int, off
 }
 
 type Publication struct {
-	Event     event.Initiated
-	AccountID string
+	Event       event.Initiated
+	AccountID   string
+	TraceParent string
+	TraceState  string
 }
 
 type PublishResult struct {
@@ -71,13 +75,13 @@ func (s *Store) RelayOne(ctx context.Context, maxAttempts int, publish func(cont
 	var data []byte
 	var message Publication
 	var result PublishResult
-	err = tx.QueryRowContext(ctx, `SELECT o.event_id::text, o.account_id::text, o.event_data, o.attempts
+	err = tx.QueryRowContext(ctx, `SELECT o.event_id::text, o.account_id::text, o.event_data, o.attempts, o.traceparent, o.tracestate
 		FROM payment_outbox o
 		WHERE o.state = 'pending' AND o.available_at <= now()
 		AND NOT EXISTS (SELECT 1 FROM payment_outbox earlier
 			WHERE earlier.account_id = o.account_id AND earlier.sequence < o.sequence AND earlier.state <> 'published')
 		ORDER BY o.sequence LIMIT 1 FOR UPDATE OF o SKIP LOCKED`).
-		Scan(&result.EventID, &message.AccountID, &data, &result.Attempts)
+		Scan(&result.EventID, &message.AccountID, &data, &result.Attempts, &message.TraceParent, &message.TraceState)
 	if errors.Is(err, sql.ErrNoRows) {
 		return PublishResult{}, nil
 	}
@@ -94,7 +98,10 @@ func (s *Store) RelayOne(ctx context.Context, maxAttempts int, publish func(cont
 		return PublishResult{}, err
 	}
 	result.Attempts++
-	publishErr := publish(ctx, message)
+	publishCtx := telemetry.Propagator.Extract(ctx, propagation.MapCarrier{
+		"traceparent": message.TraceParent, "tracestate": message.TraceState,
+	})
+	publishErr := publish(publishCtx, message)
 	if publishErr == nil {
 		result.State = "published"
 		_, err = tx.ExecContext(ctx, `UPDATE payment_outbox SET state = 'published', attempts = $2,

@@ -4,19 +4,25 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"database/sql/driver"
 	"embed"
 	"errors"
 	"fmt"
 	"time"
 
+	"github.com/XSAM/otelsql"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/varunpathania86/realtime-payment-platform/modules/payment-api/internal/payment"
+	"github.com/varunpathania86/realtime-payment-platform/modules/payment-api/internal/telemetry"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 )
 
 //go:embed migrations/*.sql
 var migrations embed.FS
 
-var migrationNames = []string{"001_payments.sql", "002_outbox.sql", "003_event_dead_letters.sql", "004_outbox_write_guard.sql"}
+var migrationNames = []string{"001_payments.sql", "002_outbox.sql", "003_event_dead_letters.sql", "004_outbox_write_guard.sql", "005_outbox_trace_context.sql"}
 
 func migrationSQL(name string) (string, error) {
 	data, err := migrations.ReadFile("migrations/" + name)
@@ -29,7 +35,16 @@ func Open(url string) (*Store, error) {
 	if url == "" {
 		return nil, errors.New("DATABASE_URL is required")
 	}
-	db, err := sql.Open("pgx", url)
+	db, err := otelsql.Open("pgx", url,
+		otelsql.WithAttributes(attribute.String("db.system.name", "postgresql")),
+		otelsql.WithSpanOptions(otelsql.SpanOptions{
+			DisableQuery: true, DisableErrSkip: true, OmitRows: true,
+			OmitConnResetSession: true,
+			RecordError:          func(error) bool { return false },
+			SpanFilter: func(ctx context.Context, _ otelsql.Method, _ string, _ []driver.NamedValue) bool {
+				return trace.SpanContextFromContext(ctx).IsValid()
+			},
+		}))
 	if err != nil {
 		return nil, errors.New("invalid DATABASE_URL")
 	}
@@ -138,6 +153,14 @@ func (s *Store) Create(ctx context.Context, key string, command payment.Command)
 	}
 	if err != nil {
 		return payment.Payment{}, err
+	}
+	if p.ID == id {
+		carrier := propagation.MapCarrier{}
+		telemetry.Propagator.Inject(ctx, carrier)
+		if _, err := tx.ExecContext(ctx, `UPDATE payment_outbox SET traceparent = $2, tracestate = $3 WHERE payment_id = $1`,
+			p.ID, carrier.Get("traceparent"), carrier.Get("tracestate")); err != nil {
+			return payment.Payment{}, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return payment.Payment{}, err

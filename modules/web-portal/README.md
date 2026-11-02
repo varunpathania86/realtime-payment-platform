@@ -70,6 +70,25 @@ another member; lifecycle commands select the whole base using `DEV_PROFILE`.
 | `COMMIT` | `unknown` | Make variable / image argument; sets `VITE_APP_COMMIT` |
 | `NODE_VERSION` | None | Required image build argument from root `.tool-versions` |
 | `GO_VERSION` | None | Required image build argument from root `.tool-versions` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Unset | Optional Collector HTTP(S) origin; enables server/browser telemetry |
+| `OTEL_CLUSTER_NAME` | Unset | Cluster resource identity |
+
+### Stage 4 telemetry
+
+The Go server emits structured JSON logs with trace/span correlation and
+privacy-safe server spans. The browser uses standard OTel fetch instrumentation
+for only the three fixed status URLs (no queries or cross-origin requests) and
+a custom `portal.status.refresh` interaction span. A bounded two-second runtime
+configuration lookup enables telemetry only when the server exporter is set.
+Failures are reported without blocking status operations.
+
+Browser OTLP goes to the same-origin `POST /telemetry/v1/traces` proxy, not a
+public Collector. It requires a matching Origin and JSON, caps requests at
+64 KiB and five per second per process, strips browser credentials, refuses
+redirects and bounds Collector calls to two seconds. `/telemetry/config` exposes
+only an enabled flag, never the Collector address. Payment bodies, raw payment
+URLs and credentials are not instrumented.
+See [shared observability](../../docs/runbooks/observability.md).
 
 The browser fetches same-origin `/api/healthz`, `/api/readyz`, and `/api/version`.
 Ingress preserves `/api`; the payment API accepts that prefix. No cross-origin

@@ -263,6 +263,43 @@ not through `make dev-access`. Restoring PostgreSQL should recover readiness
 without restarting the API. Only run deliberate outage tests on an isolated
 profile; manual scaling is Terraform drift and is restored by a subsequent apply.
 
+### Stage 4: opt-in shared observability
+
+The regular local workflow remains monitoring-independent. To enable per-cluster
+Collectors and shared backends in cluster A, use an explicit configuration:
+
+```bash
+make dev-up DEV_CONFIG=templates/observability-topology.json
+make dev-observability
+```
+
+The example selects **5120 MiB/3 CPUs for A, 3072 MiB/2 CPUs for B/C**
+(11264 MiB total node budgets, plus host/build overhead). Copy and review it
+before applying to an existing lab: `dev-up`/`dev-update` persist the configuration
+and apply the chosen Docker node budgets. Merely pulling source changes does not
+enable monitoring or resize nodes. `node` remains the common default; `nodes`
+contains optional `a`/`b`/`c` overrides. `observability` defaults to false.
+Retain your existing `clusters` workload counts when composing a config.
+Use `DEV_PROFILE=<unused-base>` for an isolated lab and preserve unrelated profiles.
+
+Containers for Collector, Prometheus, Alertmanager, Loki, Tempo and Grafana are
+pinned in `.tool-versions`, checked by `make doctor`, and pulled by the Terraform
+deployment. They are workloads, not additional manually installed host CLIs.
+Monitoring provisioning waits for Kafka and the database-operator foundation,
+avoiding a cold-start image-pull storm competing with the payment foundation.
+`make setup` installs the existing Docker/Kubernetes/Helm/Terraform toolchains;
+Go/npm libraries come from the module manifests. First deployment requires
+image/package downloads. Five local 2 GiB PVCs persist telemetry independently
+of payments; `dev-down` destroys the owned telemetry stack too.
+
+Grafana is forwarded on loopback only (default port 3000, override `GRAFANA_PORT`).
+`make dev-status` also includes the opt-in `telemetry` namespace, with actual
+container CPU/RAM samples and configured requests/limits.
+See the [observability runbook](runbooks/observability.md) for credentials,
+latency-to-trace-to-log navigation, alerts, retention, and local-only network
+limitations. The browser uses a same-origin, size/rate-limited trace proxy;
+the Collector has no public browser/CORS ingress.
+
 ### Stage 3: local event publication
 
 The default workflow provisions replicated KRaft Kafka in `kafka`, CNPG in
@@ -688,6 +725,45 @@ Clean up the dedicated profile afterward using the same two teardown commands.
 
 See [local development troubleshooting](runbooks/local-development.md) and
 [ADR-001](adr/ADR-001-terraform-local-development.md) for ownership and trade-offs.
+
+### Stage 4 observability status
+
+The selected layout is an OpenTelemetry Collector in each cluster with shared
+Prometheus, Alertmanager, Loki, Tempo and Grafana backends. See
+[ADR-019](adr/ADR-019-shared-observability-backends.md). These deployments and
+their access commands are not implemented yet; normal `make dev-up`,
+`make dev-update`, `make dev-access` and `make smoke` remain unchanged.
+
+The first backend instrumentation slice supports an optional
+`OTEL_EXPORTER_OTLP_ENDPOINT` HTTP(S) origin for a payment-api process and
+`OTEL_CLUSTER_NAME` for cluster identity. Trace export defaults to disabled;
+the application chart does not configure these settings yet. Dependencies are
+Go libraries pinned in the module manifests, not additional host CLI tools.
+Run `make -C modules/payment-api test` for offline propagation/export tests and
+`make -C modules/payment-api test INTEGRATION=1` for durable PostgreSQL outbox
+context, retry and broker recovery checks.
+
+Stage 4 traces diagnose executions; they are not a durable lineage store.
+Define Flink dataset/job identities in Stage 5, implement persistent lineage
+with the first Flink-to-ClickHouse pipeline in Stage 6, and extend it to
+lakehouse transformations later. A future ADR must select lineage tooling
+before adding infrastructure. See [Stage 4 scope](master-plan.md#stage-4-baseline-observability).
+
+### Iteration baseline releases
+
+Stage 4 adds **Release iteration baseline**, a manual main-only GitHub workflow
+using the existing protected `release-publication` environment. Choose a full
+tested main SHA and an explicit solution baseline version; it reuses verified
+published digests and creates module/solution manifests, namespaced Git tags
+and prerelease GitHub Releases. It neither deploys nor advances the iteration.
+The stable catalog version remains production-only.
+
+The workflow calls `make release-baseline`, reusing the existing pinned Helm
+and Python catalog dependencies. No additional developer CLI installation is
+required. See the [baseline runbook](runbooks/iteration-baseline.md) for
+approval prerequisites, inputs, artifact verification and safe reruns. This
+workflow must be merged and tested live before claiming release acceptance.
+Local `dev-*` commands remain independent of it.
 
 ## 5. Workflow summary
 

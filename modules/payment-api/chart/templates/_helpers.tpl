@@ -29,3 +29,12 @@ volumeMounts:
       name: {{ .Values.database.existingSecret | quote }}
       key: DATABASE_URL
 {{- end -}}
+
+{{- define "payment-api.telemetryEnv" -}}
+{{- if .Values.telemetry.enabled }}
+- name: OTEL_EXPORTER_OTLP_ENDPOINT
+  value: {{ .Values.telemetry.endpoint | quote }}
+- name: OTEL_CLUSTER_NAME
+  value: {{ .Values.telemetry.cluster | quote }}
+{{- end }}
+{{- end -}}

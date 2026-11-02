@@ -12,9 +12,11 @@ RUN VITE_APP_VERSION="${VERSION}" VITE_APP_COMMIT="${COMMIT}" npm run build
 
 FROM golang:${GO_VERSION}-alpine AS server
 WORKDIR /src
-COPY go.mod ./
+COPY go.mod go.sum ./
+RUN go mod download
 COPY *.go ./
-RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /web-portal .
+ARG VERSION=dev
+RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o /web-portal .
 
 FROM scratch
 WORKDIR /app

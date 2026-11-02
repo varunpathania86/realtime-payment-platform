@@ -10,6 +10,10 @@ import (
 	"github.com/segmentio/kafka-go"
 	"github.com/varunpathania86/realtime-payment-platform/modules/payment-api/internal/event"
 	"github.com/varunpathania86/realtime-payment-platform/modules/payment-api/internal/postgres"
+	"github.com/varunpathania86/realtime-payment-platform/modules/payment-api/internal/telemetry"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func pause(ctx context.Context, delay time.Duration) error {
@@ -124,25 +128,44 @@ func RunConsumer(ctx context.Context, store *postgres.Store, k *Kafka, registry 
 			}
 			continue
 		}
-		write, cancel := context.WithTimeout(ctx, 5*time.Second)
+		headers := Headers(message.Headers)
+		processCtx := telemetry.Propagator.Extract(ctx, &headers)
+		processCtx, span := telemetry.Start(processCtx, "payment.initiated process", trace.SpanKindConsumer,
+			attribute.String("messaging.system", "kafka"),
+			attribute.String("messaging.destination.name", topic),
+			attribute.String("messaging.operation.type", "process"),
+			attribute.String("event_id", e.ID), attribute.String("payment_id", e.Payload.PaymentID))
+		write, cancel := context.WithTimeout(processCtx, 5*time.Second)
 		inserted, err := store.RecordReceipt(write, postgres.Publication{Event: e, AccountID: string(message.Key)})
 		cancel()
 		if errors.Is(err, postgres.ErrReceiptConflict) {
+			span.SetStatus(codes.Error, "identity_conflict")
+			span.End()
 			if err := quarantine(message, "identity_conflict"); err != nil {
 				return err
 			}
 			continue
 		}
 		if err != nil {
+			span.SetStatus(codes.Error, "receipt_persistence_failed")
+			span.End()
 			return errors.New("receipt persistence failed; offset not committed")
 		}
-		ack, cancel := context.WithTimeout(ctx, 5*time.Second)
+		ack, cancel := context.WithTimeout(processCtx, 5*time.Second)
 		err = reader.CommitMessages(ack, message)
 		cancel()
 		if err != nil {
+			span.SetStatus(codes.Error, "offset_commit_failed")
+			span.End()
 			return errors.New("receipt offset commit failed; replay is safe")
 		}
-		slog.Info("payment_receipt", "event_id", e.ID, "payment_id", e.Payload.PaymentID, "inserted", inserted)
+		slog.InfoContext(processCtx, "payment_receipt", "event_id", e.ID, "payment_id", e.Payload.PaymentID, "inserted", inserted)
+		outcome := "duplicate"
+		if inserted {
+			outcome = "inserted"
+		}
+		telemetry.Receipts.WithLabelValues(outcome).Inc()
+		span.End()
 	}
 	return ctx.Err()
 }

@@ -1,4 +1,8 @@
 replicaCount: 1
+telemetry:
+  enabled: false
+  endpoint: ""
+  cluster: ""
 image:
   repository: rpp-local/web-portal
   tag: dev

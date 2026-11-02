@@ -21,9 +21,17 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 	"github.com/varunpathania86/realtime-payment-platform/modules/payment-api/internal/httpapi"
 	"github.com/varunpathania86/realtime-payment-platform/modules/payment-api/internal/payment"
+	"go.opentelemetry.io/otel"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 func TestPostgres(t *testing.T) {
+	recorder := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	previous := otel.GetTracerProvider()
+	otel.SetTracerProvider(provider)
+	t.Cleanup(func() { otel.SetTracerProvider(previous) })
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 	pins, err := os.ReadFile("../../../../.tool-versions")
@@ -152,6 +160,19 @@ func TestPostgres(t *testing.T) {
 	t.Run("transactional outbox and crash recovery", func(t *testing.T) {
 		testOutbox(t, ctx, store, first)
 	})
+	t.Run("durable trace context", func(t *testing.T) {
+		testTraceContext(t, ctx, store)
+	})
+	for _, span := range recorder.Ended() {
+		for _, attr := range span.Attributes() {
+			if attr.Key == "db.query.text" || attr.Key == "db.statement" {
+				t.Fatal("database instrumentation exported SQL text")
+			}
+		}
+		if len(span.Events()) != 0 {
+			t.Fatal("database instrumentation exported a raw error event")
+		}
+	}
 	if _, err := store.db.ExecContext(ctx, "UPDATE schema_migrations SET checksum = 'changed'"); err != nil {
 		t.Fatal(err)
 	}

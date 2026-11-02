@@ -9,6 +9,11 @@
     "lint": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json"
   },
   "dependencies": {
+    "@opentelemetry/api": "1.9.0",
+    "@opentelemetry/exporter-trace-otlp-http": "0.208.0",
+    "@opentelemetry/instrumentation-fetch": "0.208.0",
+    "@opentelemetry/resources": "2.2.0",
+    "@opentelemetry/sdk-trace-web": "2.2.0",
     "react": "19.2.0",
     "react-dom": "19.2.0"
   },

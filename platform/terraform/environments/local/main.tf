@@ -60,6 +60,11 @@ resource "helm_release" "application" {
 
   values = [yamlencode({
     replicaCount = lookup(var.application_replicas, each.key, 1)
+    telemetry = {
+      enabled  = var.telemetry_enabled
+      endpoint = var.telemetry_enabled ? "http://collector.telemetry.svc.cluster.local:4318" : ""
+      cluster  = var.telemetry_cluster
+    }
     events = {
       relayReplicas     = var.worker_replicas.relay
       consumerReplicas  = var.worker_replicas.consumer

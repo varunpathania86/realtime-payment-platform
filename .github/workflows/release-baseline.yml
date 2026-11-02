@@ -1,0 +1,75 @@
+name: Release iteration baseline
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_commit:
+        description: Full tested main commit SHA to freeze
+        type: string
+        required: true
+      solution_version:
+        description: Explicit solution baseline version, for example 0.1.0-it1
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: iteration-baseline-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: release-publication
+    permissions:
+      contents: write
+      packages: write
+      actions: read
+    steps:
+      - name: Check out trusted main release tooling
+        uses: actions/checkout@v4
+        with:
+          path: tooling
+          persist-credentials: false
+      - name: Check out selected source for read-only inspection
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_commit }}
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install trusted release dependencies
+        working-directory: tooling
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install --no-cache-dir -r scripts/requirements-catalog.txt
+      - name: Install pinned Helm
+        working-directory: tooling
+        run: make tools TOOLS=helm
+      - name: Authenticate chart verification
+        working-directory: tooling
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: make publication-login
+      - name: Freeze and release verified baseline artifacts
+        working-directory: tooling
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASELINE_SOURCE: ${{ inputs.source_commit }}
+          BASELINE_VERSION: ${{ inputs.solution_version }}
+          SOURCE_ROOT: ${{ github.workspace }}/source
+          BASELINE_OUTPUT: ${{ github.workspace }}/baseline
+        run: make release-baseline
+      - name: Retain release manifests
+        uses: actions/upload-artifact@v4
+        with:
+          name: iteration-baseline-${{ github.run_id }}-${{ github.run_attempt }}
+          path: baseline/*.json
+          if-no-files-found: error
+          retention-days: 90

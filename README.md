@@ -16,13 +16,32 @@ Stage 1 adds the minimal [Go API](modules/payment-api/README.md) and
 Terraform, Helm, and Traefik. Stage 1 publication and identical-digest reruns are
 verified. Stage 2 adds PostgreSQL-backed initiated payment create/read operations,
 durable idempotency, migrations, an OpenAPI contract, and Testcontainers tests.
-Stage 2 is merged and its main build/publication verified. Stage 3 work adds
+Stage 2 is merged and its main build/publication verified. Stage 3 adds
 TLS/SCRAM Kafka, SQL-backed Apicurio, the transactional outbox, relay and
 idempotent receipt-consumer modes. See
 [event recovery](docs/runbooks/event-publication.md) and
 [ADR-003](docs/adr/ADR-003-transactional-outbox.md).
 See the [API guide](modules/payment-api/README.md) and
 [database runbook](docs/runbooks/payment-database.md).
+
+Stage 3 is merged and its main build, security and publication passed.
+Stage 4 is in progress: its selected architecture uses per-cluster
+OpenTelemetry Collectors and shared observability backends in cluster A.
+Instrumentation includes API/PostgreSQL tracing, durable outbox/Kafka context,
+correlated JSON logs, bounded business metrics and browser status telemetry.
+Use the [opt-in topology](templates/observability-topology.json) with `DEV_CONFIG`;
+`make dev-observability` opens authenticated Grafana on loopback.
+The [observability runbook](docs/runbooks/observability.md) covers dashboards,
+alerts and local-only network limitations.
+See [ADR-019](docs/adr/ADR-019-shared-observability-backends.md).
+Durable data lineage is a separate Stage 5 design / Stage 6 pipeline follow-up,
+not a guarantee provided by Stage 4 traces.
+
+Stage 4 also brings forward a manual **Release iteration baseline** workflow:
+freeze approved main artifacts into module/solution releases without rebuilding,
+deploying, advancing the PI schedule, or changing stable catalog versions.
+It must be merged and verified by an approved live run before release acceptance.
+See the [baseline runbook](docs/runbooks/iteration-baseline.md).
 
 ## Repository map
 
@@ -97,7 +116,7 @@ the bundled metrics-server; new `dev-up` runs enable it automatically.
 
 Run `make help` for all targets.
 
-Catalog validation is available through `make validate-catalog`; `make ci` includes catalog validation and unit tests. CI has a dynamic affected-module matrix; root checks also validate implemented modules. Trusted push CI can trigger protected branch/main OCI publication after the workflows are merged into `main` and the environment is configured. See the [publication runbook](docs/release-publication.md). Promotion and cleanup remain later phases.
+Catalog validation is available through `make validate-catalog`; `make ci` includes catalog validation and unit tests. CI has a dynamic affected-module matrix; root checks also validate implemented modules. Trusted push CI can trigger protected branch/main OCI publication after the workflows are merged into `main` and the environment is configured. See the [publication runbook](docs/release-publication.md). Iteration baselines are part of Stage 4; deployment, RC/production promotion and cleanup remain deferred.
 
 Stage 1 includes required TFLint quality checks and a separate
 [advisory Trivy IaC workflow](.github/workflows/security.yml) for the solution and
@@ -113,8 +132,9 @@ artifacts; see [report locations](docs/developer-setup.md#quality-and-security-r
 Publication now supports images and module Helm charts. Packaged charts reference
 the verified image digest and have their own verified OCI digest. Main publication
 and same-source reruns were verified on 2026-10-28 with unchanged image/chart
-digests at version `0.0.1-it1-rv.1`. Stages 1 and 2 are accepted; Stage 3 work is
-on a separate branch. Promotion and Git release tagging remain Stage 17 work.
+digests at version `0.0.1-it1-rv.1`. Stages 1-3 are accepted. Stage 4 adds
+iteration-baseline manifests, namespaced Git tags and prerelease GitHub Releases.
+GitOps and RC/production promotion remain later work.
 
 ## Workflow
 

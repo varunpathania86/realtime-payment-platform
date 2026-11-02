@@ -1,0 +1,220 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: collector
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: rpp-telemetry-discovery
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: rpp-telemetry-discovery
+subjects:
+  - kind: ServiceAccount
+    name: collector
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: rpp-telemetry-discovery
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: collector
+data:
+  config.yaml: |
+{{- define "observability.collectorConfig" }}
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+    receivers:
+      otlp:
+        protocols:
+          http:
+            endpoint: 0.0.0.0:4318
+      filelog:
+        include: [/var/log/pods/apps_*/*/*.log]
+        start_at: end
+        include_file_path: true
+        operators:
+          - type: container
+      prometheus:
+        config:
+          scrape_configs:
+            - job_name: workloads
+              scrape_interval: 15s
+              kubernetes_sd_configs:
+                - role: pod
+              relabel_configs:
+                - source_labels: [__meta_kubernetes_pod_container_port_name]
+                  regex: http
+                  action: keep
+                - source_labels: [__meta_kubernetes_pod_container_init]
+                  regex: "false"
+                  action: keep
+                - source_labels: [__meta_kubernetes_namespace]
+                  regex: apps|postgres
+                  action: keep
+                - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+                  regex: "true"
+                  action: keep
+                - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+                  regex: '([^:]+)(?::\d+)?;(\d+)'
+                  replacement: '$1:$2'
+                  target_label: __address__
+                - source_labels: [__meta_kubernetes_pod_name]
+                  target_label: pod
+                - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+                  target_label: service_name
+              metric_relabel_configs:
+                - target_label: cluster
+                  replacement: {{ .Values.cluster | quote }}
+            - job_name: postgresql
+              scrape_interval: 15s
+              kubernetes_sd_configs:
+                - role: pod
+              relabel_configs:
+                - source_labels: [__meta_kubernetes_namespace]
+                  regex: postgres
+                  action: keep
+                - source_labels: [__meta_kubernetes_pod_container_port_number]
+                  regex: "9187"
+                  action: keep
+                - source_labels: [__meta_kubernetes_pod_name]
+                  target_label: pod
+                - target_label: cluster
+                  replacement: {{ .Values.cluster | quote }}
+      {{- if .Values.backends }}
+      kafkametrics:
+        brokers: {{ .Values.brokers | toJson }}
+        protocol_version: 3.0.0
+        scrapers: [brokers, topics, consumers]
+        collection_interval: 15s
+        topic_match: ^payments[.]initiated[.]v1$
+        group_match: ^payment-receipts-v1$
+        tls:
+          ca_file: /etc/kafka/ca.pem
+        auth:
+          sasl:
+            username: payments
+            password: ${env:KAFKA_PASSWORD}
+            mechanism: SCRAM-SHA-512
+      {{- end }}
+    processors:
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 192
+        spike_limit_mib: 32
+      resource:
+        attributes:
+          - key: k8s.cluster.name
+            value: {{ .Values.cluster | quote }}
+            action: upsert
+          - key: service.name
+            value: payment-workloads
+            action: insert
+      batch:
+        timeout: 1s
+        send_batch_size: 128
+    exporters:
+      otlphttp/traces:
+        endpoint: http://{{ .Values.backendAddress }}:30418
+        sending_queue:
+          queue_size: 256
+        retry_on_failure:
+          max_elapsed_time: 30s
+      otlphttp/logs:
+        endpoint: http://{{ .Values.backendAddress }}:30100/otlp
+        sending_queue:
+          queue_size: 256
+      prometheusremotewrite:
+        endpoint: http://{{ .Values.backendAddress }}:30090/api/v1/write
+        resource_to_telemetry_conversion:
+          enabled: true
+    service:
+      extensions: [health_check]
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, resource, batch]
+          exporters: [otlphttp/traces]
+        logs:
+          receivers: [filelog, otlp]
+          processors: [memory_limiter, resource, batch]
+          exporters: [otlphttp/logs]
+        metrics:
+          receivers: [prometheus{{ if .Values.backends }}, kafkametrics{{ end }}]
+          processors: [memory_limiter, resource, batch]
+          exporters: [prometheusremotewrite]
+{{- end }}
+{{ include "observability.collectorConfig" . }}
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: collector
+spec:
+  selector:
+    matchLabels: {app: collector}
+  template:
+    metadata:
+      labels: {app: collector}
+      annotations:
+        config-checksum: {{ include "observability.collectorConfig" . | sha256sum | quote }}
+        kafka-configuration: {{ .Values.kafkaRevision | default "" | quote }}
+    spec:
+      serviceAccountName: collector
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: collector
+          image: {{ required "collector image is required" .Values.images.otelcol }}
+          args: ["--config=/etc/collector/config.yaml", "--feature-gates=receiver.kafkametricsreceiver.UseFranzGo"]
+          env:
+            - name: KAFKA_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: collector-kafka, key: password}
+          ports:
+            - {name: otlp, containerPort: 4318}
+            - {name: health, containerPort: 13133}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+          readinessProbe:
+            httpGet: {path: /, port: health}
+          livenessProbe:
+            httpGet: {path: /, port: health}
+          volumeMounts:
+            - {name: config, mountPath: /etc/collector, readOnly: true}
+            - {name: logs, mountPath: /var/log/pods, readOnly: true}
+            - {name: kafka, mountPath: /etc/kafka, readOnly: true}
+      volumes:
+        - name: config
+          configMap: {name: collector}
+        - name: logs
+          hostPath: {path: /var/log/pods, type: Directory}
+        - name: kafka
+          secret: {secretName: collector-kafka}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: collector
+spec:
+  selector: {app: collector}
+  ports:
+    - {name: otlp, port: 4318, targetPort: otlp}
