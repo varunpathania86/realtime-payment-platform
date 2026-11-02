@@ -1,0 +1,26 @@
+{
+  "type": "record",
+  "name": "PaymentInitiated",
+  "namespace": "platform.payments.v1",
+  "fields": [
+    {"name": "event_id", "type": {"type": "string", "logicalType": "uuid"}},
+    {"name": "event_type", "type": "string"},
+    {"name": "event_time", "type": "string"},
+    {"name": "producer", "type": "string"},
+    {"name": "correlation_id", "type": {"type": "string", "logicalType": "uuid"}},
+    {"name": "causation_id", "type": ["null", {"type": "string", "logicalType": "uuid"}], "default": null},
+    {"name": "schema_version", "type": "int"},
+    {
+      "name": "payload",
+      "type": {
+        "type": "record",
+        "name": "PaymentInitiatedPayload",
+        "fields": [
+          {"name": "payment_id", "type": {"type": "string", "logicalType": "uuid"}},
+          {"name": "amount_minor", "type": "long"},
+          {"name": "currency", "type": "string"}
+        ]
+      }
+    }
+  ]
+}

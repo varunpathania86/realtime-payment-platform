@@ -17,6 +17,11 @@ All design documentation lives here, written in Markdown with Mermaid diagrams. 
 | [architecture/payment-api-lld.md](architecture/payment-api-lld.md) | Stage 2 HTTP, persistence, migrations, and idempotency design |
 | [adr/ADR-015-stage-2-payment-storage-and-idempotency.md](adr/ADR-015-stage-2-payment-storage-and-idempotency.md) | UUIDs, PostgreSQL, local credentials, and concurrency decisions |
 | [runbooks/payment-database.md](runbooks/payment-database.md) | Payment readiness, migration failures, and database recovery |
+| [adr/ADR-003-transactional-outbox.md](adr/ADR-003-transactional-outbox.md) | Atomic event writes, TLS/SCRAM Kafka, replay and receipt deduplication |
+| [runbooks/event-publication.md](runbooks/event-publication.md) | Outbox retries, SQL dead letters, registry and consumer recovery |
+| [adr/ADR-016-local-cross-cluster-kafka.md](adr/ADR-016-local-cross-cluster-kafka.md) | Three independent Minikube clusters, replicated Kafka, budgets and shared-host limitations |
+| [adr/ADR-017-full-stack-cross-cluster-replication.md](adr/ADR-017-full-stack-cross-cluster-replication.md) | Opt-in full-stack placement, distributed CNPG, required synchronous durability and controlled recovery |
+| [adr/ADR-018-configurable-kubernetes-topology.md](adr/ADR-018-configurable-kubernetes-topology.md) | Portable per-cluster workload counts, local node budgets and unified developer commands |
 | [adr/](adr/) | Architecture Decision Records |
 | [runbooks/](runbooks/) | Operational procedures |
 

@@ -5,6 +5,7 @@ SHELL := /usr/bin/env bash
 export PATH := $(HOME)/.local/bin:$(PATH)
 .DEFAULT_GOAL := help
 .PHONY: security security-solution security-module security-plan publication-login quality-report quality-module-report
+.PHONY: dev-metrics db-switchover db-failover db-rejoin
 
 # Use a system pre-commit if present, otherwise the one installed by `make setup`.
 VENV       := .venv
@@ -14,7 +15,7 @@ PRE_COMMIT := $(or $(shell command -v pre-commit),$(VENV)/bin/pre-commit)
 PROJECT_ROOTS := apps packages streaming platform ml knowledge analytics contracts tests modules
 SUBPROJECTS   := $(sort $(patsubst %/Makefile,%,$(wildcard $(addsuffix /*/Makefile,$(PROJECT_ROOTS)))))
 
-.PHONY: help setup tools docker setup-agent agent-status remove-agent doctor validate-catalog test-catalog check-module publication-plan publish-module cluster-up cluster-status cluster-down projects build test lint fmt clean ci hooks version dev-up dev-update dev-images dev-access dev-status dev-down smoke terraform-init terraform-validate terraform-plan terraform-apply terraform-destroy
+.PHONY: help setup tools docker setup-agent agent-status remove-agent doctor validate-catalog test-catalog check-module publication-plan publish-module cluster-down projects build test lint fmt clean ci hooks version dev-up dev-update dev-access dev-status dev-down smoke
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
@@ -28,6 +29,8 @@ setup: ## Set up the developer environment (see docs/developer-setup.md)
 	$(PRE_COMMIT) install
 	scripts/install-tools.sh
 	scripts/install-docker.sh
+	bash scripts/setup-multicluster.sh
+	bash scripts/setup-cnpg.sh
 	@$(MAKE) --no-print-directory doctor
 
 tools: ## Install or update the pinned CLI tools from .tool-versions
@@ -84,49 +87,38 @@ publish-module: ## Publish one approved module artifact (requires workflow envir
 publication-login: ## Authenticate Helm to GHCR using the job token through stdin
 	@printf '%s' "$$GH_TOKEN" | helm registry login ghcr.io --username "$$GITHUB_ACTOR" --password-stdin
 
-cluster-up: ## Start the local Minikube cluster (idempotent)
-	@scripts/cluster.sh up
+dev-up: ## Start rpp-a/b/c (optional DEV_PROFILE and DEV_CONFIG overrides)
+	@bash scripts/multi-cluster.sh up
 
-cluster-status: ## Show the local cluster status
-	@scripts/cluster.sh status
+dev-update: ## Rebuild/load applications and update all active clusters, retaining data
+	@bash scripts/multi-cluster.sh update
 
-cluster-down: ## DESTRUCTIVE: delete the local Minikube cluster and its data
-	@scripts/cluster.sh down
+dev-status: ## Show cluster/container CPU, RAM, readiness, requests and limits
+	@bash scripts/multi-cluster.sh status
 
-dev-up: ## Build/load local images and deploy the stack without GitHub or GHCR
-	@scripts/local-dev.sh up
+dev-metrics: ## Enable bundled metrics-server on the three owned clusters
+	@bash scripts/multi-cluster.sh metrics
 
-dev-update: ## Rebuild/load local images and update the existing local stack
-	@scripts/local-dev.sh update
+db-switchover: ## Move the CNPG writer using demotion/promotion tokens (DATABASE_TARGET=pg-b)
+	@bash scripts/multi-cluster.sh switchover
 
-dev-images: ## Build catalog-discovered application images and load them into Minikube
-	@scripts/local-dev.sh images
+db-failover: ## Fence the old primary and verify durable WAL before promotion (DATABASE_TARGET=pg-b)
+	@bash scripts/multi-cluster.sh failover
+
+db-rejoin: ## DESTRUCTIVE: recreate the fenced owned profile and clone the current database
+	@bash scripts/multi-cluster.sh rejoin
+
+dev-down: ## DESTRUCTIVE: destroy the owned stack and all data, retaining cluster nodes
+	@bash scripts/multi-cluster.sh down
+
+cluster-down: ## DESTRUCTIVE: delete three owned clusters after successful dev-down
+	@bash scripts/multi-cluster.sh cluster-down
 
 dev-access: ## Forward ingress to http://127.0.0.1:8080 (foreground; Ctrl-C stops)
-	@scripts/local-dev.sh access
-
-dev-status: ## Show local application resources
-	@scripts/local-dev.sh status
-
-dev-down: ## DESTRUCTIVE: destroy the local Terraform-managed stack, preserving Minikube
-	@scripts/local-dev.sh down
+	@MINIKUBE_PROFILE="$${MINIKUBE_PROFILE:-$${DEV_PROFILE:-rpp}-a}" scripts/local-dev.sh access
 
 smoke: ## Check API build identity and frontend through local ingress
-	@scripts/local-dev.sh smoke
-
-terraform-init: ## Initialize the profile-specific local Terraform backend
-	@scripts/local-dev.sh init
-
-terraform-validate: ## Validate Terraform without a running cluster
-	@scripts/local-dev.sh validate
-
-terraform-plan: ## Plan local infrastructure using the built image inventory
-	@scripts/local-dev.sh plan
-
-terraform-apply: ## Plan and apply local infrastructure using loaded images
-	@scripts/local-dev.sh apply
-
-terraform-destroy: dev-down ## DESTRUCTIVE: destroy the local Terraform-managed stack
+	@MINIKUBE_PROFILE="$${MINIKUBE_PROFILE:-$${DEV_PROFILE:-rpp}-a}" scripts/local-dev.sh smoke
 
 projects: ## List discovered sub-projects
 	@if [ -z "$(SUBPROJECTS)" ]; then echo "(none yet)"; else printf '%s\n' $(SUBPROJECTS); fi

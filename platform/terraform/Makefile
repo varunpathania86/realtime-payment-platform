@@ -7,9 +7,12 @@ help: ## Show available targets
 
 build: ## Validate the local Terraform environment
 	../../scripts/local-dev.sh validate
+	bash ../../scripts/multi-cluster.sh validate
 
 test: ## Lint and render all catalog-discovered application charts
 	../../scripts/local-dev.sh charts
+	terraform -chdir=modules/kafka-broker init -backend=false -input=false
+	terraform -chdir=modules/kafka-broker test
 
 lint: ## Check Terraform formatting and shared TFLint rules
 	terraform fmt -check -recursive

@@ -19,8 +19,8 @@ ifeq ($(INTEGRATION),1)
 test: integration
 endif
 
-integration: ## Run Docker-backed PostgreSQL Testcontainers integration tests
-	go test -tags=integration -count=1 -timeout=5m ./internal/postgres
+integration: ## Run Docker-backed PostgreSQL, Kafka and registry recovery tests
+	go test -tags=integration -count=1 -timeout=6m ./internal/postgres ./internal/stream
 
 migrate: build ## Apply embedded migrations using DATABASE_URL (bounded to 30 seconds)
 	./bin/payment-api migrate

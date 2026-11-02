@@ -1,0 +1,80 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ .Values.name }}
+spec:
+  instances: {{ .Values.instances }}
+  imageName: {{ required "image is required" .Values.image | quote }}
+  storage:
+    size: 2Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  certificates:
+    serverCASecret: database-ca
+    clientCASecret: database-ca
+    serverTLSSecret: database-server
+    replicationTLSSecret: database-replication
+  postgresql:
+    parameters:
+      shared_buffers: 32MB
+      max_connections: {{ .Values.maxConnections | quote }}
+      max_slot_wal_keep_size: 512MB
+    synchronous:
+      method: any
+      number: 1
+      dataDurability: required
+      maxStandbyNamesFromCluster: 0
+      standbyNamesPre:
+        {{- range $name, $_ := .Values.addresses }}
+        {{- if ne $name $.Values.name }}
+        - {{ $name }}
+        {{- end }}
+        {{- end }}
+  bootstrap:
+    {{- if not .Values.bootstrapSource }}
+    initdb:
+      database: payments
+      owner: payments
+      secret:
+        name: database-application
+    {{- else }}
+    pg_basebackup:
+      source: {{ .Values.bootstrapSource }}
+    {{- end }}
+  replica:
+    {{- if .Values.promotionToken }}
+    promotionToken: {{ .Values.promotionToken | quote }}
+    {{- end }}
+    primary: {{ .Values.primary }}
+    source: {{ if eq .Values.primary .Values.name }}{{ if eq .Values.name "pg-a" }}pg-b{{ else }}pg-a{{ end }}{{ else }}{{ .Values.primary }}{{ end }}
+  managed:
+    roles:
+      - name: payments
+        login: true
+        passwordSecret:
+          name: database-application
+  externalClusters:
+    {{- range $name, $address := .Values.addresses }}
+    - name: {{ $name }}
+      connectionParameters:
+        host: {{ $address | quote }}
+        port: "30432"
+        user: streaming_replica
+        dbname: postgres
+        sslmode: verify-full
+        application_name: {{ $.Values.name }}
+      sslRootCert:
+        name: database-ca
+        key: ca.crt
+      sslCert:
+        name: database-replication
+        key: tls.crt
+      sslKey:
+        name: database-replication
+        key: tls.key
+    {{- end }}

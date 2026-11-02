@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
-	_ "embed"
+	"embed"
 	"errors"
 	"fmt"
 	"time"
@@ -13,8 +13,15 @@ import (
 	"github.com/varunpathania86/realtime-payment-platform/modules/payment-api/internal/payment"
 )
 
-//go:embed migrations/001_payments.sql
-var migration string
+//go:embed migrations/*.sql
+var migrations embed.FS
+
+var migrationNames = []string{"001_payments.sql", "002_outbox.sql", "003_event_dead_letters.sql", "004_outbox_write_guard.sql"}
+
+func migrationSQL(name string) (string, error) {
+	data, err := migrations.ReadFile("migrations/" + name)
+	return string(data), err
+}
 
 type Store struct{ db *sql.DB }
 
@@ -48,21 +55,28 @@ func (s *Store) Migrate(ctx context.Context) error {
 		version integer PRIMARY KEY, checksum text NOT NULL)`); err != nil {
 		return fmt.Errorf("create migration ledger: %w", err)
 	}
-	checksum := fmt.Sprintf("%x", sha256.Sum256([]byte(migration)))
-	var recorded string
-	err = tx.QueryRowContext(ctx, `SELECT checksum FROM schema_migrations WHERE version = 1`).Scan(&recorded)
-	switch {
-	case errors.Is(err, sql.ErrNoRows):
-		if _, err = tx.ExecContext(ctx, migration); err != nil {
-			return fmt.Errorf("apply migration 1: %w", err)
+	for index, name := range migrationNames {
+		sqlText, err := migrationSQL(name)
+		if err != nil {
+			return err
 		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO schema_migrations (version, checksum) VALUES (1, $1)`, checksum); err != nil {
-			return fmt.Errorf("record migration 1: %w", err)
+		version := index + 1
+		checksum := fmt.Sprintf("%x", sha256.Sum256([]byte(sqlText)))
+		var recorded string
+		err = tx.QueryRowContext(ctx, `SELECT checksum FROM schema_migrations WHERE version = $1`, version).Scan(&recorded)
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			if _, err = tx.ExecContext(ctx, sqlText); err != nil {
+				return fmt.Errorf("apply migration %d: %w", version, err)
+			}
+			if _, err = tx.ExecContext(ctx, `INSERT INTO schema_migrations (version, checksum) VALUES ($1, $2)`, version, checksum); err != nil {
+				return fmt.Errorf("record migration %d: %w", version, err)
+			}
+		case err != nil:
+			return fmt.Errorf("read migration ledger: %w", err)
+		case recorded != checksum:
+			return fmt.Errorf("migration %d checksum changed; restore the applied migration", version)
 		}
-	case err != nil:
-		return fmt.Errorf("read migration ledger: %w", err)
-	case recorded != checksum:
-		return errors.New("migration 1 checksum changed; restore the applied migration")
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit migrations: %w", err)
@@ -71,12 +85,18 @@ func (s *Store) Migrate(ctx context.Context) error {
 }
 
 func (s *Store) Ready(ctx context.Context) error {
-	var checksum string
-	if err := s.db.QueryRowContext(ctx, `SELECT checksum FROM schema_migrations WHERE version = 1`).Scan(&checksum); err != nil {
-		return err
-	}
-	if checksum != fmt.Sprintf("%x", sha256.Sum256([]byte(migration))) {
-		return errors.New("database migration checksum mismatch")
+	for index, name := range migrationNames {
+		sqlText, err := migrationSQL(name)
+		if err != nil {
+			return err
+		}
+		var checksum string
+		if err := s.db.QueryRowContext(ctx, `SELECT checksum FROM schema_migrations WHERE version = $1`, index+1).Scan(&checksum); err != nil {
+			return err
+		}
+		if checksum != fmt.Sprintf("%x", sha256.Sum256([]byte(sqlText))) {
+			return errors.New("database migration checksum mismatch")
+		}
 	}
 	return nil
 }
@@ -98,7 +118,12 @@ func (s *Store) Create(ctx context.Context, key string, command payment.Command)
 	if err != nil {
 		return payment.Payment{}, err
 	}
-	p, err := scan(s.db.QueryRowContext(ctx, `INSERT INTO payments
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return payment.Payment{}, err
+	}
+	defer tx.Rollback()
+	p, err := scan(tx.QueryRowContext(ctx, `INSERT INTO payments
 		(id, account_id, amount_minor, currency, status, idempotency_key)
 		VALUES ($1, $2, $3, $4, 'initiated', $5)
 		ON CONFLICT (idempotency_key) DO NOTHING RETURNING `+columns,
@@ -106,12 +131,18 @@ func (s *Store) Create(ctx context.Context, key string, command payment.Command)
 	if errors.Is(err, sql.ErrNoRows) {
 		// A conflicting INSERT waits for the winner to commit. A fresh READ COMMITTED
 		// statement can then see that row, including when both requests arrived together.
-		p, err = scan(s.db.QueryRowContext(ctx, `SELECT `+columns+` FROM payments WHERE idempotency_key = $1`, key))
+		p, err = scan(tx.QueryRowContext(ctx, `SELECT `+columns+` FROM payments WHERE idempotency_key = $1`, key))
 		if err == nil && p.Command != command {
 			return payment.Payment{}, payment.ErrConflict
 		}
 	}
-	return p, err
+	if err != nil {
+		return payment.Payment{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return payment.Payment{}, err
+	}
+	return p, nil
 }
 
 func (s *Store) Get(ctx context.Context, id string) (payment.Payment, error) {

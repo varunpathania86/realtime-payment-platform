@@ -1,0 +1,5 @@
+apiVersion: v2
+name: distributed-postgres
+description: One CNPG member of the local three-Kubernetes-cluster database
+type: application
+version: 0.1.0

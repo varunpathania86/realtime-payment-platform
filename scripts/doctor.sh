@@ -56,6 +56,31 @@ else
   bad "PostgreSQL container pin is missing/invalid in .tool-versions; restore it before make dev-up or module integration"
 fi
 
+for runtime in kafka apicurio; do
+  if [[ "$(pinned_version "$runtime")" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    ok "$runtime container pin $(pinned_version "$runtime") (pulled by local deployment/integration tests)"
+  else
+    bad "$runtime container pin is missing/invalid in .tool-versions; restore it before make dev-up or module integration"
+  fi
+done
+
+if [ "${MULTI_CLUSTER:-0}" = 1 ]; then
+  if [ -r /proc/sys/fs/inotify/max_user_instances ] &&
+    [ "$(cat /proc/sys/fs/inotify/max_user_instances)" -ge 1024 ]; then
+    ok "multi-cluster host inotify instance limit"
+  else
+    bad "multi-cluster needs fs.inotify.max_user_instances >= 1024 on the Docker host (run: MULTI_CLUSTER=1 make setup)"
+  fi
+fi
+
+cnpg_chart="$REPO_ROOT/.local/tools/cloudnative-pg-$(pinned_version cnpg-chart).tgz"
+if [ -f "$cnpg_chart" ] &&
+  printf '%s  %s\n' "$(pinned_version cnpg-chart-sha256)" "$cnpg_chart" | sha256sum --check --status; then
+  ok "CNPG operator chart $(pinned_version cnpg-chart) (checksum verified)"
+else
+  bad "CNPG chart is missing or checksum differs (run: make setup)"
+fi
+
 case ":$PATH:" in
   *":$BIN_DIR:"*) ;;
   *) bad "$BIN_DIR is not on PATH (add it in ~/.bashrc)" ;;

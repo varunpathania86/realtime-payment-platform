@@ -12,6 +12,7 @@ DISK="${MINIKUBE_DISK:-40g}"
 
 case "${1:-}" in
   up)
+    refuse_fenced_profile "$PROFILE"
     docker info >/dev/null 2>&1 || { echo "Docker is not reachable: see docs/developer-setup.md" >&2; exit 1; }
     minikube start -p "$PROFILE" --driver=docker --cpus="$CPUS" --memory="$MEMORY" --disk-size="$DISK" \
       --kubernetes-version="v$(pinned_version kubectl)"
@@ -22,6 +23,7 @@ case "${1:-}" in
     kubectl --context "$PROFILE" get nodes
     ;;
   down)
+    refuse_fenced_profile "$PROFILE"
     echo "Deleting Minikube profile '$PROFILE' and all its data"
     minikube delete -p "$PROFILE"
     ;;

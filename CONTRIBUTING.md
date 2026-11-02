@@ -50,7 +50,8 @@ a separate available loopback port.
 These commands require no GitHub workflow, GHCR login, approval, or active PI.
 Use a dedicated `MINIKUBE_PROFILE` for destructive recreation tests.
 For payment-api persistence changes, also run
-`make -C modules/payment-api integration` (Docker-backed, disposable PostgreSQL).
+`make -C modules/payment-api integration` (Docker-backed, disposable PostgreSQL,
+TLS/SCRAM Kafka, and Apicurio, including the publisher-crash recovery test).
 The module CI sets `INTEGRATION=1` to include these tests. Do not edit applied
 SQL migrations, commit database credentials/state, or tear down a shared profile.
 See [the developer guide](docs/developer-setup.md#4-local-application-development)

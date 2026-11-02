@@ -3,5 +3,8 @@
 !schemas/*.avsc
 !examples/
 !examples/*.json
+!compatibility/
+!compatibility/*/
+!compatibility/*/*.avsc
 !README.md
 !module.yaml

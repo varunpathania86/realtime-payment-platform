@@ -3,12 +3,16 @@ kind: Deployment
 metadata:
   name: {{ .Release.Name }}
 spec:
-  replicas: 1
+  replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
       app.kubernetes.io/name: {{ .Release.Name }}
   template:
     metadata:
+      {{- if .Values.database.revision }}
+      annotations:
+        database-configuration: {{ .Values.database.revision | quote }}
+      {{- end }}
       labels:
         app.kubernetes.io/name: {{ .Release.Name }}
     spec:
@@ -24,6 +28,7 @@ spec:
           image: "{{ include "payment-api.image" . }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args: ["migrate"]
+          {{- include "payment-api.databaseMount" . | nindent 10 }}
           env:
             {{- include "payment-api.databaseEnv" . | nindent 12 }}
           securityContext:
@@ -35,6 +40,7 @@ spec:
             {{- toYaml .Values.resources | nindent 12 }}
       containers:
         - name: app
+          {{- include "payment-api.databaseMount" . | nindent 10 }}
           image: "{{ include "payment-api.image" . }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
@@ -59,3 +65,7 @@ spec:
             initialDelaySeconds: 3
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+      {{- if .Values.database.tls }}
+      volumes:
+        {{- include "payment-api.databaseVolume" . | nindent 8 }}
+      {{- end }}

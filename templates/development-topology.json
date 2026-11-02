@@ -1,0 +1,32 @@
+{
+  "node": { "cpus": 4, "memory_mib": 6144 },
+  "clusters": {
+    "a": {
+      "kafka_brokers": 2,
+      "postgres_instances": 2,
+      "applications": { "payment-api": 2, "web-portal": 2 },
+      "relay": 2,
+      "consumer": 2,
+      "registry": 2,
+      "ingress": 2
+    },
+    "b": {
+      "kafka_brokers": 2,
+      "postgres_instances": 2,
+      "applications": { "payment-api": 2, "web-portal": 2 },
+      "relay": 2,
+      "consumer": 2,
+      "registry": 2,
+      "ingress": 2
+    },
+    "c": {
+      "kafka_brokers": 2,
+      "postgres_instances": 2,
+      "applications": { "payment-api": 2, "web-portal": 2 },
+      "relay": 2,
+      "consumer": 2,
+      "registry": 2,
+      "ingress": 2
+    }
+  }
+}

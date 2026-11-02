@@ -7,12 +7,19 @@ cd "$REPO_ROOT"
 
 PROFILE="${MINIKUBE_PROFILE:-rpp}"
 [[ "$PROFILE" =~ ^[a-z][a-z0-9-]{0,39}$ ]] || { echo "Invalid MINIKUBE_PROFILE" >&2; exit 1; }
+case "${1:-}" in
+  up|update|images|apply|down) refuse_fenced_profile "$PROFILE" ;;
+esac
 LOCAL_PORT="${LOCAL_PORT:-8080}"
 if ! [[ "$LOCAL_PORT" =~ ^[0-9]{1,5}$ ]] || ((10#$LOCAL_PORT < 1 || 10#$LOCAL_PORT > 65535)); then
   echo "LOCAL_PORT must be between 1 and 65535" >&2
   exit 1
 fi
 STATE_DIR="$REPO_ROOT/.local/$PROFILE"
+EXTRA_VARS=()
+if [ -f "$STATE_DIR/events.tfvars.json" ]; then
+  EXTRA_VARS+=("-var-file=$STATE_DIR/events.tfvars.json")
+fi
 TF_ROOT="$REPO_ROOT/platform/terraform/environments/local"
 export TF_DATA_DIR="$STATE_DIR/terraform"
 export TF_VAR_kube_context="$PROFILE"
@@ -81,7 +88,7 @@ plan() {
   require_images
   "$PYTHON" scripts/local_database.py "$STATE_DIR/database.tfvars.json"
   tf plan -input=false -var-file="$STATE_DIR/images.tfvars.json" \
-    -var-file="$STATE_DIR/database.tfvars.json" -out="$STATE_DIR/tfplan"
+    -var-file="$STATE_DIR/database.tfvars.json" "${EXTRA_VARS[@]}" -out="$STATE_DIR/tfplan"
 }
 
 apply() {
@@ -153,7 +160,7 @@ case "${1:-}" in
     "$PYTHON" scripts/local_database.py "$STATE_DIR/database.tfvars.json"
     init
     tf destroy -input=false -auto-approve -var-file="$STATE_DIR/images.tfvars.json" \
-      -var-file="$STATE_DIR/database.tfvars.json"
+      -var-file="$STATE_DIR/database.tfvars.json" "${EXTRA_VARS[@]}"
     ;;
   access)
     exec kubectl --context "$PROFILE" -n platform port-forward --address 127.0.0.1 service/traefik "$LOCAL_PORT:80"

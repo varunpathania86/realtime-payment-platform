@@ -19,14 +19,19 @@ unchanged payload, never a new key. No unbounded API retry loop runs.
 
 ## Diagnosis
 
-Use the explicit profile you deployed, not an implicit current Kubernetes context:
+Use the explicit topology/context you deployed, not an implicit current context.
+Examples use the default `rpp` base. For another lab, pass `DEV_PROFILE=<base>`
+to Make and substitute its contexts below; existing labs are not renamed.
+The examples assume the global writer is in A; select its actual member after
+promotion. CNPG can change the designated primary pod inside a cluster:
 
 ```bash
-make dev-status MINIKUBE_PROFILE=rpp
-kubectl --context rpp -n data get pods,pvc,services
-kubectl --context rpp -n data logs statefulset/payments-postgres
-kubectl --context rpp -n apps logs deployment/payment-api -c migrate
-kubectl --context rpp -n apps logs deployment/payment-api -c app
+make dev-status
+kubectl --context rpp-a -n postgres get clusters,pods,pvc,services
+POD=$(kubectl --context rpp-a -n postgres get cluster pg-a -o jsonpath='{.status.currentPrimary}')
+kubectl --context rpp-a -n postgres logs "$POD" -c postgres --tail=50
+kubectl --context rpp-a -n apps logs deployment/payment-api -c migrate
+kubectl --context rpp-a -n apps logs deployment/payment-api -c app
 ```
 
 Kubernetes probes contact the pod directly, not through Traefik. Failed readiness
@@ -34,15 +39,15 @@ removes the pod from normal Service/ingress routing; it does not mean liveness
 failed or require an API restart. Inspect readiness and restart counts with:
 
 ```bash
-kubectl --context rpp -n apps get pods
-kubectl --context rpp -n apps get endpointslices \
+kubectl --context rpp-a -n apps get pods
+kubectl --context rpp-a -n apps get endpointslices \
   -l kubernetes.io/service-name=payment-api -o yaml
 ```
 
 To distinguish ingress availability from process health, temporarily bypass it:
 
 ```bash
-kubectl --context rpp -n apps port-forward \
+kubectl --context rpp-a -n apps port-forward \
   deployment/payment-api 18081:8080
 ```
 
@@ -68,20 +73,13 @@ sensitive local credentials and must remain Git-ignored.
 
 Restore the database pod/storage. The API should recover readiness automatically;
 an API restart or rebuild is not required for a routine database outage.
-If an isolated test deliberately scaled the database to zero, restore it with:
-
-```bash
-kubectl --context rpp -n data scale statefulset/payments-postgres --replicas=1
-kubectl --context rpp -n data rollout status \
-  statefulset/payments-postgres --timeout=120s
-kubectl --context rpp -n apps wait --for=condition=Ready pod \
-  -l app.kubernetes.io/name=payment-api --timeout=120s
-```
-
-Run scale/outage experiments only on a dedicated test profile; replace every
-`rpp` context above with that profile. Terraform declares one database replica,
-so `make terraform-plan` detects manual scaling and `make terraform-apply` or
-`make dev-update` restores it. Use the same `MINIKUBE_PROFILE` throughout.
+For configured instance counts, use `DEV_CONFIG` and `make dev-update
+DEV_PROFILE=<base>`. Do not scale operator-managed pods as a substitute for
+changing the CNPG declaration. With neither remote standby available, commits
+wait in `SyncRep`; restore a remote peer rather than disabling synchronous
+durability. For primary loss, follow the
+[controlled promotion/rejoin procedure](event-publication.md#cross-cluster-postgresql-recovery).
+Run outage experiments only on an isolated topology.
 
 Do not delete the PVC or regenerate credentials to repair an ordinary outage.
 PostgreSQL's initial password is set only when its data directory is first
@@ -93,13 +91,13 @@ Future schema changes need a new migration and runner extension.
 
 The database and application Secret names are managed by Terraform. Do not
 manually create a competing Helm release or overwrite credentials in Git.
-Local plaintext cluster connections and the database-owner role are development
-concessions, not production configurations.
+Connections use verified TLS; the database-owner role remains a development
+concession, not a production least-privilege configuration.
 
 ## Verification
 
 ```bash
-make smoke MINIKUBE_PROFILE=rpp
+make smoke
 make -C modules/payment-api integration
 ```
 
@@ -114,4 +112,4 @@ also destroys all data in that Minikube profile. Never use these as a routine
 application restart or as a test against a shared profile.
 Losing the private credential file while retaining the database requires
 intentional credential recovery; do not silently generate a replacement.
-Backups, TLS, rotation, and production database operations are later hardening.
+Backups, certificate rotation and production database operations are later hardening.

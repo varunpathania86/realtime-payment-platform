@@ -92,14 +92,15 @@ make setup
 | `make tools` | Install or update the pinned tools |
 | `make docker` | Install Docker Engine if missing (needs sudo) |
 | `make setup-agent` | Optional: register this machine as a self-hosted runner for the Deploy workflow ([runbook](runbooks/self-hosted-runner.md), including the dedicated WSL instance steps) |
-| `make cluster-up` | Start the local Minikube cluster (profile `rpp`) |
-| `make cluster-status` | Show cluster status |
-| `make cluster-down` | Delete the cluster and its data (destructive) |
-| `make dev-up` | Build/load local application images, provision Terraform/Helm, and smoke-test |
-| `make dev-update` | Rebuild/load local images and apply application updates |
-| `make dev-images` | Build/load images and write the profile-specific image inventory |
+| `make cluster-down` | Delete the three owned nodes/network after `dev-down` (destructive) |
+| `make dev-up` | Start three full-stack clusters, build/load images, provision and smoke-test |
+| `make dev-update` | Apply configured budgets/counts and rebuild/load applications across active clusters |
 | `make dev-access` | Forward local ingress to loopback port 8080 until Ctrl-C |
-| `make dev-status` | Inspect local namespaces and application resources |
+| `make dev-status` | Show all three nodes and workload CPU/RAM, readiness and requests/limits |
+| `make dev-metrics` | Enable the bundled metrics-server in all three clusters |
+| `make db-switchover DATABASE_TARGET=pg-b` | Planned token-based move of the global database writer |
+| `make db-failover DATABASE_TARGET=pg-b` | Fence the old local node and verify WAL before promotion |
+| `make db-rejoin` | Rebuild the fenced former-primary profile (destructive) |
 | `make smoke` | Verify ingress, API build identity, readiness, and the React entry page |
 | `make dev-down` | Destroy Terraform-managed local resources, preserving Minikube (destructive) |
 | `make ci` | Lint, test, and build; same as the Build workflow |
@@ -195,15 +196,16 @@ returning nonzero if readiness never recovers. Invalid response bodies and stale
 API build identities fail immediately. This is deployment verification, not
 application-level database retry behavior.
 
-`dev-up` starts Minikube, builds images using the host Docker daemon, loads them
-into Minikube, initializes Terraform, plans/applies the stack, and runs smoke
-checks. `dev-update` repeats build/load/deploy/smoke against an existing cluster.
+`dev-up` starts three Minikube profiles, provisions shared Kafka/CNPG, builds
+images using host Docker, loads them into each profile, applies the per-cluster
+application Terraform root and smoke-tests each ingress. `dev-update` repeats
+build/load/deploy/smoke against the owned topology.
 Both commands fail explicitly if a build, image load, deployment, or smoke check
 fails. They do not consult the PI schedule or release-reservation state.
 
 The local Docker image store is not a registry. Minikube uses a separate
-container runtime, so building on the host alone is insufficient: `dev-images`
-loads every runnable module image into the selected profile.
+container runtime, so building on the host alone is insufficient: the workflow
+loads every runnable module image into each selected profile.
 Images use `rpp-local/<module>:dev-<content-hash>` and `imagePullPolicy: Never`.
 The hash includes non-ignored module files (including dirty/untracked source),
 the source commit, and tool pins. Editing source changes the image reference and triggers a rollout.
@@ -216,22 +218,23 @@ probes, and resource requests/limits.
 
 ### PostgreSQL, migrations, and integration tests
 
-The local workflow now provisions a private PostgreSQL StatefulSet/service in
-`data`, with a 1 GiB volume and an exact image tag from `.tool-versions`.
-It generates a random 64-character password in private
-`.local/<profile>/database.tfvars.json` (mode 0600), preserved across updates.
-Terraform injects a database URL into an apps-namespace Secret; the API migration
+The default topology provisions CNPG in `postgres` in every cluster with a shared
+database identity, TLS credentials and 2 GiB volume per instance. It generates
+credentials in the ignored topology Terraform state and injects a verified-TLS
+writer URL into each apps-namespace Secret; the API migration
 init container applies embedded SQL before the runtime starts. Published charts
 require an externally provisioned database and Secret; no credentials are
-packaged. Local cluster connections use `sslmode=disable` and a database-owner
-role for this educational environment, not production credential/TLS policy.
+packaged. The database-owner role remains a learning-lab concession, not a
+production least-privilege policy. Old single-cluster internal Terraform
+resources are retained for state compatibility, not exposed as a second Make
+workflow.
 
 `make dev-update` preserves payments and reuses the migration ledger/password.
 Losing the private credential file with existing database state is an explicit
 recovery error, not an automatic password reset. Terraform state also contains
 local secrets and must never be committed or shared.
-`make dev-down` deletes namespaces and their PVCs/data. `make cluster-down`
-deletes the selected cluster and all data. Do not use teardown as a restart.
+`make dev-down` deletes all three profiles' namespaces and PVCs/data.
+`make cluster-down` deletes their nodes/network. Do not use teardown as a restart.
 
 ```bash
 make -C modules/payment-api build
@@ -242,8 +245,8 @@ make -C modules/payment-api integration
 `test` remains offline after Go dependencies have been cached by a build.
 `integration` starts its own disposable PostgreSQL container through the pinned
 Testcontainers Go library, and fails rather than skips when Docker is unavailable.
-The first integration run may download PostgreSQL and the Testcontainers cleanup
-helper. No manual PostgreSQL CLI/server installation is needed.
+The first integration run may download PostgreSQL, Kafka, Apicurio, and the
+Testcontainers cleanup helper. No manual server/CLI installation is needed.
 The dynamic module CI passes `INTEGRATION=1` to enable this module's integration
 target as part of its normal test contract; other modules keep their own Make
 behavior. Root `make ci` remains cluster/Docker-independent for unit checks.
@@ -260,27 +263,353 @@ not through `make dev-access`. Restoring PostgreSQL should recover readiness
 without restarting the API. Only run deliberate outage tests on an isolated
 profile; manual scaling is Terraform drift and is restored by a subsequent apply.
 
-### Explicit Terraform workflow
+### Stage 3: local event publication
 
-For inspecting the infrastructure plan separately:
+The default workflow provisions replicated KRaft Kafka in `kafka`, CNPG in
+`postgres`, SQL-backed Apicurio in `data`, and relay/receipt consumers in `apps`.
+Both workers use the payment-api
+image; no additional host CLI or manually installed broker/registry is needed.
+Kafka/Apicurio image tags are pinned in `.tool-versions` and checked by
+`make doctor`. Go Kafka/Avro libraries use the module's dependency manifest.
+Terraform downloads checksum-locked TLS/random provider libraries during
+initialization, following the existing Kubernetes/Helm provider pattern.
+
+Local Kafka uses TLS hostname verification, a generated one-year certificate,
+and SASL/SCRAM-SHA-512 credentials stored in ignored Terraform state/Secrets.
+Controller traffic uses mutually authenticated TLS between cluster endpoints. Registry API access
+is cluster-internal and unauthenticated in this development environment;
+its schema IDs persist in a separate shared PostgreSQL schema. Each Kafka broker
+uses a 1 GiB PVC. RF3/minimum ISR2 tolerate one cluster outage when quorum and
+replica placement are healthy; sharing a host does not provide physical HA.
+Do not delete state or regenerate credentials while preserving Kafka data.
+
+After creating a payment through the existing HTTP endpoint, inspect publication:
 
 ```bash
-make cluster-up
-make dev-images
-make terraform-init
-make terraform-validate
-make terraform-plan
-make terraform-apply
-make smoke
+POD=$(kubectl --context rpp-a -n postgres get cluster pg-a -o jsonpath='{.status.currentPrimary}')
+kubectl --context rpp-a -n postgres exec "$POD" -c postgres -- \
+  psql -U postgres -d payments -c \
+  'SELECT state, count(*) FROM payment_outbox GROUP BY state; SELECT count(*) AS receipts FROM payment_event_receipts;'
 ```
 
-`terraform-apply` calculates a fresh saved plan, then applies that exact plan.
-Terraform owns the six namespaces, Traefik Helm release, application Helm
-releases, and local PostgreSQL resources/Secrets. Do not also use manual
-`helm upgrade` or `kubectl apply` to manage those
-objects. Argo CD is not introduced until its roadmap stage.
-Helm installs are atomic and upgrades clean up newly created resources on failure,
-so an unsuccessful installation does not leave an untracked failed release.
+Select the context/member currently holding the global writer. A new payment creates one pending event;
+the relay eventually marks it published, and the consumer stores one receipt.
+Same-key HTTP replay creates neither an extra event nor an extra receipt.
+HTTP success does not wait for Kafka. The status portal still displays API
+health/readiness, not end-to-end publication completion.
+
+`make -C modules/payment-api test INTEGRATION=1` now also runs real TLS/SCRAM Kafka
+and Apicurio containers. It kills a publisher after broker acknowledgement,
+verifies safe replay with one receipt, and exercises schema compatibility,
+authentication rejection, and invalid-record quarantine. Image/dependency
+downloads can require internet on first use; offline unit tests remain separate.
+Run `make -C modules/event-contracts test` for offline backward compatibility.
+
+Publication failures use bounded retries and durable SQL dead letters, not
+infinite application retries. See [event recovery](runbooks/event-publication.md)
+before requeueing an event. `dev-update` preserves PostgreSQL, Kafka, registry
+IDs, and receipts; `dev-down` destroys their namespaces/PVCs and data.
+
+### Stage 3: optional three-cluster Kafka lab
+
+This section records the retained legacy Kafka-only placement and shared
+network/resource prerequisites. New bases use the full-stack placement below;
+existing owned bases are never silently converted. Both use **one Kafka cluster
+across three independent Kubernetes clusters**, not three Kafka clusters.
+They leave unrelated profiles untouched.
+Each new profile has **3072 MiB RAM and 2 CPUs**: 9216 MiB and six CPUs in total,
+plus host/Docker/editor/build overhead. Keep unrelated clusters stopped.
+The script also enforces a Docker CPU quota of two CPUs on each owned node:
+the pinned Minikube/Docker combination did not apply a CPU quota from `--cpus`
+alone during verification. Nested Kubernetes may still report host capacity;
+the Docker cgroup limits, not that capacity display, bound the whole node.
+The host remains a single failure domain; see [ADR-016](adr/ADR-016-local-cross-cluster-kafka.md).
+
+On Linux/WSL, three control planes can exhaust the default shared-host inotify
+instance limit of 128, causing kubelet to fail with `inotify_init: too many open
+files`. Optional setup configures at least 1024, with sudo authentication:
+
+```bash
+MULTI_CLUSTER=1 make setup
+MULTI_CLUSTER=1 make doctor
+make dev-up
+make dev-status
+make dev-access LOCAL_PORT=18080
+```
+
+The optional setup writes `/etc/sysctl.d/90-rpp-multicluster.conf` only when the
+current value is lower; it does not lower a larger existing value. For a temporary
+session-only adjustment, `sudo sysctl -w fs.inotify.max_user_instances=1024`
+changes the running kernel until reboot. Run it on the Linux Docker host (the
+same WSL distribution for a local Engine). Remote/Docker Desktop hosts need their
+own kernel configuration; changing an unrelated client kernel is insufficient.
+Normal `make setup` does not change this shared-host setting.
+
+`dev-up` reserves `<base>-a`, `<base>-b`, and `<base>-c` plus an owned Docker
+network; it refuses existing unowned names. Distinct static node IPs are essential:
+Minikube otherwise tries the same default address for independent profiles on
+the shared network. Kafka uses TLS broker NodePort 30092 and mutually
+authenticated controller NodePort 30093. Do not expose this bridge to untrusted
+networks or bypass certificate verification.
+
+Terraform directly owns each broker StatefulSet, Service, Secret, and 1 GiB PVC
+in namespace `kafka`. One private multi-cluster state uses three explicit provider
+contexts. In the legacy placement, apps/PostgreSQL/Apicurio use the local
+Terraform root on A; the full stack deploys apps/registry on every member with
+distributed CNPG. Clients receive all configured broker addresses. No Kafka Helm chart, operator,
+new host CLI, GHCR login, or publication workflow is required.
+
+| Pod | CPU request / limit | Memory request / limit |
+|---|---|---|
+| Each Kafka broker/controller | 100m / 1 CPU | 384 MiB / 512 MiB |
+| Kafka format init container | 50m / 500m | 128 MiB / 256 MiB |
+
+The broker JVM heap is 128-256 MiB; non-heap/native memory also counts against the
+512 MiB limit. These are conservative starting budgets,
+not guaranteed minimums or throughput targets. In low-load verification after
+publication/failover, broker cgroup memory was about 340-393 MiB; whole-node usage
+was about 1.73 GiB on A and 0.93-0.99 GiB on B/C. Docker inspection confirmed
+3221225472-byte memory caps and 2000000000 NanoCPU quotas on every node, including
+after clean recreation. These observations are not stress-test results.
+Application/DB/registry budgets
+remain in their existing charts/Terraform. A holds those workloads as well as a
+broker; B and C hold only brokers plus their Kubernetes system workloads.
+Stress tests, instrumentation, and metric dashboards follow in Stage 4.
+
+#### Resource status tables
+
+`dev-status` now prints two Docker-style snapshot tables:
+
+- **Cluster nodes:** running/stopped state, actual Docker CPU percentage,
+  enforced CPU quota, actual RAM usage, configured RAM limit, and RAM percentage.
+  Docker CPU 100% means one fully used core; a two-core node can approach 200%.
+- **Workload containers:** cluster, namespace, pod/container name, state,
+  readiness, restart count, actual CPU (millicores) and RAM (MiB), and CPU/RAM
+  requests and limits. Includes `apps`, `data`, `kafka`, `platform`, `postgres`
+  and `cnpg-system`.
+  Rows are per regular container, not pod totals; completed init containers and
+  `kube-system` workloads are excluded.
+
+`dev-up` enables Minikube's bundled metrics-server addon on each selected
+profile. Its image version comes from the pinned Minikube release (currently
+metrics-server v0.9.0); no new host binary or Python dependency is installed.
+Minikube owns this bootstrap addon, like its storage provisioner; Terraform
+continues to own the application/Kafka stack.
+For clusters created before this change, enable it once:
+
+```bash
+make dev-metrics
+make dev-status
+```
+
+Allow about a minute for the initial metrics samples. Status is read-only and
+bounded; it does not enable addons, start stopped nodes, or change the current
+context. Missing samples appear as `N/A`, never zero; missing/unreachable
+dependencies produce explicit warnings and a nonzero exit while preserving
+available rows. `-` means no request or limit is configured.
+Docker memory usage excludes cache; Kubernetes memory is working-set usage,
+and their sampling windows differ, so container rows need not sum to the node
+value (which also includes Kubernetes overhead). These are current samples,
+not peak usage, historical monitoring, or a Stage 4 metrics/dashboard stack.
+
+Normal edits use `make dev-update`; it rebuilds and loads
+application images into every active full-stack member (only A in legacy mode)
+without deleting data. Use
+`make smoke` for API/frontend checks; that does not
+prove Kafka replication or completed event consumption.
+Replication factor three and minimum ISR two allow one broker outage, subject to
+quorum/ISR recovery. In legacy mode, losing A also removes the API, database,
+registry, and ingress; that placement is not application HA.
+See [the outage exercise](runbooks/event-publication.md#three-cluster-outage-exercise).
+
+To destroy only this lab, with all three profiles running:
+
+```bash
+make dev-down
+make cluster-down
+```
+
+Both commands are destructive. The first removes applications, brokers, PVCs,
+and data; the second deletes only the three owned profiles/network after
+checking managed resources are gone. Use `dev-up` to recreate. Preserve
+`.local/<base>/` and `.local/<base>-a/` until teardown succeeds, including after a
+partial apply. Recover startup/apply errors and rerun rather than deleting state.
+This section describes the retained **legacy Kafka-only** placement. New owned
+bases default to the full-stack topology below. Existing old bases stay in their
+original mode; updating them never silently converts or destroys their data.
+
+### Stage 3: full-stack three-cluster lab
+
+The default [ADR-017 topology](adr/ADR-017-full-stack-cross-cluster-replication.md)
+adds an API, portal, relay, consumer, Apicurio and ingress in **each** profile.
+Kafka remains one three-broker cluster. PostgreSQL is **one shared database**:
+one writable primary and two read-only standbys, not three independent databases.
+The older Kafka-only lab remains usable for existing owned bases; the separate
+single-profile Make workflow has been removed.
+An existing Kafka-only lab cannot be converted in place: use an unused base and
+verify it before deliberately replacing any old lab/data.
+
+```bash
+make setup
+make dev-up
+make dev-status
+make dev-access MINIKUBE_PROFILE=rpp-b LOCAL_PORT=18081
+make dev-update
+```
+
+After separate verification, an owned Kafka-only base can be replaced deliberately:
+run `make dev-down` and `make cluster-down` with that old `DEV_PROFILE`,
+then `MULTI_FULL_STACK=1 make dev-up` with the same base. The explicit flag is
+needed only for reusing a legacy base's ownership marker. This destroys the old
+lab's data and interrupts its port-forwards; restart `dev-access` afterward.
+The mode guard permits reuse only when its profiles/network are gone and both
+infrastructure/application states contain no managed resources.
+
+The mode and configuration are persisted in the private topology directory.
+Each node defaults to a hard 3072 MiB / two-CPU Docker budget.
+Three full stacks plus build/editor overhead can exceed a small
+host's available memory; the limits are not throughput guarantees.
+
+`make setup` installs the checksum-verified CloudNativePG operator chart archive
+in `.local/tools/`; `make doctor` verifies it. Operator **1.30.1**, chart
+**0.29.1**, its SHA-256, and the compatible PostgreSQL **16.6-standard-bookworm**
+image are pinned in `.tool-versions`. Terraform's Helm provider installs that
+archive once per independent Kubernetes cluster and an owned local chart
+declares one CNPG `Cluster` with `instances: 1` per profile. No manual Helm
+installation, CNPG kubectl plugin, GitHub workflow or registry login is required.
+First-use chart, provider and public image downloads still require internet.
+
+CNPG owns database pods and volumes in `postgres`; its operator runs in
+`cnpg-system`. Terraform owns the operator releases, database declarations,
+shared credentials/TLS Secrets and NodePort **30432**. Cross-cluster streaming
+and application/JDBC connections verify a shared CA and node-IP certificates.
+All migration, API, worker and registry clients use the declared current writer.
+Configuration changes roll out their connection settings after promotion.
+
+The initial writer is `pg-a`; `pg-b` and `pg-c` stream WAL with matching
+`application_name` values. Required `ANY 1` synchronous replication waits for
+durable acknowledgement from either remote standby. With both unavailable,
+commits wait and bounded application operations fail; there is no asynchronous
+fallback. A standby's CNPG `Ready` status does **not** mean it is writable.
+
+| Component, per profile | CPU request / limit | Memory request / limit |
+|---|---|---|
+| CNPG operator | 50m / 500m | 64 MiB / 256 MiB |
+| PostgreSQL | 100m / 500m | 128 MiB / 512 MiB |
+
+Each PostgreSQL instance uses a 2 GiB PVC. Terraform budgets connections across
+all configured clients: at least 128, or 40 plus twenty per API/relay/consumer
+replica and ten per registry replica, whichever is larger (250 with defaults).
+The budget includes migration/rollout overlap; it is not a throughput guarantee.
+Each Go process allows at most
+ten database connections; each registry uses a one-to-five-connection pool.
+Replicated clients share migration locks, idempotency keys, SQL outbox locks,
+one Kafka consumer group, receipts and registry schema IDs.
+
+On 2026-11-02, the isolated full-stack lab used about 2.1-2.2 GiB per node at
+low load after recovery. Docker inspection confirmed 3221225472-byte memory
+caps and 2000000000 NanoCPU quotas, including the recreated former-primary node.
+Cold recreation recorded no cgroup OOMs/kills, but one C ingress installation
+failed visibly with an etcd request timeout; `make dev-update` recovered
+without state deletion or budget changes. These are learning-lab observations,
+not throughput, zero-downtime, or production capacity guarantees.
+
+For controlled recovery, follow the
+[database promotion procedure](runbooks/event-publication.md#cross-cluster-postgresql-recovery).
+Run topology-changing commands serially; never delete private state/journals or
+start a fenced former primary manually. Cross-cluster recovery is explicit,
+not automatic global failover. Browser port-forwards do not migrate to another
+ingress when their node stops.
+
+### Configuring counts and benchmark node budgets
+
+`DEV_CONFIG` accepts a JSON file. Omitted budgets are two CPUs / 3072 MiB per
+node; omitted workload counts are one. Counts may differ between A/B/C:
+
+```json
+{
+  "node": { "cpus": 4, "memory_mib": 6144 },
+  "clusters": {
+    "a": {
+      "kafka_brokers": 2,
+      "postgres_instances": 3,
+      "applications": { "payment-api": 2, "web-portal": 2 },
+      "relay": 2,
+      "consumer": 2,
+      "registry": 2,
+      "ingress": 2
+    }
+  }
+}
+```
+
+The [configuration template](../templates/development-topology.json) illustrates
+two of each workload in every cluster. It is an example, not a measured
+performance recommendation. Use a larger isolated host for benchmarks.
+
+```bash
+make dev-up DEV_PROFILE=rpp-bench DEV_CONFIG=templates/development-topology.json
+# After editing a private copy of that JSON:
+make dev-update DEV_PROFILE=rpp-bench DEV_CONFIG=/absolute/path/to/settings.json
+# The selected settings persist; no file/flags needed on normal updates.
+make dev-update DEV_PROFILE=rpp-bench
+```
+
+Node budgets are local Minikube/Docker bootstrap settings, not Kubernetes
+workload settings. `dev-update` updates owned Docker cgroup CPU/RAM limits
+without restarting nodes; shrinking memory below current usage may fail and
+must not be treated as a successful resize. Minikube can retain older capacity
+metadata until recreation; the Docker limits in `dev-status` are authoritative.
+Raising a node limit does not resize individual container requests/limits.
+Host resources must cover **three** node budgets plus builds/editor/OS.
+
+Replica settings are distribution-neutral inputs to Terraform and Helm:
+
+- Kafka: 1-32 brokers per cluster, stable IDs `cluster-index + 3*broker-index`
+  (initial IDs 1/2/3), with individual Services/NodePorts and PVCs. The initial
+  broker remains a controller; additional brokers are broker-only. There are
+  always **three controller voters**, regardless of broker count.
+- Cluster identity is `broker.rack`, so new RF3 topic placement spans all three
+  Kubernetes clusters. Six brokers do not mean RF6. Scaling out does **not**
+  rebalance existing partitions; review a Kafka reassignment separately.
+  Automatic scale-in is refused while managed resources exist, because deleting
+  a broker is not safe partition migration. Never erase state to bypass it.
+- CNPG `postgres_instances` counts database pods **inside each** Kubernetes
+  cluster. With three per cluster there are nine pods, but still one global
+  writer. Each replica cluster has one designated primary and local cascading
+  replicas. The external Service selects that designated primary, not a random
+  pod; recovery discovers `.status.currentPrimary`, never assumes `pg-*-1`.
+- Required remote synchronous acknowledgement is unchanged. Local cascading
+  replicas are asynchronous and do not replace the required remote durability
+  acknowledgement. Cross-cluster failover checks every surviving local instance
+  and refuses if one is unavailable or ahead of the designated candidate.
+- API/portal counts are catalog module keys; workers, registry and ingress are
+  independently configurable. Relay row locks, consumer-group membership and
+  durable receipts remain shared. Consumers above the topic's three partitions
+  can be healthy but idle. Database connection limits account for bounded Go
+  and registry pools, including rollout overlap; memory/CPU still need measuring.
+
+### Terraform and future Kubernetes environments
+
+The public `dev-*` commands replace `multi-*`, single-cluster lifecycle and
+low-level `terraform-*` Make targets. Internally each apply still uses a saved
+Terraform plan; the internal per-context helper is not another supported
+single-cluster developer workflow.
+
+Terraform's Kafka/CNPG modules and application Helm charts do not invoke
+Minikube or Docker. The three-context Terraform root accepts `profiles`
+(explicit Kubernetes **contexts**), reachable node `addresses`, `cluster_sizes`,
+and `kube_config_path`. Its NodePort endpoints require network reachability
+between clusters; ordinary Service DNS is not cross-cluster DNS. The local
+shell adapter discovers Minikube node IPs and loads local images. A future
+real-Kubernetes environment supplies its own contexts/network endpoints,
+published image references and storage policy using the same modules/charts.
+Docker stopping/network fencing and destructive Minikube rejoin are explicitly
+**local-lab adapters**, not production fencing or disaster-recovery automation.
+No production deployment workflow is being introduced by these settings.
+
+Do not also use manual `helm upgrade` or `kubectl apply` to own the same
+Terraform objects. Argo CD is not introduced until its roadmap stage.
 
 Provider versions and checksums are pinned in the local Terraform environment;
 the Traefik chart version is pinned there too. `make ci` validates Terraform and
@@ -294,21 +623,28 @@ in required quality checks. See [the security runbook](runbooks/security-checks.
 
 ### Profiles, ports, and state
 
-The default Minikube profile is `rpp`, with 4 CPUs and 8 GiB RAM. To isolate a
-development or verification environment, consistently pass a different profile:
+The default topology base is `rpp`, with profiles `rpp-a/b/c`.
+`DEV_PROFILE` is optional: omit it for everyday commands, including access/smoke.
+Set it consistently when selecting a different lab. Existing explicitly named
+bases are not renamed or migrated. Existing unowned `rpp-a/b/c` nodes, state,
+or an `rpp-net` network are refused, not adopted or overwritten. Creating the
+default lab while another lab is running consumes an additional three-node
+budget; stop unrelated labs first. No lab is torn down automatically.
+To isolate a development or verification environment, pass a different base:
 
 ```bash
-make dev-up MINIKUBE_PROFILE=rpp-sandbox MINIKUBE_CPUS=2 MINIKUBE_MEMORY=4096
-make dev-access MINIKUBE_PROFILE=rpp-sandbox LOCAL_PORT=8081
+make dev-up DEV_PROFILE=rpp-sandbox
+make dev-access DEV_PROFILE=rpp-sandbox MINIKUBE_PROFILE=rpp-sandbox-b LOCAL_PORT=8081
 ```
 
-Resource overrides are intended for the minimal Stage 1 stack; later profiles
-need more memory. Every local Kubernetes/Terraform command explicitly targets
+Use `DEV_CONFIG` for budgets and counts. `MINIKUBE_PROFILE` is only a single
+member selector for access/smoke; it does not select the topology for lifecycle
+commands. Every local Kubernetes/Terraform command explicitly targets
 the selected profile, not whichever kubeconfig context happened to be current.
 Use a single kubeconfig file; `KUBECONFIG` may override its path.
 
 Terraform state, provider working data, saved plans, and image inventory live in
-git-ignored `.local/<profile>/`. Keep this directory until you have destroyed the
+git-ignored `.local/<base>/` and `.local/<base>-a/b/c/`. Keep these until you destroy the
 resources it owns. Do not commit it, copy state between profiles, or delete state
 as a workaround for a failed apply. You can run `make smoke` while `dev-access`
 is running; kubectl binds an available temporary port atomically for each check.
@@ -329,8 +665,8 @@ To demonstrate pod recovery:
 
 ```bash
 make dev-status
-kubectl --context rpp -n apps delete pod -l app.kubernetes.io/name=payment-api
-kubectl --context rpp -n apps rollout status deployment/payment-api --timeout=120s
+kubectl --context rpp-a -n apps delete pod -l app.kubernetes.io/name=payment-api
+kubectl --context rpp-a -n apps rollout status deployment/payment-api --timeout=120s
 make smoke
 ```
 
@@ -338,16 +674,16 @@ The deletion is intentional and affects only the selected API pod; its Deploymen
 recreates it. To verify complete reproducibility, use a dedicated profile:
 
 ```bash
-make dev-up MINIKUBE_PROFILE=rpp-recreate
-make dev-down MINIKUBE_PROFILE=rpp-recreate
-make cluster-down MINIKUBE_PROFILE=rpp-recreate
-make dev-up MINIKUBE_PROFILE=rpp-recreate
-make smoke MINIKUBE_PROFILE=rpp-recreate
+make dev-up DEV_PROFILE=rpp-recreate
+make dev-down DEV_PROFILE=rpp-recreate
+make cluster-down DEV_PROFILE=rpp-recreate
+make dev-up DEV_PROFILE=rpp-recreate
+make smoke DEV_PROFILE=rpp-recreate
 ```
 
-`dev-down` (also `terraform-destroy`) destroys all Terraform-managed resources in
-that profile, including its application namespaces. `cluster-down` deletes the
-whole cluster and its data. Never use this sequence on another person's profile.
+`dev-down` destroys all Terraform-managed resources across the three profiles,
+including application namespaces/data. `cluster-down` deletes their nodes and
+network. Never use this sequence on another person's topology.
 Clean up the dedicated profile afterward using the same two teardown commands.
 
 See [local development troubleshooting](runbooks/local-development.md) and
