@@ -64,6 +64,9 @@ These rules apply to the whole monorepo. Details for AI tools live in `AGENTS.md
   - **Stable-version recording**: after successful production promotion, create a PR updating the stable catalog version; never push directly to protected `main`.
 - Self-hosted runners are used only for explicitly approved protected work, never for pull requests from forks.
 - Current implementation status: Stages 1-4 are merged; the first solution/module iteration baseline was released live. Stage 5 implements PyFlink event-time fundamentals and, by explicit user approval, automatic module/solution iteration, RC and stable artifact promotion with stable-catalog PRs. Deployment, GitOps and cleanup remain deferred. See Section 19 and [the publication runbook](release-publication.md).
+- Stage 6 is being implemented on its own branch/PR: opt-in persistent ClickHouse
+  tables, checkpoint-aligned at-least-once Flink sinks, dataset lineage and a
+  bounded local query benchmark. Stage 7 remains sequenced after Stage 6.
 - Local application development is independent of those workflows. Stage 0
   supplies tools and Minikube lifecycle; Stage 1 supplies local image builds,
   image loading, Terraform/Helm deployment, updates, and smoke checks. No GitHub
@@ -1096,10 +1099,11 @@ Implement:
 
 - ClickHouse persistent storage
 - Flink sink for normalized facts and window aggregates
+- Durable record-level job, transformation, source and output dataset identities
 - Query-driven `ORDER BY` and partition design
 - Retention policy for detailed events
 - Materialized views only where a measured query justifies them
-- Load test with p50, p95, and p99 query latency
+- Reproducible synthetic load test with p50, p95, and p99 query latency
 
 PostgreSQL remains the transactional source of truth. ClickHouse is not the authoritative payment store.
 
@@ -2394,10 +2398,10 @@ excluded_initially:
 Update this block after every session.
 
 ```yaml
-current_milestone: stage-5-event-time-and-releases
-stage_status: Stage 5 implementation and isolated local acceptance passed; expanded GitHub release promotion awaits merge and approved live acceptance
-last_completed_task: Verified exact event-time outputs, persistent checkpoints, TaskManager recovery, dirty-source savepoint continuation, clean recreation and cleanup
-next_task: Review Stage 5 changes, merge successful CI/publication, then exercise approved automatic iteration, RC and stable promotion without starting Stage 6
+current_milestone: stage-6-clickhouse-analytics
+stage_status: Stage 6 implementation in progress; make ci, ClickHouse Docker integration and PyFlink integration passed; analytics benchmark and isolated Minikube acceptance remain pending
+last_completed_task: Added opt-in ClickHouse analytics, synchronous at-least-once Flink writes, credentials, benchmark tooling and beginner-friendly platform/chart guides
+next_task: Submit Stage 6 as a draft PR; complete isolated deployment, dirty-source rebuild, recovery/recreation and measured benchmark acceptance before merge; keep Stage 7 separate
 known_issues:
   - one cold ingress CRD installation encountered a transient etcd timeout; ordinary dev-update recovered with state and node budgets unchanged
   - a stale pending-install Traefik Helm revision interrupted the first scale-check attempt; removing only that release allowed Terraform to recreate ingress and the retry passed

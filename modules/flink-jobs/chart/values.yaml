@@ -12,6 +12,11 @@ streaming:
   savepointURI: s3://flink-state/savepoints
   endpoint: http://minio.data.svc.cluster.local:9000
   existingSecret: streaming-storage
+analytics:
+  enabled: false
+  url: http://clickhouse-analytics:8123
+  user: rpp_analytics
+  existingSecret: clickhouse-analytics
 events:
   brokers: kafka.data.svc.cluster.local:9092
   existingSecret: payment-api-events

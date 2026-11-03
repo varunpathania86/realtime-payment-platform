@@ -13,6 +13,8 @@ from pyflink.datastream.connectors.kafka import (
 )
 from pyflink.datastream.functions import KeyedProcessFunction
 from pyflink.datastream.output_tag import OutputTag
+
+from analytics import ClickHouseMap, WINDOWS_TABLE, write_payment_fact
 from pyflink.datastream.state import MapStateDescriptor, StateTtlConfig
 from pyflink.table import DataTypes, Schema, StreamTableEnvironment
 
@@ -37,6 +39,11 @@ class PaymentWindows(KeyedProcessFunction):
         self.duplicates = metrics.counter("duplicate_event_count")
         self.delay = metrics.counter("processing_delay_total_ms")
         self.processed = metrics.counter("processed_event_count")
+        self.analytics_enabled = os.environ.get("ANALYTICS_ENABLED") == "true"
+        if self.analytics_enabled:
+            self.clickhouse_url = os.environ["CLICKHOUSE_URL"].rstrip("/")
+            self.clickhouse_user = os.environ["CLICKHOUSE_USER"]
+            self.clickhouse_password = os.environ["CLICKHOUSE_PASSWORD"]
 
     def process_element(self, value, ctx):
         event = decode(value)
@@ -49,6 +56,10 @@ class PaymentWindows(KeyedProcessFunction):
         accepted = [(start, end) for start, end in windows(event["timestamp_ms"])
                     if watermark < end + LATENESS_MS]
         self.seen.put(event["event_id"], True)
+        if self.analytics_enabled:
+            write_payment_fact(
+                event, self.clickhouse_url, self.clickhouse_user, self.clickhouse_password,
+            )
         self.processed.inc()
         self.delay.inc(max(0, ctx.timer_service().current_processing_time() - event["timestamp_ms"]))
         if not accepted:
@@ -123,15 +134,19 @@ def build():
     stream = env.from_source(source, WatermarkStrategy.for_bounded_out_of_orderness(Duration.of_seconds(10))
         .with_idleness(Duration.of_seconds(30)),
         "synthetic-payment-processing", type_info=Types.STRING()).uid("processing-source-v1")
-    aggregates = stream.key_by(lambda value: dimension(decode(value)), key_type=Types.STRING()) \
-        .process(PaymentWindows(), output_type=Types.STRING()).name("payment-windows").uid("payment-windows-v1")
     late_builder = KafkaSink.builder().set_bootstrap_servers(properties["bootstrap.servers"])
     for key, value in properties.items():
         late_builder.set_property(key, value)
     late_sink = late_builder.set_delivery_guarantee(DeliveryGuarantee.AT_LEAST_ONCE) \
         .set_record_serializer(KafkaRecordSerializationSchema.builder().set_topic("payment-events-too-late")
             .set_value_serialization_schema(SimpleStringSchema()).build()).build()
-    aggregates.get_side_output(TOO_LATE).sink_to(late_sink).uid("too-late-sink-v1")
+    windowed = stream.key_by(lambda value: dimension(decode(value)), key_type=Types.STRING()) \
+        .process(PaymentWindows(), output_type=Types.STRING()).name("payment-windows").uid("payment-windows-v1")
+    windowed.get_side_output(TOO_LATE).sink_to(late_sink).uid("too-late-sink-v1")
+    aggregates = windowed
+    if os.environ.get("ANALYTICS_ENABLED") == "true":
+        aggregates = aggregates.map(ClickHouseMap(WINDOWS_TABLE), output_type=Types.STRING()) \
+            .name("clickhouse-window-aggregates").uid("clickhouse-window-aggregates-v1")
     table_env = StreamTableEnvironment.create(env)
     rows = aggregates.map(result_row, output_type=Types.ROW_NAMED(["result_id", "payload"], [Types.STRING(), Types.STRING()])) \
         .uid("result-rows-v1")

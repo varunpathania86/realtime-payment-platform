@@ -55,6 +55,11 @@ if [[ "$(pinned_version postgres)" =~ ^[0-9]+\.[0-9]+-alpine$ ]]; then
 else
   bad "PostgreSQL container pin is missing/invalid in .tool-versions; restore it before make dev-up or module integration"
 fi
+if [[ "$(pinned_version clickhouse)" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+-alpine$ ]]; then
+  ok "ClickHouse container pin $(pinned_version clickhouse) (built by local deployment)"
+else
+  bad "ClickHouse container pin is missing/invalid in .tool-versions; restore it before analytics development"
+fi
 
 for runtime in kafka apicurio otelcol prometheus alertmanager loki tempo grafana; do
   if [[ "$(pinned_version "$runtime")" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then

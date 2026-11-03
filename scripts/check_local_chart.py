@@ -7,10 +7,13 @@ import yaml
 
 
 def validate(documents):
-    deployments = [item for item in documents if item and item.get("kind") == "Deployment"]
-    if not deployments:
-        raise ValueError("chart has no Deployment")
-    for item in deployments:
+    workloads = [
+        item for item in documents
+        if item and item.get("kind") in ("Deployment", "StatefulSet")
+    ]
+    if not workloads:
+        raise ValueError("chart has no Deployment or StatefulSet")
+    for item in workloads:
         pod = item["spec"]["template"]["spec"]
         if pod.get("automountServiceAccountToken") is not False:
             raise ValueError("local application must not mount service-account tokens")

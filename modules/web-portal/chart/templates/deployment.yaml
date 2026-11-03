@@ -1,3 +1,9 @@
+{{/*
+Runs replicas of the Go static server that serves the built React portal.
+service.yaml selects these pods; ingress.yaml routes browser requests to that Service.
+The browser calls /api separately through the payment-api Ingress, not through this server.
+values.yaml supplies the image, replicas, resource budget and optional telemetry. See ../README.md.
+*/}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -39,6 +45,7 @@ spec:
             capabilities:
               drop: ["ALL"]
           readinessProbe:
+            # Readiness controls Service traffic; liveness restarts an unhealthy server.
             httpGet:
               path: /readyz
               port: http

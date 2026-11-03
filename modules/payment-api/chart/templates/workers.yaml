@@ -1,3 +1,10 @@
+{{/*
+When events.enabled is true, renders two Deployments from the same image: relay and consumer.
+Relay publishes PostgreSQL outbox records to Kafka; consumer stores deduplicated receipts.
+Terraform supplies database/event Secrets and the schema ConfigMap; these workers are not
+selected by the HTTP API Service. "$" retains the chart context inside the range loop.
+See ../README.md for the resource and data-flow diagram.
+*/}}
 {{- if .Values.events.enabled }}
 {{- range $mode := list "relay" "consumer" }}
 ---

@@ -4,6 +4,16 @@ variable "streaming_enabled" {
   default     = false
 }
 
+variable "analytics_enabled" {
+  description = "Opt-in Stage 6 ClickHouse analytics, enabled only in the selected member."
+  type        = bool
+  default     = false
+  validation {
+    condition     = !var.analytics_enabled || var.streaming_enabled
+    error_message = "analytics_enabled requires streaming_enabled."
+  }
+}
+
 variable "streaming_restore_path" {
   description = "Explicit compatible savepoint/checkpoint URI for job submission."
   type        = string

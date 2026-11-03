@@ -20,8 +20,8 @@ def positive_integer(value, name):
 
 
 def validate(data):
-    if not isinstance(data, dict) or set(data) - {"node", "clusters", "nodes", "observability", "streaming"}:
-        raise ValueError("configuration accepts only node, nodes, clusters, observability and streaming")
+    if not isinstance(data, dict) or set(data) - {"node", "clusters", "nodes", "observability", "streaming", "analytics"}:
+        raise ValueError("configuration accepts only node, nodes, clusters, observability, streaming and analytics")
     node = data.get("node", {})
     if not isinstance(node, dict) or set(node) - {"cpus", "memory_mib"}:
         raise ValueError("node accepts only cpus and memory_mib")
@@ -65,11 +65,17 @@ def validate(data):
             if not isinstance(value, dict):
                 raise ValueError(f"nodes.{key} must be a node budget object")
             result["nodes"][key] = validate({"node": {**result["node"], **value}})["node"]
-    for feature in ("observability", "streaming"):
+    for feature in ("observability", "streaming", "analytics"):
         if feature in data:
             if not isinstance(data[feature], bool):
                 raise ValueError(f"{feature} must be a boolean")
             result[feature] = data[feature]
+    if result.get("analytics", False) and not result.get("streaming", False):
+        raise ValueError("analytics requires streaming to be enabled")
+    if result.get("analytics", False):
+        cluster_a = result.get("nodes", {}).get("a", result["node"])
+        if cluster_a["cpus"] < 4 or cluster_a["memory_mib"] < 6144:
+            raise ValueError("analytics requires cluster A to have at least 4 CPUs and 6144 MiB")
     return result
 
 

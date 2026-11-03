@@ -11,6 +11,9 @@ Only synthetic UUIDs and integer money amounts are used.
 
 ## Layout
 
+See the [Helm chart guide](chart/README.md) for template purposes, Kubernetes
+terminology and a resource relationship diagram.
+
 ```text
 .
 ├── Dockerfile

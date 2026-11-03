@@ -4,6 +4,10 @@ How to prepare a machine to work on this repository. Target environment: Windows
 
 Work inside the WSL filesystem (for example `~/code`), not under `/mnt/c`, for speed and correct line endings.
 
+New to the infrastructure? Start with
+[Local platform: from Make to running applications](architecture/local-platform-guide.md)
+for the folder map, reading order, deployment sequence and browser request path.
+
 ## 1. Prerequisites
 
 | Tool | Needed for | Install (Ubuntu/WSL) |
@@ -87,6 +91,37 @@ The stateful update guard checks candidate images before building or loading
 them; changed Flink code requires a stopped job and an explicit savepoint URI.
 The [Flink guide](../modules/flink-jobs/README.md) and
 [recovery runbook](runbooks/flink-recovery.md) cover fixtures and safe upgrades.
+
+### Optional Stage 6 ClickHouse analytics
+
+Use `make dev-up DEV_CONFIG=templates/analytics-topology.json` to enable
+streaming and ClickHouse in cluster A. The example budgets A at 4 CPUs/8192 MiB
+and other clusters at 4 CPUs/6144 MiB; analytics requires at least 4 CPUs and
+6144 MiB on A. This builds the locally pinned ClickHouse image and creates a
+profile-local 8 GiB persistent volume and generated Secret. Normal payment-only
+or streaming-only development does not build or deploy ClickHouse.
+
+The [ClickHouse guide](../modules/clickhouse-analytics/README.md) describes the
+tables and benchmark. To benchmark a running profile, forward the internal
+service in one terminal:
+
+```bash
+kubectl --context rpp-a -n apps port-forward --address 127.0.0.1 service/clickhouse-analytics 8123:8123
+```
+
+In another terminal, pass the password only through the process environment:
+
+```bash
+export CLICKHOUSE_PASSWORD="$(kubectl --context rpp-a -n apps get secret clickhouse-analytics \
+  -o jsonpath='{.data.password}' | base64 --decode)"
+CLICKHOUSE_URL=http://127.0.0.1:8123 make -C modules/clickhouse-analytics benchmark
+unset CLICKHOUSE_PASSWORD
+```
+
+The benchmark uses a unique disposable table, reports client-side p50/p95/p99,
+host limits, row/partition counts and query configuration, and fails if the
+selected warmed query exceeds 500 ms p95. This is local evidence for the
+recorded host/configuration, not a production capacity claim.
 
 ### Clone and initialize
 
@@ -772,10 +807,10 @@ Run `make -C modules/payment-api test` for offline propagation/export tests and
 context, retry and broker recovery checks.
 
 Stage 4 traces diagnose executions; they are not a durable lineage store.
-Define Flink dataset/job identities in Stage 5, implement persistent lineage
-with the first Flink-to-ClickHouse pipeline in Stage 6, and extend it to
-lakehouse transformations later. A future ADR must select lineage tooling
-before adding infrastructure. See [Stage 4 scope](master-plan.md#stage-4-baseline-observability).
+Stage 5 defines Flink dataset/job identities, and Stage 6 persists source,
+job-version, transformation and output dataset identities with the
+Flink-to-ClickHouse records. Extend them to lakehouse transformations later.
+See [Stage 4 scope](master-plan.md#stage-4-baseline-observability).
 
 ### Iteration baseline releases
 

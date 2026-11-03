@@ -5,7 +5,8 @@ locals {
     for name in local.catalog.modules : name => "${local.root}/modules/${name}/chart"
     if fileexists("${local.root}/modules/${name}/Dockerfile") && fileexists("${local.root}/modules/${name}/chart/Chart.yaml")
     && (try(yamldecode(file("${local.root}/modules/${name}/chart/values.yaml")).local.feature, "") == ""
-    || contains(var.streaming_enabled ? ["streaming"] : [], try(yamldecode(file("${local.root}/modules/${name}/chart/values.yaml")).local.feature, "")))
+      || contains(concat(var.streaming_enabled ? ["streaming"] : [], var.analytics_enabled ? ["analytics"] : []),
+    try(yamldecode(file("${local.root}/modules/${name}/chart/values.yaml")).local.feature, "")))
   }
 }
 
@@ -49,8 +50,40 @@ resource "helm_release" "ingress" {
   })]
 }
 
+resource "helm_release" "clickhouse_analytics" {
+  count           = var.analytics_enabled ? 1 : 0
+  name            = "clickhouse-analytics"
+  namespace       = kubernetes_namespace_v1.foundation["apps"].metadata[0].name
+  chart           = "${local.root}/modules/clickhouse-analytics/chart"
+  timeout         = 600
+  wait            = true
+  atomic          = true
+  cleanup_on_fail = true
+  depends_on      = [kubernetes_secret_v1.clickhouse_analytics]
+
+  values = [yamlencode({
+    image = {
+      repository = split(":", lookup(var.local_images, "clickhouse-analytics", "missing:missing"))[0]
+      tag        = split(":", lookup(var.local_images, "clickhouse-analytics", "missing:missing"))[1]
+      pullPolicy = "Never"
+      digest     = ""
+    }
+  })]
+
+  lifecycle {
+    precondition {
+      condition     = contains(keys(var.local_images), "clickhouse-analytics")
+      error_message = "Missing local ClickHouse image. Run make dev-images before planning or deploying analytics."
+    }
+    precondition {
+      condition     = !contains(keys(var.application_replicas), "clickhouse-analytics")
+      error_message = "ClickHouse is a single-replica StatefulSet and cannot use application_replicas."
+    }
+  }
+}
+
 resource "helm_release" "application" {
-  for_each        = local.applications
+  for_each        = { for name, chart in local.applications : name => chart if name != "clickhouse-analytics" }
   name            = each.key
   namespace       = kubernetes_namespace_v1.foundation["apps"].metadata[0].name
   chart           = each.value
@@ -58,13 +91,19 @@ resource "helm_release" "application" {
   wait            = true
   atomic          = true
   cleanup_on_fail = true
-  depends_on      = [helm_release.ingress, kubernetes_stateful_set_v1.postgres, kubernetes_secret_v1.payment_database, kubernetes_stateful_set_v1.kafka, kubernetes_deployment_v1.registry, kubernetes_secret_v1.payment_events, kubernetes_config_map_v1.event_schema, kubernetes_deployment_v1.minio]
+  depends_on      = [helm_release.ingress, helm_release.clickhouse_analytics, kubernetes_stateful_set_v1.postgres, kubernetes_secret_v1.payment_database, kubernetes_stateful_set_v1.kafka, kubernetes_deployment_v1.registry, kubernetes_secret_v1.payment_events, kubernetes_secret_v1.clickhouse_analytics, kubernetes_config_map_v1.event_schema, kubernetes_deployment_v1.minio]
 
   values = [yamlencode({
     replicaCount = lookup(var.application_replicas, each.key, 1)
     streaming = {
       enabled     = var.streaming_enabled
       restorePath = var.streaming_restore_path
+    }
+    analytics = {
+      enabled        = var.analytics_enabled
+      url            = "http://clickhouse-analytics:8123"
+      user           = "rpp_analytics"
+      existingSecret = "clickhouse-analytics"
     }
     telemetry = {
       enabled  = var.telemetry_enabled

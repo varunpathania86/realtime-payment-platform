@@ -61,8 +61,9 @@ checkpoints; Kafka outputs are at-least-once. Compacted result keys make replaye
 updates replaceable; too-late records require downstream event-ID deduplication.
 Do not claim transactional exactly-once behavior across both sinks.
 
-Add transformation/schema/input/output dataset identities now. Durable
-dataset/job lineage remains Stage 6 with the first Flink-to-ClickHouse sink.
+Add transformation/schema/input/output dataset identities now. Stage 6
+persists dataset/job/transformation identities with the first
+Flink-to-ClickHouse sink.
 
 ## Alternatives considered
 

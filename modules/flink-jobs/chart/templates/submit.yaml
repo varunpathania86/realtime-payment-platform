@@ -1,3 +1,9 @@
+{{/*
+One-off Helm hook: after install/upgrade, runtime.py submits job.py to the session cluster
+from runtime.yaml and waits for a completed durable checkpoint. Only rendered when streaming
+is enabled. Uses the shared config, Kafka Secret and MinIO Secret; successful hooks are deleted,
+failed hooks remain for diagnosis until the next run. See ../README.md.
+*/}}
 {{- if .Values.streaming.enabled }}
 {{- $image := printf "%s:%s" .Values.image.repository .Values.image.tag }}
 {{- if .Values.image.digest }}{{ $image = printf "%s@%s" .Values.image.repository .Values.image.digest }}{{ end }}
@@ -51,6 +57,7 @@ spec:
             - {name: KAFKA_BROKERS, value: {{ .Values.events.brokers | quote }}}
             - {name: KAFKA_REPLICATION_FACTOR, value: {{ .Values.events.replicationFactor | quote }}}
             - {name: KAFKA_TLS, value: {{ .Values.events.tls | quote }}}
+            - {name: ANALYTICS_ENABLED, value: {{ .Values.analytics.enabled | quote }}}
             - name: KAFKA_PASSWORD
               valueFrom:
                 secretKeyRef: {name: {{ .Values.events.existingSecret }}, key: KAFKA_PASSWORD}

@@ -35,6 +35,9 @@ CI validates catalogs and builds/tests modules. Successful same-repository push 
 
 ## Local development flow
 
+For a beginner-friendly file map and step-by-step explanation, see
+[Local platform: from Make to running applications](local-platform-guide.md).
+
 ```mermaid
 flowchart LR
   Source[Local source changes] --> Build[Host Docker build]

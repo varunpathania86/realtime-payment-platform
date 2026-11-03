@@ -1,0 +1,56 @@
+{{/*
+One-off Helm hook that runs after install/upgrade to apply idempotent table-creation SQL.
+Reads config.yaml's ConfigMap, the external password Secret, and connects through service.yaml
+to the ClickHouse pod in statefulset.yaml. Successful hooks are deleted; failed ones remain
+for diagnosis until the next run. See ../README.md.
+*/}}
+{{- $image := printf "%s:%s" .Values.image.repository .Values.image.tag }}
+{{- if .Values.image.digest }}{{ $image = printf "%s@%s" .Values.image.repository .Values.image.digest }}{{ end }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-schema
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 300
+  template:
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: schema
+          image: {{ $image | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["sh", "-ec"]
+          args:
+            - >-
+              clickhouse-client --host "$CLICKHOUSE_HOST" --user "$CLICKHOUSE_USER"
+              --password "$CLICKHOUSE_PASSWORD" --multiquery --queries-file /schema/schema.sql
+          env:
+            - {name: CLICKHOUSE_HOST, value: {{ .Release.Name | quote }}}
+            - {name: CLICKHOUSE_USER, value: {{ .Values.user | quote }}}
+            - name: CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: {{ .Values.existingSecret }}, key: password}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 512Mi}
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+          volumeMounts:
+            - {name: schema, mountPath: /schema, readOnly: true}
+      volumes:
+        - name: schema
+          configMap:
+            name: {{ .Release.Name }}-schema

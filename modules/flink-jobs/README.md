@@ -10,12 +10,16 @@ Checkpointed PyFlink processing of synthetic payment outcomes. Part of
 - Two-minute allowed lateness, revision-aware results and too-late side output.
 - Keyed event-ID deduplication with 24-hour processing-time TTL, event-time
   emission/cleanup timers and persistent MinIO checkpoints/savepoints.
-- Transformation/schema/dataset identities; durable lineage is Stage 6.
+- Transformation/schema/dataset identities; Stage 6 adds the ClickHouse sink
+  and durable per-record lineage.
 
 The processing dataset is separate from API initiation events. Synthetic
 `authorized`/`rejected` values are labels, not payment decisions.
 
 ## Layout
+
+See the [Helm chart guide](chart/README.md) for the session cluster, submission
+hook and external storage/service relationships.
 
 ```text
 .

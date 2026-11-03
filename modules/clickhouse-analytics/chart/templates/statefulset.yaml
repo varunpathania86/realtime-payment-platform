@@ -1,0 +1,78 @@
+{{/*
+Runs one persistent ClickHouse pod with stable identity. Uses service.yaml for its service name,
+storage.yaml's PVC for data, and a Terraform-created Secret for the analytics user's password.
+config.yaml's SQL checksum triggers rollout when the schema changes; schema-job.yaml executes it.
+This single replica is not a highly available ClickHouse cluster. See ../README.md.
+*/}}
+{{- $image := printf "%s:%s" .Values.image.repository .Values.image.tag }}
+{{- if .Values.image.digest }}{{ $image = printf "%s@%s" .Values.image.repository .Values.image.digest }}{{ end }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Release.Name }}
+spec:
+  serviceName: {{ .Release.Name }}
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: {{ .Release.Name }}}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: {{ .Release.Name }}}
+      annotations:
+        schema-checksum: {{ .Files.Get "files/schema.sql" | sha256sum | quote }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: clickhouse
+          image: {{ $image | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - {name: CLICKHOUSE_DB, value: {{ .Values.database | quote }}}
+            - {name: CLICKHOUSE_USER, value: {{ .Values.user | quote }}}
+            - {name: CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT, value: "1"}
+            - name: CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: {{ .Values.existingSecret }}, key: password}
+          ports:
+            - {name: http, containerPort: 8123}
+            - {name: native, containerPort: 9000}
+          startupProbe:
+            httpGet: {path: /ping, port: http}
+            failureThreshold: 60
+            periodSeconds: 5
+          readinessProbe:
+            httpGet: {path: /ping, port: http}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /ping, port: http}
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+          volumeMounts:
+            # Data survives pod replacement; emptyDir logs/tmp/users last only for this pod.
+            - {name: data, mountPath: /var/lib/clickhouse}
+            - {name: logs, mountPath: /var/log/clickhouse-server}
+            - {name: tmp, mountPath: /tmp}
+            # The official entrypoint writes secret-backed user config here, not to the read-only root.
+            - {name: users, mountPath: /etc/clickhouse-server/users.d}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-data
+        - {name: logs, emptyDir: {}}
+        - {name: tmp, emptyDir: {}}
+        - {name: users, emptyDir: {}}
+        - name: schema
+          configMap:
+            name: {{ .Release.Name }}-schema

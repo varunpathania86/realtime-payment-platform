@@ -1,3 +1,8 @@
+{{/*
+Declares the / route for the separately installed Traefik ingress controller.
+Routes to this chart's Service; the more-specific /api route belongs to payment-api.
+Local make dev-access provides loopback access to Traefik. See ../README.md.
+*/}}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:

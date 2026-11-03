@@ -1,0 +1,15 @@
+{{/*
+Requests persistent disk space from the cluster's default StorageClass.
+statefulset.yaml mounts this claim at /var/lib/clickhouse so pod restarts keep database data.
+ReadWriteOnce means read/write from one node, not a backup or replication policy.
+Deleting this claim may delete its underlying volume and data. See ../README.md.
+*/}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Release.Name }}-data
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: {{ .Values.storage }}

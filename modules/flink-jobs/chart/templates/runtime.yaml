@@ -1,3 +1,9 @@
+{{/*
+Renders the shared Flink ConfigMap, JobManager Service, and JobManager/TaskManager Deployments.
+JobManager coordinates jobs; TaskManager executes operators. submit.yaml uses this Service
+and ConfigMap to submit the Python job. streaming.enabled controls whether pods run.
+Secrets and MinIO/Kafka services come from Terraform, not this template. See ../README.md.
+*/}}
 {{- $image := printf "%s:%s" .Values.image.repository .Values.image.tag }}
 {{- if .Values.image.digest }}{{ $image = printf "%s@%s" .Values.image.repository .Values.image.digest }}{{ end }}
 {{- define "flink-jobs.configuration" }}
@@ -44,6 +50,7 @@ spec:
     - {name: blob, port: 6124, targetPort: 6124}
 ---
 {{- range $role := list "jobmanager" "taskmanager" }}
+{{/* "$" is the root chart context; the loop's "." is the current role string. */}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -67,6 +74,7 @@ spec:
         fsGroup: 9999
         seccompProfile: {type: RuntimeDefault}
       initContainers:
+        # Copies configuration to writable /runtime before the read-only main container starts.
         - name: configuration
           image: {{ $image | quote }}
           imagePullPolicy: {{ $.Values.image.pullPolicy }}
@@ -94,6 +102,14 @@ spec:
             - {name: CHECKPOINT_URI, value: {{ $.Values.streaming.checkpointURI | quote }}}
             - {name: KAFKA_BROKERS, value: {{ $.Values.events.brokers | quote }}}
             - {name: KAFKA_TLS, value: {{ $.Values.events.tls | quote }}}
+            - {name: ANALYTICS_ENABLED, value: {{ $.Values.analytics.enabled | quote }}}
+            {{- if $.Values.analytics.enabled }}
+            - {name: CLICKHOUSE_URL, value: {{ $.Values.analytics.url | quote }}}
+            - {name: CLICKHOUSE_USER, value: {{ $.Values.analytics.user | quote }}}
+            - name: CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: {{ $.Values.analytics.existingSecret }}, key: password}
+            {{- end }}
             - name: AWS_ACCESS_KEY_ID
               valueFrom:
                 secretKeyRef: {name: {{ $.Values.streaming.existingSecret }}, key: access-key, optional: true}

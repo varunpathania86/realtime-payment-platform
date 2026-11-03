@@ -1,3 +1,8 @@
+{{/*
+Declares the /api route for the separately installed Traefik ingress controller.
+Traefik forwards to service.yaml; the prefix is preserved because the API accepts /api.
+This resource does not start Traefik or expose a host port itself. See ../README.md.
+*/}}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
