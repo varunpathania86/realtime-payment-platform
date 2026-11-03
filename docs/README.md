@@ -26,6 +26,9 @@ All design documentation lives here, written in Markdown with Mermaid diagrams. 
 | [runbooks/observability.md](runbooks/observability.md) | Opt-in Grafana access, metrics-to-traces-to-logs investigation and initial alerts |
 | [adr/ADR-020-iteration-baseline-release.md](adr/ADR-020-iteration-baseline-release.md) | Stage 4 frozen module/solution baselines without deployment or PI schedule changes |
 | [runbooks/iteration-baseline.md](runbooks/iteration-baseline.md) | Protected manual baseline release, exact digests, conflicts and safe reruns |
+| [adr/ADR-021-automatic-release-promotion.md](adr/ADR-021-automatic-release-promotion.md) | Automatic module/solution iteration, RC and stable artifact promotion |
+| [adr/ADR-022-pyflink-event-time-semantics.md](adr/ADR-022-pyflink-event-time-semantics.md) | PyFlink, separate synthetic outcomes, revision identities and checkpoint boundaries |
+| [runbooks/flink-recovery.md](runbooks/flink-recovery.md) | Synthetic fixtures, lateness, persistent checkpoints and savepoint/restore |
 | [adr/](adr/) | Architecture Decision Records |
 | [runbooks/](runbooks/) | Operational procedures |
 

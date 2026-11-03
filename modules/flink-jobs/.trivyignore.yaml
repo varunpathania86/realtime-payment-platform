@@ -1,0 +1,36 @@
+misconfigurations:
+  - id: DS-0026
+    paths: [Dockerfile]
+    expired_at: 2027-01-01
+    statement: >-
+      Kubernetes startup, readiness and liveness probes manage the distinct
+      JobManager and TaskManager roles. Revisit for standalone Docker deployment.
+  - id: KSV-0020
+    paths: [chart/templates/runtime.yaml]
+    expired_at: 2027-01-01
+    statement: >-
+      Preserve the official Flink image's mapped UID 9999. The Python gateway
+      resolves its user through passwd; an unmapped arbitrary UID failed the
+      real runtime test. Pods are non-root, read-only and drop all capabilities.
+      Revisit when changing the vendor runtime or its user mapping.
+  - id: KSV-0021
+    paths: [chart/templates/runtime.yaml]
+    expired_at: 2027-01-01
+    statement: >-
+      Preserve the official Flink UID/GID pair 9999 and writable-volume group.
+      Pods have no host mounts or privileged capabilities. Revisit together
+      with the runtime user mapping, not by changing only the Kubernetes GID.
+  - id: KSV-0110
+    paths: [chart/templates/runtime.yaml]
+    expired_at: 2027-01-01
+    statement: >-
+      Local Terraform installs this release into apps. Raw Helm scanning assumes
+      default without release context. Keep the chart namespace reusable; revisit
+      for additional deployment environments.
+  - id: KSV-0125
+    paths: [chart/templates/runtime.yaml]
+    expired_at: 2027-01-01
+    statement: >-
+      Local development intentionally loads rpp-local images into Minikube with
+      pull policy Never. Publication replaces these defaults with verified GHCR
+      digest references. Revisit for additional registries or deployment paths.

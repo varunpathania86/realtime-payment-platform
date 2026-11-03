@@ -24,10 +24,16 @@ TF_ROOT="$REPO_ROOT/platform/terraform/environments/local"
 export TF_DATA_DIR="$STATE_DIR/terraform"
 export TF_VAR_kube_context="$PROFILE"
 export TF_VAR_kube_config_path="${KUBECONFIG:-$HOME/.kube/config}"
+export TF_VAR_streaming_restore_path="${STREAMING_RESTORE_PATH:-}"
 PYTHON="$REPO_ROOT/.venv/bin/python"
 
 modules() {
-  "$PYTHON" scripts/module_catalog.py local-modules
+  local arguments=(--enabled-only)
+  if [ -f "$STATE_DIR/events.tfvars.json" ] &&
+    jq -e '.streaming_enabled == true' "$STATE_DIR/events.tfvars.json" >/dev/null; then
+    arguments+=(--feature streaming)
+  fi
+  "$PYTHON" scripts/module_catalog.py local-modules "${arguments[@]}"
 }
 
 tf() {
@@ -45,11 +51,16 @@ init() {
 }
 
 build_images() (
-  local name path tag image commit inventory selected
+  local name path tag image commit inventory candidate selected streaming=false
   selected=$(modules)
   mkdir -p "$STATE_DIR"
+  if [ -f "$STATE_DIR/events.tfvars.json" ] &&
+    jq -e '.streaming_enabled == true' "$STATE_DIR/events.tfvars.json" >/dev/null; then
+    streaming=true
+  fi
   inventory=$(mktemp "$STATE_DIR/images.XXXXXX")
-  trap 'rm -f "$inventory"' EXIT
+  candidate=$(mktemp "$STATE_DIR/images-candidate.XXXXXX")
+  trap 'rm -f "$inventory" "$candidate"' EXIT
   commit=$(git rev-parse HEAD)
   while IFS= read -r name; do
     [ -n "$name" ] || continue
@@ -67,14 +78,10 @@ build_images() (
       } | sha256sum | cut -c1-16
     )
     image="rpp-local/$name:dev-$tag"
-    docker build --build-arg "GO_VERSION=$(pinned_version go)" \
-      --build-arg "NODE_VERSION=$(pinned_version nodejs)" \
-      --build-arg "VERSION=dev-$tag" --build-arg "COMMIT=$commit" -t "$image" "$path"
-    minikube -p "$PROFILE" image load "$image"
     printf '%s\t%s\n' "$name" "$image" >> "$inventory"
   done <<< "$selected"
   [ -s "$inventory" ] || { echo "No catalog modules with Dockerfiles and charts found" >&2; exit 1; }
-  "$PYTHON" - "$inventory" "$STATE_DIR/images.tfvars.json" <<'PY'
+  "$PYTHON" - "$inventory" "$candidate" <<'PY'
 import json
 from pathlib import Path
 import sys
@@ -82,10 +89,32 @@ import sys
 images = dict(line.split() for line in Path(sys.argv[1]).read_text().splitlines())
 Path(sys.argv[2]).write_text(json.dumps({"local_images": images}, indent=2) + "\n")
 PY
+  if [ "$streaming" = true ]; then
+    "$PYTHON" scripts/streaming-control.py guard --profile "$PROFILE" --images "$candidate"
+    bash scripts/build-minio.sh
+    minikube -p "$PROFILE" image load "rpp-runtime/minio:$(pinned_version minio)" --overwrite=false
+  fi
+  while IFS=$'\t' read -r name image; do
+    path="modules/$name"
+    tag="${image##*:}"
+    docker build --build-arg "GO_VERSION=$(pinned_version go)" \
+      --build-arg "NODE_VERSION=$(pinned_version nodejs)" \
+      --build-arg "FLINK_VERSION=$(pinned_version flink)" \
+      --build-arg "FLINK_PYTHON_VERSION=$(pinned_version flink-python)" \
+      --build-arg "FLINK_KAFKA_CONNECTOR_VERSION=$(pinned_version flink-kafka-connector)" \
+      --build-arg "FLINK_KAFKA_CONNECTOR_SHA256=$(pinned_version flink-kafka-connector-sha256)" \
+      --build-arg "VERSION=$tag" --build-arg "COMMIT=$commit" -t "$image" "$path"
+    minikube -p "$PROFILE" image load "$image" --overwrite=false
+  done < "$inventory"
+  mv "$candidate" "$STATE_DIR/images.tfvars.json"
 )
 
 plan() {
   require_images
+  if [ -f "$STATE_DIR/events.tfvars.json" ] &&
+    jq -e '.streaming_enabled == true' "$STATE_DIR/events.tfvars.json" >/dev/null; then
+    "$PYTHON" scripts/streaming-control.py guard --profile "$PROFILE"
+  fi
   "$PYTHON" scripts/local_database.py "$STATE_DIR/database.tfvars.json"
   tf plan -input=false -var-file="$STATE_DIR/images.tfvars.json" \
     -var-file="$STATE_DIR/database.tfvars.json" "${EXTRA_VARS[@]}" -out="$STATE_DIR/tfplan"
@@ -121,7 +150,7 @@ smoke() (
 
 charts() {
   local name selected
-  selected=$(modules)
+  selected=$("$PYTHON" scripts/module_catalog.py local-modules)
   while IFS= read -r name; do
     [ -n "$name" ] || continue
     helm lint "modules/$name/chart" --strict

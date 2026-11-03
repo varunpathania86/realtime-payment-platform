@@ -1,0 +1,8 @@
+misconfigurations:
+  - id: DS-0026
+    paths: [runtime/minio/Dockerfile]
+    expired_at: 2027-01-01
+    statement: >-
+      Kubernetes HTTP readiness and liveness probes manage MinIO health.
+      The scratch runtime contains only the checksum-verified server binary.
+      Revisit for standalone Docker deployment or if those probes change.

@@ -6,6 +6,7 @@ export PATH := $(HOME)/.local/bin:$(PATH)
 .DEFAULT_GOAL := help
 .PHONY: security security-solution security-module security-plan publication-login quality-report quality-module-report release-baseline
 .PHONY: dev-metrics dev-observability db-switchover db-failover db-rejoin
+.PHONY: streaming-fixtures streaming-inspect streaming-load streaming-savepoint streaming-stop
 
 # Use a system pre-commit if present, otherwise the one installed by `make setup`.
 VENV       := .venv
@@ -31,6 +32,7 @@ setup: ## Set up the developer environment (see docs/developer-setup.md)
 	scripts/install-docker.sh
 	bash scripts/setup-multicluster.sh
 	bash scripts/setup-cnpg.sh
+	bash scripts/setup-streaming.sh
 	@$(MAKE) --no-print-directory doctor
 
 tools: ## Install or update the pinned CLI tools from .tool-versions
@@ -84,7 +86,7 @@ publication-plan: ## Plan trusted OCI publication (requires workflow environment
 publish-module: ## Publish one approved module artifact (requires workflow environment variables)
 	$(VENV)/bin/python -m scripts.publish_modules publish
 
-release-baseline: ## Freeze tested main artifacts as an iteration baseline (protected workflow only)
+release-baseline: ## Promote module/solution iteration, RC or stable artifacts (protected workflow only)
 	$(VENV)/bin/python -m scripts.release_baseline
 
 publication-login: ## Authenticate Helm to GHCR using the job token through stdin
@@ -104,6 +106,21 @@ dev-metrics: ## Enable bundled metrics-server on the three owned clusters
 
 dev-observability: ## Forward opt-in Grafana to http://127.0.0.1:3000 (foreground)
 	@bash scripts/multi-cluster.sh observability
+
+streaming-fixtures: ## Send deterministic synthetic processing events to the selected cluster
+	$(VENV)/bin/python scripts/streaming-control.py fixtures
+
+streaming-inspect: ## Inspect current compacted window results and too-late output
+	$(VENV)/bin/python scripts/streaming-control.py inspect
+
+streaming-load: ## Produce bounded synthetic load for TaskManager recovery verification
+	$(VENV)/bin/python scripts/streaming-control.py load
+
+streaming-savepoint: ## Create a persistent savepoint for the selected Flink job
+	$(VENV)/bin/python scripts/streaming-control.py savepoint
+
+streaming-stop: ## Stop the selected Flink job with a persistent savepoint (no drain)
+	$(VENV)/bin/python scripts/streaming-control.py stop
 
 db-switchover: ## Move the CNPG writer using demotion/promotion tokens (DATABASE_TARGET=pg-b)
 	@bash scripts/multi-cluster.sh switchover

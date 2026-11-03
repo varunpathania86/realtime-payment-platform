@@ -53,7 +53,7 @@ Impact is approved per module. `patch`, `minor`, and `major` are explicit values
 
 The validator checks every JSON Schema under `schemas/`, validates the solution and module manifests, verifies catalog/folder equality, rejects unknown dependencies and cycles, and validates release manifests and the reviewed impact policy under `releases/`. Module CI expands changes to transitive dependents. Trusted push CI can trigger protected OCI publication for affected modules with Dockerfiles; catalog-only modules are skipped explicitly.
 
-Main publication reserves immutable revisions atomically on `automation/release-state`; branch publication uses deterministic replaceable tags. Module-owned Helm charts are packaged and published alongside images where present; their names must match module identities. Stage 4 adds protected module/solution iteration-baseline releases. Image baseline tags preserve the integrated digest; charts retain their original package versions/digests rather than being repackaged. Stable catalog versions and the PI calendar are unchanged. See the [baseline runbook](runbooks/iteration-baseline.md) and [publication runbook](release-publication.md). Deployment, GitOps, RC/production promotion, cleanup and stable-version PRs remain deferred. See [the master plan](master-plan.md) for the complete policy.
+Main publication reserves immutable revisions atomically on `automation/release-state`; branch publication uses deterministic replaceable tags. Module-owned Helm charts are packaged and published alongside images where present; their names must match module identities. Stage 4 adds protected module/solution iteration-baseline releases. Image baseline tags preserve the integrated digest; charts retain their original package versions/digests rather than being repackaged. Stage 5 brings forward automatic release inputs, RC/stable artifact promotion and stable-catalog PRs under protected approval; none of those steps deploy applications or advance the PI calendar. See the [baseline runbook](runbooks/iteration-baseline.md) and [publication runbook](release-publication.md). Deployment, GitOps and cleanup remain deferred. See [the master plan](master-plan.md) for the complete policy.
 
 ## Module boundaries
 
@@ -65,6 +65,12 @@ Main publication reserves immutable revisions atomically on `automation/release-
 - The risk model is independent from the LLM assistant: the deterministic predictive score is produced by the ML model; the LLM may provide asynchronous explanations but does not approve, reject, or numerically score payments.
 
 ## Local application packaging
+
+Optional runtime charts can declare `local.feature` in their shared chart
+values. Local image/deployment discovery selects those charts only when that
+feature is enabled in the topology; CI still validates all catalog packaging.
+For example, `streaming` enables the Flink chart only in the selected member.
+This is explicit runtime configuration, never a switch on descriptive `type`.
 
 A runnable module owns its Dockerfile and `chart/` Helm chart. Local orchestration
 discovers modules listed in `solution.yaml` with both packaging files, regardless

@@ -1,0 +1,13 @@
+{
+  "event_id": "00000000-0000-4000-8000-000000000051",
+  "event_type": "payment.processing.v1",
+  "schema_version": 1,
+  "event_time": "2026-11-03T00:00:10Z",
+  "payment_id": "00000000-0000-4000-8000-000000000052",
+  "account_id": "00000000-0000-4000-8000-000000000053",
+  "amount_minor": 1250,
+  "currency": "EUR",
+  "country": "DE",
+  "payment_method": "transfer",
+  "outcome": "authorized"
+}

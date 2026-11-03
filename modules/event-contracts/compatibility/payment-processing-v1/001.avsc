@@ -1,0 +1,19 @@
+{
+  "type": "record",
+  "name": "PaymentProcessing",
+  "namespace": "platform.payments.v1",
+  "doc": "Synthetic processing outcomes for event-time exercises, never payment authorization decisions.",
+  "fields": [
+    {"name": "event_id", "type": "string"},
+    {"name": "event_type", "type": "string"},
+    {"name": "schema_version", "type": "int"},
+    {"name": "event_time", "type": "string"},
+    {"name": "payment_id", "type": "string"},
+    {"name": "account_id", "type": "string"},
+    {"name": "amount_minor", "type": "long"},
+    {"name": "currency", "type": "string"},
+    {"name": "country", "type": "string"},
+    {"name": "payment_method", "type": {"type": "enum", "name": "PaymentMethod", "symbols": ["card", "transfer", "wallet"]}},
+    {"name": "outcome", "type": {"type": "enum", "name": "SyntheticOutcome", "symbols": ["authorized", "rejected"]}}
+  ]
+}

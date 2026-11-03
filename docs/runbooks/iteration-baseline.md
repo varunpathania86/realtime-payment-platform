@@ -1,95 +1,137 @@
-# Runbook: Release an iteration baseline
+# Runbook: Release and promote versions
 
 - **Severity:** Medium
 - **Owner:** varunpathania86
-- **Last reviewed:** 2026-11-02
+- **Last reviewed:** 2026-11-03
 
 ## Symptoms
 
-A sprint needs an immutable solution/module baseline, or an interrupted
-baseline release must be resumed without rebuilding artifacts.
+A tested solution or module needs an immutable iteration baseline, a release
+candidate, or a stable production version. An interrupted release must resume
+without rebuilding artifacts or selecting a different source.
 
 ## Impact
 
-This workflow freezes tested artifacts and creates prerelease GitHub Releases.
-It does not deploy, advance the PI schedule, create an RC, or update stable
-catalog versions. Stable solution version `0.0.0` can coexist with a prerelease
-baseline such as `0.1.0-it1`.
+The manually dispatched workflow freezes or promotes exact image/chart
+digests. It does not deploy, change the PI schedule, or write stable versions
+directly to `main`. Iteration versions and RCs remain prereleases. Stable
+releases are non-prerelease GitHub Releases and are followed by a PR that
+records the production version in the catalog.
 
 ## Diagnosis
 
-1. Confirm this workflow has been merged into `main`. In GitHub Actions select
-    **Release iteration baseline**, not **Deploy** or module publication.
-2. Verify the selected main commit's **Validate and build modules** and
-    **Publish tested module artifacts** runs completed successfully.
-3. Inspect the active PI in `solution.yaml`. New baselines must use the current
-    UTC iteration. Iteration 1 of PI-2026.4 runs October 26-November 8, 2026.
-4. Configure the `release-publication` environment with actual required reviewers
-    and access policies. Reusing the environment name does not create reviewers.
-    Restrict `automation/release-state` and namespaced release tags against human
-    replacement/deletion; allow the trusted workflow its required writes.
+1. Confirm this workflow has been merged to `main`. In GitHub Actions select
+    **Release and promote versions**, never **Deploy** or module publication.
+2. Verify a successful same-repository `main` build for the dispatch commit.
+    The workflow source is that exact dispatch commit; no SHA or version is
+    entered manually.
+3. For an iteration release, verify successful image/chart publication and
+    unchanged source since each selected publication. Solution releases select
+    every packaged catalog module and preserve the publication's reviewed
+    per-module target and impact. A standalone module release inspects only the
+    selected module and its dependency/build impact. Its protected dispatch
+    `type` explicitly approves that module's impact and target, independently
+    of the impact used for the integrated publication.
+4. Inspect the active PI in `solution.yaml`. New iteration baselines use its
+    current UTC iteration. Existing frozen records remain reusable after the
+    calendar advances.
+5. Before a stable dispatch, create/configure `release-stable` in repository
+    **Settings → Environments**. Add at least one actual user/team under
+    **Required reviewers**, save the environment, and verify its protection
+    rule is visible. The stable workflow checks this rule through the GitHub
+    REST API before promotion writes and again before creating/updating the
+    catalog PR. An absent environment, absent reviewer rule, empty reviewer
+    list, or API error stops the job. The stable catalog PR job uses the same
+    protected environment and therefore requires its own environment approval.
+    Before iteration/RC dispatches, configure `release-publication` as required
+    by repository policy. Merely naming an environment does not create reviewer
+    protection.
+6. Preserve `actions: read` for the workflow token so it can inspect the
+    environment. A permission-denied API response is a hard failure, not a
+    reason to skip the live protection check.
+7. Protect `automation/release-state`, release tags, and the stable catalog
+    automation branch against unauthorized replacement/deletion. Permit the
+    trusted workflow only the writes it needs.
 
 ## Mitigation
 
 Dispatch from **main** with:
 
-- `source_commit`: the full 40-character main commit SHA to freeze.
-- `solution_version`: an explicitly approved independent solution target and
-  iteration, for example `0.1.0-it1` (an example, not an automatically selected
-  product version).
+- `release`: `solution` (default) or `module`.
+- `module`: a catalog module name only for a module release; blank for solution.
+- `type`: `major`, `minor`, or `patch` (default). This is an explicit impact,
+  not a version. The target is calculated from the current stable catalog
+  version. The solution impact is independent of every module impact.
+- `promote`: `iteration` (default), `release_candidate`, or `stable`.
 
-Approve the environment only after reviewing the selected source and version.
-The workflow calls `make release-baseline`; it installs only existing trusted
-catalog dependencies and pinned Helm. Do not execute it against a dirty
-developer checkout with write credentials.
+No source SHA or version is accepted as user input. An iteration release uses
+the exact SHA at workflow dispatch. Solution baselines retain each selected
+module publication's reviewed target, approved impact, source commit, and
+digests; the solution target is calculated independently. For a standalone
+module, the protected dispatch's explicit `type` selects the impact and target
+from that module's stable catalog version. This is a separate release approval;
+it does not rewrite the integrated publication record or change any other
+module's target. The frozen module manifest records the selected impact and
+retains the source publication's version, target, impact, tests, provenance,
+image digest, and chart version/digest as evidence.
 
-The workflow discovers all packaged catalog modules, selects the latest
-published main ancestor for each and refuses changes since its publication
-to module source, tool pins or the catalog. Incomplete image/chart publication,
-failed builds or failed publication runs block release.
+The workflow calls `make release-baseline` using trusted tooling from the
+workflow's `main` revision and read-only inspection of the selected source.
+It checks successful same-repository build/publication evidence and verifies
+the recorded OCI digests. It never rebuilds an image or chart.
 
-The first successful freeze records `release-baselines/solution-<version>.json`
-on `automation/release-state`. That is a frozen selection, not proof that all
-promotion steps finished. The workflow then:
+For `iteration`, a new solution record keeps the established
+`release-baselines/solution-<version>.json` shape and namespaced tags. Standalone
+module records are stored under `release-baselines/module-<name>-<version>.json`.
+Charts retain their original package version and digest because changing chart
+metadata would change the approved artifact bytes.
 
-1. Retags each image's exact manifest bytes as `<module-target>-itN`.
-2. Retains each chart's original version and digest, including its image pin.
-3. Creates `modules/<name>/v<module-target>-itN` annotated tags/releases.
-4. Creates `solution/v<solution-target>-itN` and a solution release mapping
-    module baseline versions to source commits and image/chart digests.
-5. Uploads JSON manifests as workflow artifacts. Durable copies also remain
-    in release bodies, annotated tag messages and the frozen state record.
+For `release_candidate`, the workflow chooses the latest eligible frozen
+iteration baseline for the same target, then records an immutable
+`<target>-rcN` promotion under `release-promotions/`. It reuses the same
+candidate when that target already has an RC from that frozen baseline. For
+`stable`, it selects the highest eligible RC for the target, rejects conflicts
+or ambiguity, and creates a non-prerelease release from the same source and
+digests. Stable promotion runs behind the separate `release-stable` environment.
+After promotion succeeds, a narrower-permission job opens a PR changing only
+the stable `version` field in `solution.yaml` or the selected module's
+`module.yaml`. The PR branch is under `automation/`; `main` is never written
+directly.
 
-If interrupted, rerun with the **same source SHA and solution version**.
-Existing frozen selections are reused even after the iteration boundary.
-Conflicting image tags, Git tags, release bodies or source selections fail
-instead of being overwritten. Never delete or rewrite state/tags to bypass
-a conflict; inspect the original record and registry history.
-
-Only one baseline per module target/iteration can be frozen. A different
-solution version is not a way to replace an already frozen module baseline;
-conflicting module selections fail. Use subsequent integrated revisions for
-ongoing development and the next approved iteration for a new baseline.
+If interrupted, use **Re-run jobs** on the original workflow run. Frozen
+records are write-once and reruns reuse the original source, baseline/RC
+selection, version and digests even if `main` or the PI iteration has moved.
+Do not delete state, tags, or releases to bypass a conflict. An ambiguous
+baseline/RC or mismatched catalog is a stop condition; inspect the immutable
+state and resolve it through reviewed repository changes.
 
 ## Verification
 
-- The workflow and every promotion/verification step must succeed.
-- Inspect the solution GitHub prerelease and its JSON manifest.
-- Compare image digests with the selected publication records; baseline and
-  integrated image tags must resolve to identical digests.
-- Confirm chart digests and package versions remain those from publication.
-- Rerun the same inputs: versions/digests and frozen manifests must not change.
-- Confirm `solution.yaml`, module stable versions and PI dates did not change.
+- Confirm every promotion/verification step succeeds and inspect the JSON
+  manifest artifact.
+- Compare image digests with the selected publication records. Each promoted
+  image tag must resolve to the original digest; chart digests and package
+  versions remain unchanged.
+- Confirm iteration and RC releases are prereleases, stable releases are not,
+  and every Git tag/release maps to the recorded source commit and manifest.
+- Confirm the stable catalog PR changes exactly one stable `version` field.
+  Merge it through normal review; the workflow never writes `main`.
+- Confirm `solution.yaml`, module stable versions, and PI dates remain unchanged
+  until the catalog PR is reviewed and merged.
 
-Offline checks: `make test-catalog` covers release selection, schema validation,
-trust gates, conflicts and reruns. `make ci` also validates workflow syntax,
-secret detection, tests and builds. They do not prove live GHCR permissions,
-GitHub environment protection or a completed release.
+Offline checks:
+
+- `python3 -m unittest tests.unit.test_release_baseline tests.unit.test_release_promotion -q` — deterministic baseline, selection, promotion, catalog-PR, and conflict tests.
+- `actionlint .github/workflows/release-baseline.yml` — workflow syntax and expression validation.
+- `make ci` — repository lint, catalog validation, unit tests, module tests, and builds.
+
+These checks do not prove live GitHub environment protection, GHCR permissions,
+or a successful remote promotion. No live dispatch is part of offline testing.
 
 ## Prevention and follow-up
 
-Keep local `dev-*` commands independent of releases. Deployment is deliberately
-not part of this workflow; the existing Deploy workflow is still a placeholder.
-RC/production promotion, GitOps, stable-version PRs and cleanup remain later
-work. See [ADR-020](../adr/ADR-020-iteration-baseline-release.md) and
-[publication recovery](../release-publication.md).
+Keep local `dev-*` commands independent of publication/release approvals.
+Deployment and GitOps remain deferred. Configure real environment reviewers
+and branch/tag protections in repository settings; workflow YAML alone cannot
+establish those controls. See [ADR-021](../adr/ADR-021-automatic-release-promotion.md)
+and [publication recovery](../release-publication.md).

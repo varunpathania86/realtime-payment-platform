@@ -1,4 +1,4 @@
-"""Validate and package the first synthetic Avro event contract."""
+"""Validate and package synthetic Avro event contracts."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ def validate_compatibility(schema: avro.schema.Schema, baselines: list[Path]) ->
 def validate_event(schema: avro.schema.Schema, event: dict) -> None:
     avro.io.validate(schema, event, raise_on_error=True)
     if (
-        event["event_type"] != "payment.initiated.v1"
+        event["event_type"] not in ("payment.initiated.v1", "payment.processing.v1")
         or type(event["schema_version"]) is not int
         or event["schema_version"] != 1
     ):
@@ -39,15 +39,19 @@ def validate_event(schema: avro.schema.Schema, event: dict) -> None:
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z", event["event_time"]):
         raise ValueError("event_time must be RFC3339 UTC ending in Z")
     datetime.fromisoformat(event["event_time"].replace("Z", "+00:00"))
-    for key in ("event_id", "correlation_id"):
+    processing = event["event_type"] == "payment.processing.v1"
+    for key in (("event_id", "account_id") if processing else ("event_id", "correlation_id")):
         UUID(event[key])
-    if event["causation_id"] is not None:
+    if not processing and event["causation_id"] is not None:
         UUID(event["causation_id"])
-    UUID(event["payload"]["payment_id"])
-    if type(event["payload"]["amount_minor"]) is not int or event["payload"]["amount_minor"] <= 0:
+    payload = event if processing else event["payload"]
+    UUID(payload["payment_id"])
+    if type(payload["amount_minor"]) is not int or payload["amount_minor"] <= 0:
         raise ValueError("amount_minor must be positive")
-    if not re.fullmatch(r"[A-Z]{3}", event["payload"]["currency"]):
+    if not re.fullmatch(r"[A-Z]{3}", payload["currency"]):
         raise ValueError("currency must be a three-letter uppercase ISO 4217 code")
+    if processing and not re.fullmatch(r"[A-Z]{2}", event["country"]):
+        raise ValueError("country must be an uppercase two-letter code")
     buffer = io.BytesIO()
     avro.io.DatumWriter(schema).write(event, avro.io.BinaryEncoder(buffer))
     buffer.seek(0)

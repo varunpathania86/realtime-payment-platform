@@ -95,7 +95,8 @@ class LocalCommandTests(unittest.TestCase):
         self.addCleanup(self.directory.cleanup)
         self.root = Path(self.directory.name)
         (self.root / "scripts").mkdir()
-        for name in ("local-dev.sh", "lib.sh", "module_catalog.py", "smoke.py", "local_database.py"):
+        for name in ("local-dev.sh", "lib.sh", "module_catalog.py", "smoke.py", "local_database.py",
+                    "streaming-control.py"):
             shutil.copy(ROOT / "scripts" / name, self.root / "scripts" / name)
         shutil.copy(ROOT / ".tool-versions", self.root / ".tool-versions")
         (self.root / ".venv" / "bin").mkdir(parents=True)
@@ -108,6 +109,7 @@ class LocalCommandTests(unittest.TestCase):
         (module / "module.yaml").write_text("name: demo\ntype: library\n")
         (module / "Dockerfile").write_text("FROM scratch\n")
         (module / "chart" / "Chart.yaml").write_text("name: demo\n")
+        (module / "chart" / "values.yaml").write_text("{}\n")
         (self.root / "solution.yaml").write_text("modules: [demo]\n")
         self.source = module / "source.txt"
         self.source.write_text("first\n")
@@ -129,6 +131,8 @@ if name == "docker" and os.environ.get("FAIL_BUILD"):
 if name == "minikube" and os.environ.get("FAIL_LOAD"):
     print("deliberate image load failure", file=sys.stderr)
     sys.exit(8)
+if name == "kubectl" and "get" in sys.argv and os.environ.get("DEPLOYED_FLINK_IMAGE"):
+    print(json.dumps({"spec":{"template":{"spec":{"containers":[{"image":os.environ["DEPLOYED_FLINK_IMAGE"]}]}}}}))
 if name == "kubectl" and "port-forward" in sys.argv:
     if os.environ.get("FAIL_FORWARD"):
         print("deliberate forwarding failure", file=sys.stderr)
@@ -261,6 +265,24 @@ if name == "kubectl" and "port-forward" in sys.argv:
                 self.assertIn("deliberate", result.stderr)
                 self.assertFalse((self.root / ".local" / "isolated" / "images.tfvars.json").exists())
                 self.assertEqual(list((self.root / ".local" / "isolated").glob("images.*")), [])
+
+    def test_stateful_guard_precedes_build_and_load_and_keeps_previous_inventory(self):
+        flink = self.root / "modules" / "flink-jobs"
+        shutil.copytree(self.source.parent, flink)
+        (flink / "module.yaml").write_text("name: flink-jobs\ntype: library\n")
+        (self.root / "solution.yaml").write_text("modules: [demo, flink-jobs]\n")
+        state = self.root / ".local" / "isolated"
+        state.mkdir(parents=True)
+        (state / "events.tfvars.json").write_text('{"streaming_enabled":true}\n')
+        previous = {"local_images": {"flink-jobs": "rpp-local/flink-jobs:dev-old"}}
+        (state / "images.tfvars.json").write_text(json.dumps(previous))
+        result = self.run_command("images", DEPLOYED_FLINK_IMAGE=previous["local_images"]["flink-jobs"],
+            STREAMING_RESTORE_PATH="")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("stateful image changed", result.stderr)
+        self.assertEqual(self.inventory(), previous)
+        calls = [json.loads(line) for line in self.log.read_text().splitlines()]
+        self.assertFalse(any(call[0] in ("docker", "minikube", "terraform") for call in calls))
 
     def test_plan_requires_local_images(self):
         result = self.run_command("plan")

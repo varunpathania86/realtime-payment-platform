@@ -20,8 +20,8 @@ def positive_integer(value, name):
 
 
 def validate(data):
-    if not isinstance(data, dict) or set(data) - {"node", "clusters", "nodes", "observability"}:
-        raise ValueError("configuration accepts only node, nodes, clusters and observability")
+    if not isinstance(data, dict) or set(data) - {"node", "clusters", "nodes", "observability", "streaming"}:
+        raise ValueError("configuration accepts only node, nodes, clusters, observability and streaming")
     node = data.get("node", {})
     if not isinstance(node, dict) or set(node) - {"cpus", "memory_mib"}:
         raise ValueError("node accepts only cpus and memory_mib")
@@ -65,10 +65,11 @@ def validate(data):
             if not isinstance(value, dict):
                 raise ValueError(f"nodes.{key} must be a node budget object")
             result["nodes"][key] = validate({"node": {**result["node"], **value}})["node"]
-    if "observability" in data:
-        if not isinstance(data["observability"], bool):
-            raise ValueError("observability must be a boolean")
-        result["observability"] = data["observability"]
+    for feature in ("observability", "streaming"):
+        if feature in data:
+            if not isinstance(data[feature], bool):
+                raise ValueError(f"{feature} must be a boolean")
+            result[feature] = data[feature]
     return result
 
 

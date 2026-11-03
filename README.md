@@ -25,7 +25,7 @@ See the [API guide](modules/payment-api/README.md) and
 [database runbook](docs/runbooks/payment-database.md).
 
 Stage 3 is merged and its main build, security and publication passed.
-Stage 4 is in progress: its selected architecture uses per-cluster
+Stage 4 is merged: its selected architecture uses per-cluster
 OpenTelemetry Collectors and shared observability backends in cluster A.
 Instrumentation includes API/PostgreSQL tracing, durable outbox/Kafka context,
 correlated JSON logs, bounded business metrics and browser status telemetry.
@@ -40,8 +40,17 @@ not a guarantee provided by Stage 4 traces.
 Stage 4 also brings forward a manual **Release iteration baseline** workflow:
 freeze approved main artifacts into module/solution releases without rebuilding,
 deploying, advancing the PI schedule, or changing stable catalog versions.
-It must be merged and verified by an approved live run before release acceptance.
+The first live solution baseline `0.1.0-it1` and three module baselines succeeded.
 See the [baseline runbook](docs/runbooks/iteration-baseline.md).
+
+Stage 5 adds [PyFlink event-time processing](modules/flink-jobs/README.md):
+separate synthetic outcomes, native Kafka-partition watermarks/idleness,
+revision-aware windows and persistent MinIO checkpoints/savepoints.
+Use the [streaming topology](templates/streaming-topology.json) to opt in.
+Normal payment-only development does not start or build the optional runtime.
+Stage 5 also replaces manual release SHA/version inputs with `release`, `module`,
+`type` and `promote`, including approved RC/stable artifact promotion and
+reviewed stable-catalog PRs. Deployment and GitOps remain deferred.
 
 ## Repository map
 
@@ -116,7 +125,7 @@ the bundled metrics-server; new `dev-up` runs enable it automatically.
 
 Run `make help` for all targets.
 
-Catalog validation is available through `make validate-catalog`; `make ci` includes catalog validation and unit tests. CI has a dynamic affected-module matrix; root checks also validate implemented modules. Trusted push CI can trigger protected branch/main OCI publication after the workflows are merged into `main` and the environment is configured. See the [publication runbook](docs/release-publication.md). Iteration baselines are part of Stage 4; deployment, RC/production promotion and cleanup remain deferred.
+Catalog validation is available through `make validate-catalog`; `make ci` includes catalog validation and unit tests. CI has a dynamic affected-module matrix; root checks also validate implemented modules. Trusted push CI can trigger protected branch/main OCI publication after the workflows are merged into `main` and the environment is configured. See the [publication runbook](docs/release-publication.md). Iteration baselines are part of Stage 4; Stage 5 adds protected RC/stable artifact promotion. Deployment, GitOps and cleanup remain deferred.
 
 Stage 1 includes required TFLint quality checks and a separate
 [advisory Trivy IaC workflow](.github/workflows/security.yml) for the solution and
@@ -134,7 +143,7 @@ the verified image digest and have their own verified OCI digest. Main publicati
 and same-source reruns were verified on 2026-10-28 with unchanged image/chart
 digests at version `0.0.1-it1-rv.1`. Stages 1-3 are accepted. Stage 4 adds
 iteration-baseline manifests, namespaced Git tags and prerelease GitHub Releases.
-GitOps and RC/production promotion remain later work.
+Stage 5 brings forward RC/stable artifact promotion; deployment/GitOps remain later work.
 
 ## Workflow
 

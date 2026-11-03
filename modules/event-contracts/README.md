@@ -11,6 +11,13 @@ compatibility against every retained baseline, and payment-api registers the
 canonical schema in Apicurio at relay startup. The HTTP OpenAPI contract lives
 with payment-api. This module remains a data bundle, not a broker or executable.
 
+Stage 5 adds `payment.processing.v1`, a **separate synthetic dataset** with
+account, country, payment method and labeled outcomes for Flink exercises.
+It does not change initiation semantics or make authorization decisions.
+Its Kafka transport is JSON with CreateTime equal to `event_time`, rather than
+the initiation topic's schema-ID Avro frame. The Avro schema/example and immutable
+baseline still define and validate the logical contract.
+
 ## Layout
 
 ```text
@@ -18,6 +25,9 @@ with payment-api. This module remains a data bundle, not a broker or executable.
 ├── schemas/payment-initiated-v1.avsc
 ├── examples/payment-initiated-v1.json
 ├── compatibility/payment-initiated-v1/001.avsc
+├── schemas/payment-processing-v1.avsc
+├── examples/payment-processing-v1.json
+├── compatibility/payment-processing-v1/001.avsc
 ├── tests/
 ├── module.yaml
 ├── Makefile

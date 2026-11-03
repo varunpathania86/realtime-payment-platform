@@ -16,8 +16,9 @@ Modules without Dockerfiles are explicitly skipped; modules without charts
 remain image-only, such as `event-contracts`. Stage 4 adds a separate manual
 iteration-baseline release workflow for module/solution manifests and namespaced
 Git tags/GitHub prereleases. See [the baseline runbook](runbooks/iteration-baseline.md).
-Deployment, RC/production promotion, cleanup and automated stable-version PRs
-remain **not implemented**.
+Stage 5 brings forward automatic module/solution inputs, RC/stable artifact
+promotion and stable-catalog PRs with protected approval. Deployment, GitOps
+and cleanup remain deferred.
 The existing deployment workflow is still a placeholder.
 
 Branch tags are replaceable; main revision tags must not change digest.
@@ -236,6 +237,7 @@ Keep all permanent and temporary release state outside stable catalog fields.
 Never grant publication to fork PRs. Do not enable the deploy placeholder as a
 replacement for publishing or promotion.
 Stage 4 brings forward iteration-baseline releases with exact digest reuse;
-chart packages keep their original integrated versions/digests. Stage 17 retains
-GitOps, RC/production promotion, stable-version PRs and verified cleanup.
+chart packages keep their original integrated versions/digests. Stage 5 adds
+automatic selection and protected RC/stable promotion with stable-catalog PRs.
+Stage 17 retains GitOps and verified cleanup.
 Deployment is deferred; the Deploy workflow remains a placeholder.

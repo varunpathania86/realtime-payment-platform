@@ -1,0 +1,27 @@
+image:
+  repository: rpp-local/flink-jobs
+  tag: development
+  digest: ""
+  pullPolicy: Never
+local:
+  feature: streaming
+streaming:
+  enabled: false
+  restorePath: ""
+  checkpointURI: s3://flink-state/checkpoints/payment-event-time-v1
+  savepointURI: s3://flink-state/savepoints
+  endpoint: http://minio.data.svc.cluster.local:9000
+  existingSecret: streaming-storage
+events:
+  brokers: kafka.data.svc.cluster.local:9092
+  existingSecret: payment-api-events
+  tls: false
+  replicationFactor: 1
+jobmanager:
+  resources:
+    requests: {cpu: 100m, memory: 768Mi}
+    limits: {cpu: "1", memory: 1280Mi}
+taskmanager:
+  resources:
+    requests: {cpu: 250m, memory: 1536Mi}
+    limits: {cpu: "2", memory: 2560Mi}
