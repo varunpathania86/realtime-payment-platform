@@ -81,6 +81,29 @@ else
   bad "CNPG chart is missing or checksum differs (run: make setup)"
 fi
 
+if [[ "$(pinned_version flink)" =~ ^[0-9]+\.[0-9]+\.[0-9]+-scala_2.12-java17$ ]] &&
+  [[ "$(pinned_version flink-kafka-connector)" =~ ^[0-9]+\.[0-9]+\.[0-9]+-1.20$ ]] &&
+  [[ "$(pinned_version flink-kafka-connector-sha256)" =~ ^[a-f0-9]{64}$ ]] &&
+  [[ "$(pinned_version minio-sha256-amd64)" =~ ^[a-f0-9]{64}$ ]] &&
+  [[ "$(pinned_version minio-sha256-arm64)" =~ ^[a-f0-9]{64}$ ]] &&
+  [[ "$(pinned_version minio)" =~ ^RELEASE\.[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-[0-9]{2}Z$ ]]; then
+  ok "Flink/PyFlink, Kafka connector and MinIO container pins"
+else
+  bad "invalid streaming runtime pins in .tool-versions (restore pins and run STREAMING=1 make setup)"
+fi
+flink_pin=$(pinned_version flink)
+if [ "${flink_pin%%-*}" != "$(pinned_version flink-python)" ]; then
+  bad "Flink and PyFlink pins must match (restore .tool-versions and run STREAMING=1 make setup)"
+fi
+if [ "${STREAMING:-0}" = 1 ]; then
+  if docker image inspect "rpp-tools/flink:$(pinned_version flink-python)" >/dev/null 2>&1 &&
+    docker image inspect "rpp-runtime/minio:$(pinned_version minio)" >/dev/null 2>&1; then
+    ok "streaming runtime images (run STREAMING=1 make setup to refresh)"
+  else
+    bad "streaming runtime images are missing (run STREAMING=1 make setup)"
+  fi
+fi
+
 case ":$PATH:" in
   *":$BIN_DIR:"*) ;;
   *) bad "$BIN_DIR is not on PATH (add it in ~/.bashrc)" ;;

@@ -76,7 +76,11 @@ def select_publications(root: Path, state: dict, source: str) -> list[dict]:
         )
         affected = plan_matrix(chosen["sourceCommit"], source, root)["include"]
         if changed or any(item["module"] == name for item in affected):
-            raise ValueError(f"{name}: source changed since publication; publish the selected source first")
+            scope = "toolchain pins" if changed else "module or dependency source"
+            raise ValueError(
+                f"publication pending for {source}: {name} has {scope} changes since "
+                f"published source {chosen['sourceCommit']}; publish the selected source first"
+            )
         publication = chosen["publication"]
         if (module / "chart" / "Chart.yaml").exists() and "chart" not in publication:
             raise ValueError(f"{name}: chart publication is incomplete")
@@ -189,7 +193,9 @@ def require_build(api: GitHubAPI, repository: str, source: str) -> None:
         raise ValueError(f"{source}: no successful same-repository main push build")
 
 
-def require_publication(api: GitHubAPI, repository: str, url: str) -> None:
+def require_publication(
+    api: GitHubAPI, repository: str, url: str, expected_source: str | None = None,
+) -> None:
     prefix = f"https://github.com/{repository}/actions/runs/"
     if not url.startswith(prefix) or not url.removeprefix(prefix).isdigit():
         raise ValueError("publication evidence must identify a run in this repository")
@@ -198,6 +204,10 @@ def require_publication(api: GitHubAPI, repository: str, url: str) -> None:
             or run["path"] != ".github/workflows/publish.yml"
             or run["head_repository"]["full_name"] != repository):
         raise ValueError("selected publication workflow did not complete successfully")
+    if expected_source is not None and (
+        run.get("head_sha") != expected_source or run.get("head_branch") != "main"
+    ):
+        raise ValueError("selected publication did not publish the exact reviewed main source")
 
 
 def verify_artifacts(bundle: dict) -> None:
@@ -213,31 +223,41 @@ def verify_artifacts(bundle: dict) -> None:
                 or module["source"]["gitTag"] != f"modules/{module['module']}/v{module['version']}"):
             raise ValueError("invalid or duplicate frozen module baseline identity")
         names.add(module["module"])
+        verify_artifact_set(module["module"], module["version"], module["artifacts"])
         expected.append({
             "name": module["module"], "version": module["version"],
             "sourceCommit": module["source"]["commit"], "artifacts": module["artifacts"],
             "workflowRun": module["workflow"]["url"], "approvedImpact": module["evidence"]["approvedImpact"],
         })
-        if len(module["artifacts"]["images"]) != 1 or len(module["artifacts"]["charts"]) > 1:
-            raise ValueError("expected one module image and at most one chart")
-        image = module["artifacts"]["images"][0]
-        if image["tag"] != module["version"]:
-            raise ValueError("baseline image tag does not match the module version")
-        validate_digest(image["digest"])
-        found = registry_manifest(image["repository"], image["digest"])
-        if found is None or found[0] != image["digest"]:
-            raise ValueError(f"{module['module']}: source image digest is missing")
-        for chart in module["artifacts"]["charts"]:
-            found = registry_manifest(chart["repository"], chart["digest"])
-            if found is None or found[0] != chart["digest"]:
-                raise ValueError("source chart digest is missing")
-            metadata, values = chart_metadata(chart["repository"], chart["digest"])
-            if (metadata.get("name") != module["module"] or metadata.get("version") != chart["version"]
-                    or values.get("image", {}).get("repository") != image["repository"]
-                    or values.get("image", {}).get("digest") != image["digest"]):
-                raise ValueError("chart does not pin the selected image or package identity")
     if expected != solution["modules"] or solution["solution"]["gitTag"] != f"solution/v{solution['solution']['version']}":
         raise ValueError("solution manifest does not match its frozen module manifests")
+
+
+def verify_artifact_set(module_name: str, version: str, artifacts: dict) -> None:
+    if len(artifacts["images"]) != 1 or len(artifacts["charts"]) > 1:
+        raise ValueError("expected one module image and at most one chart")
+    image = artifacts["images"][0]
+    if image["tag"] != version:
+        raise ValueError("baseline image tag does not match the module version")
+    validate_digest(image["digest"])
+    found = registry_manifest(image["repository"], image["digest"])
+    if found is None or found[0] != image["digest"]:
+        raise ValueError(f"{module_name}: source image digest is missing")
+    for chart in artifacts["charts"]:
+        validate_digest(chart["digest"])
+        found = registry_manifest(chart["repository"], chart["digest"])
+        if found is None or found[0] != chart["digest"]:
+            raise ValueError("source chart digest is missing")
+        metadata, values = chart_metadata(chart["repository"], chart["digest"])
+        if (metadata.get("name") != module_name or metadata.get("version") != chart["version"]
+                or values.get("image", {}).get("repository") != image["repository"]
+                or values.get("image", {}).get("digest") != image["digest"]):
+            raise ValueError("chart does not pin the selected image or package identity")
+
+
+def verify_module_artifacts(module: dict) -> None:
+    schema(module, "module-release.schema.json")
+    verify_artifact_set(module["module"], module["version"], module["artifacts"])
 
 
 def promote_image(image: dict) -> None:
@@ -306,8 +326,18 @@ def ensure_tag(api: GitHubAPI, tag: str, commit: str, manifest: dict) -> None:
         raise ValueError("existing baseline tag conflicts with the frozen manifest")
 
 
-def release(api: GitHubAPI, manifest: dict, tag: str) -> None:
-    body = "Immutable iteration baseline. No rebuild or deployment.\n\n```json\n" + json.dumps(
+def release(api: GitHubAPI, manifest: dict, tag: str, prerelease: bool = True) -> None:
+    version = (
+        manifest["solution"]["version"]
+        if manifest["kind"] == "solution-release" else manifest["version"]
+    )
+    if "-it" in version:
+        description = "Immutable iteration baseline. No rebuild or deployment."
+    elif "-rc" in version:
+        description = "Immutable release candidate. No rebuild or deployment."
+    else:
+        description = "Immutable stable release. No rebuild or deployment."
+    body = description + "\n\n```json\n" + json.dumps(
         manifest, indent=2, sort_keys=True,
     ) + "\n```\n"
     try:
@@ -317,15 +347,31 @@ def release(api: GitHubAPI, manifest: dict, tag: str) -> None:
             raise
         error.close()
         api.request("POST", "/releases", {
-            "tag_name": tag, "name": tag, "body": body, "prerelease": True,
+            "tag_name": tag, "name": tag, "body": body, "prerelease": prerelease,
             "draft": False, "make_latest": "false",
         })
         return
-    if existing["body"] != body or not existing["prerelease"] or existing["draft"]:
+    if existing["body"] != body or existing["prerelease"] != prerelease or existing["draft"]:
         raise ValueError("existing GitHub release conflicts with the frozen manifest")
 
 
 def main() -> None:
+    if os.environ.get("RELEASE_ACTION") == "catalog-pr":
+        from scripts.release_promotion import create_stable_catalog_pr
+
+        try:
+            create_stable_catalog_pr()
+        except (ValueError, KeyError, OSError, subprocess.CalledProcessError) as error:
+            sys.exit(f"ERROR stable catalog PR: {error}")
+        return
+    if os.environ.get("RELEASE_CHOICE"):
+        from scripts.release_promotion import run_release
+
+        try:
+            run_release()
+        except (ValueError, KeyError, OSError, subprocess.CalledProcessError) as error:
+            sys.exit(f"ERROR release automation: {error}")
+        return
     try:
         repository = os.environ["GITHUB_REPOSITORY"]
         api = GitHubAPI(repository, os.environ["GH_TOKEN"])

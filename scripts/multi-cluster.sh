@@ -228,6 +228,10 @@ deploy() {
     mkdir -p "$REPO_ROOT/.local/$profile"
     jq --arg key "${profile: -1}" --slurpfile workloads "$STATE/workloads.pending.json" \
       '. * $workloads[0][$key]' "$STATE/events.pending.json" > "$REPO_ROOT/.local/$profile/events.tfvars.json"
+    jq --arg key "${profile: -1}" --slurpfile config "$STATE/configuration.json" \
+      '. + {streaming_enabled: ($key == "a" and ($config[0].streaming // false))}' \
+      "$REPO_ROOT/.local/$profile/events.tfvars.json" > "$REPO_ROOT/.local/$profile/streaming.pending.json"
+    mv "$REPO_ROOT/.local/$profile/streaming.pending.json" "$REPO_ROOT/.local/$profile/events.tfvars.json"
     MINIKUBE_PROFILE="$profile" scripts/local-dev.sh update
   done
   rm -f "$STATE/events.pending.json" "$STATE/workloads.pending.json"

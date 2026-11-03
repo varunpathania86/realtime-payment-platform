@@ -81,6 +81,13 @@ class PublicationTests(unittest.TestCase):
                         if line and not line.startswith("#"))
             self.assertIn(f"GO_VERSION={pins['go']}", args)
             self.assertIn(f"NODE_VERSION={pins['nodejs']}", args)
+            for key, argument in (
+                ("flink", "FLINK_VERSION"),
+                ("flink-python", "FLINK_PYTHON_VERSION"),
+                ("flink-kafka-connector", "FLINK_KAFKA_CONNECTOR_VERSION"),
+                ("flink-kafka-connector-sha256", "FLINK_KAFKA_CONNECTOR_SHA256"),
+            ):
+                self.assertIn(f"{argument}={pins[key]}", args)
 
         with tempfile.TemporaryDirectory() as directory:
             with (

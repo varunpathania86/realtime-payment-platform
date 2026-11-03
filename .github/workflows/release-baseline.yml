@@ -1,29 +1,44 @@
-name: Release iteration baseline
+name: Release and promote versions
 
 on:
   workflow_dispatch:
     inputs:
-      source_commit:
-        description: Full tested main commit SHA to freeze
-        type: string
+      release:
+        description: Release the integrated solution or one independently versioned module
+        type: choice
+        options: [module, solution]
         required: true
-      solution_version:
-        description: Explicit solution baseline version, for example 0.1.0-it1
+        default: solution
+      module:
+        description: Catalog module name; leave blank for a solution release
         type: string
+        required: false
+        default: ""
+      type:
+        description: Reviewed semantic-version impact
+        type: choice
+        options: [major, minor, patch]
         required: true
+        default: patch
+      promote:
+        description: Freeze an iteration baseline, promote an RC, or promote stable
+        type: choice
+        options: [iteration, release_candidate, stable]
+        required: true
+        default: iteration
 
 permissions:
   contents: read
 
 concurrency:
-  group: iteration-baseline-release
+  group: release-${{ inputs.release }}-${{ inputs.module || 'solution' }}-${{ inputs.promote }}
   cancel-in-progress: false
 
 jobs:
   release:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    environment: release-publication
+    environment: ${{ inputs.promote == 'stable' && 'release-stable' || 'release-publication' }}
     permissions:
       contents: write
       packages: write
@@ -34,10 +49,10 @@ jobs:
         with:
           path: tooling
           persist-credentials: false
-      - name: Check out selected source for read-only inspection
+      - name: Check out exact dispatch source for read-only inspection
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.source_commit }}
+          ref: ${{ github.sha }}
           path: source
           fetch-depth: 0
           persist-credentials: false
@@ -57,19 +72,54 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: make publication-login
-      - name: Freeze and release verified baseline artifacts
+      - name: Freeze or promote immutable release records
         working-directory: tooling
         env:
           GH_TOKEN: ${{ github.token }}
-          BASELINE_SOURCE: ${{ inputs.source_commit }}
-          BASELINE_VERSION: ${{ inputs.solution_version }}
+          RELEASE_CHOICE: ${{ inputs.release }}
+          RELEASE_MODULE: ${{ inputs.module }}
+          RELEASE_TYPE: ${{ inputs.type }}
+          RELEASE_PROMOTE: ${{ inputs.promote }}
           SOURCE_ROOT: ${{ github.workspace }}/source
           BASELINE_OUTPUT: ${{ github.workspace }}/baseline
         run: make release-baseline
       - name: Retain release manifests
         uses: actions/upload-artifact@v4
         with:
-          name: iteration-baseline-${{ github.run_id }}-${{ github.run_attempt }}
+          name: release-${{ inputs.release }}-${{ inputs.module || 'solution' }}-${{ inputs.promote }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: baseline/*.json
           if-no-files-found: error
           retention-days: 90
+
+  stable-catalog:
+    needs: release
+    if: github.ref == 'refs/heads/main' && inputs.promote == 'stable'
+    runs-on: ubuntu-latest
+    environment: release-stable
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: read
+    steps:
+      - name: Check out trusted main release tooling
+        uses: actions/checkout@v4
+        with:
+          path: tooling
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install trusted release dependencies
+        working-directory: tooling
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install --no-cache-dir -r scripts/requirements-catalog.txt
+      - name: Open exact stable catalog version PR
+        working-directory: tooling
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ACTION: catalog-pr
+          RELEASE_CHOICE: ${{ inputs.release }}
+          RELEASE_MODULE: ${{ inputs.module }}
+          RELEASE_TYPE: ${{ inputs.type }}
+        run: make release-baseline

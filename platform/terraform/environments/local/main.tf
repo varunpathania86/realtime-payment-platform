@@ -4,6 +4,8 @@ locals {
   applications = {
     for name in local.catalog.modules : name => "${local.root}/modules/${name}/chart"
     if fileexists("${local.root}/modules/${name}/Dockerfile") && fileexists("${local.root}/modules/${name}/chart/Chart.yaml")
+    && (try(yamldecode(file("${local.root}/modules/${name}/chart/values.yaml")).local.feature, "") == ""
+    || contains(var.streaming_enabled ? ["streaming"] : [], try(yamldecode(file("${local.root}/modules/${name}/chart/values.yaml")).local.feature, "")))
   }
 }
 
@@ -52,14 +54,18 @@ resource "helm_release" "application" {
   name            = each.key
   namespace       = kubernetes_namespace_v1.foundation["apps"].metadata[0].name
   chart           = each.value
-  timeout         = 180
+  timeout         = 600
   wait            = true
   atomic          = true
   cleanup_on_fail = true
-  depends_on      = [helm_release.ingress, kubernetes_stateful_set_v1.postgres, kubernetes_secret_v1.payment_database, kubernetes_stateful_set_v1.kafka, kubernetes_deployment_v1.registry, kubernetes_secret_v1.payment_events, kubernetes_config_map_v1.event_schema]
+  depends_on      = [helm_release.ingress, kubernetes_stateful_set_v1.postgres, kubernetes_secret_v1.payment_database, kubernetes_stateful_set_v1.kafka, kubernetes_deployment_v1.registry, kubernetes_secret_v1.payment_events, kubernetes_config_map_v1.event_schema, kubernetes_deployment_v1.minio]
 
   values = [yamlencode({
     replicaCount = lookup(var.application_replicas, each.key, 1)
+    streaming = {
+      enabled     = var.streaming_enabled
+      restorePath = var.streaming_restore_path
+    }
     telemetry = {
       enabled  = var.telemetry_enabled
       endpoint = var.telemetry_enabled ? "http://collector.telemetry.svc.cluster.local:4318" : ""
@@ -74,6 +80,7 @@ resource "helm_release" "application" {
       registryURL       = "http://apicurio.data.svc.cluster.local:8080/apis/ccompat/v7"
       existingSecret    = kubernetes_secret_v1.payment_events.metadata[0].name
       schemaConfigMap   = kubernetes_config_map_v1.event_schema.metadata[0].name
+      tls               = true
     }
     database = {
       tls      = var.external_database != null

@@ -63,6 +63,33 @@ with its committed lockfile; its Makefile installs dependencies when needed.
 
 ## 2. One-time setup
 
+### Optional Stage 5 streaming runtime
+
+`STREAMING=1 make setup` prepares the pinned Flink/PyFlink runtime image and
+MinIO image. `STREAMING=1 make doctor` verifies both; ordinary `make doctor`
+checks their pins without requiring optional images. No host JVM, Maven,
+PyFlink or Kafka client installation is needed.
+
+The Kafka connector JAR is verified against the root-pinned SHA-256. Official
+MinIO binary release assets are likewise verified against root-pinned AMD64/
+ARM64 checksums and packaged into a non-root local image, because the selected
+official Docker/Quay image tags are no longer available. This is the community
+server, not a switch to an enterprise service. Runtime build scripts are
+idempotent and reuse Docker's cache; first-use downloads require internet.
+
+Use `make dev-up DEV_CONFIG=templates/streaming-topology.json` to opt in:
+only A runs Flink and a persistent 5 GiB MinIO volume. Normal local image builds
+skip optional chart features that are not enabled, so payment-only development
+does not download/build Flink. CI still discovers and validates every packaged
+module. Feature selection uses chart metadata, never descriptive module types.
+Unchanged source-content image tags are reused rather than reimported.
+The stateful update guard checks candidate images before building or loading
+them; changed Flink code requires a stopped job and an explicit savepoint URI.
+The [Flink guide](../modules/flink-jobs/README.md) and
+[recovery runbook](runbooks/flink-recovery.md) cover fixtures and safe upgrades.
+
+### Clone and initialize
+
 ```bash
 git clone git@github.com:varunpathania86/realtime-payment-platform.git
 cd realtime-payment-platform
@@ -728,16 +755,17 @@ See [local development troubleshooting](runbooks/local-development.md) and
 
 ### Stage 4 observability status
 
-The selected layout is an OpenTelemetry Collector in each cluster with shared
+The implemented opt-in layout is an OpenTelemetry Collector in each cluster with shared
 Prometheus, Alertmanager, Loki, Tempo and Grafana backends. See
-[ADR-019](adr/ADR-019-shared-observability-backends.md). These deployments and
-their access commands are not implemented yet; normal `make dev-up`,
-`make dev-update`, `make dev-access` and `make smoke` remain unchanged.
+[ADR-019](adr/ADR-019-shared-observability-backends.md). Select
+`templates/observability-topology.json` with `DEV_CONFIG` and use
+`make dev-observability` for authenticated loopback Grafana access. Normal
+payment-only `dev-*` and `smoke` commands do not require these backends.
 
 The first backend instrumentation slice supports an optional
 `OTEL_EXPORTER_OTLP_ENDPOINT` HTTP(S) origin for a payment-api process and
 `OTEL_CLUSTER_NAME` for cluster identity. Trace export defaults to disabled;
-the application chart does not configure these settings yet. Dependencies are
+the application chart configures these settings when observability is enabled. Dependencies are
 Go libraries pinned in the module manifests, not additional host CLI tools.
 Run `make -C modules/payment-api test` for offline propagation/export tests and
 `make -C modules/payment-api test INTEGRATION=1` for durable PostgreSQL outbox
@@ -751,18 +779,24 @@ before adding infrastructure. See [Stage 4 scope](master-plan.md#stage-4-baselin
 
 ### Iteration baseline releases
 
-Stage 4 adds **Release iteration baseline**, a manual main-only GitHub workflow
-using the existing protected `release-publication` environment. Choose a full
-tested main SHA and an explicit solution baseline version; it reuses verified
-published digests and creates module/solution manifests, namespaced Git tags
-and prerelease GitHub Releases. It neither deploys nor advances the iteration.
-The stable catalog version remains production-only.
+The main-only release workflow now accepts `release` (`module` or `solution`),
+`module` (required only for a module release), `type` (`major`, `minor`, `patch`)
+and `promote` (`iteration` by default, `release_candidate`, `stable`).
+Source SHA and target versions are automatic. Iteration freezes the dispatched
+tested/published main source; later promotions reuse frozen source and digests,
+not rebuilt artifacts. Solution impact remains independent of reviewed module impacts.
+The workflow neither deploys nor advances the PI calendar.
+
+Iteration/RC use `release-publication`. Stable promotion and its version-only
+catalog PR use `release-stable` and fail closed unless required reviewers are
+configured. Stable catalog values change only through reviewed stable PRs.
 
 The workflow calls `make release-baseline`, reusing the existing pinned Helm
 and Python catalog dependencies. No additional developer CLI installation is
 required. See the [baseline runbook](runbooks/iteration-baseline.md) for
 approval prerequisites, inputs, artifact verification and safe reruns. This
-workflow must be merged and tested live before claiming release acceptance.
+Stage 4 iteration baselines succeeded live; the expanded Stage 5 workflow
+must be merged and exercised under approval before claiming RC/stable acceptance.
 Local `dev-*` commands remain independent of it.
 
 ## 5. Workflow summary

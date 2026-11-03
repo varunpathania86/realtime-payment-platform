@@ -1,0 +1,6 @@
+apiVersion: v2
+name: flink-jobs
+description: Opt-in checkpointed PyFlink payment event-time processing
+type: application
+version: 0.1.0
+appVersion: development

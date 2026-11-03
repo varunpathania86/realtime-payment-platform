@@ -6,7 +6,7 @@
 > **Target roles:** Senior Software Engineer, Senior Backend Engineer, Distributed Data Platform Engineer, Streaming Platform Engineer, and AI-enabled Data Platform Engineer in the German market.  
 > **Existing experience:** 12 years of C#, followed by 5 years of Go/Python and AWS data-pipeline work using Lambda, EMR, Kinesis, and related services.  
 > **Development environment:** Windows, WSL2, VS Code, Docker, and Minikube.  
-> **Language strategy:** Go remains the primary backend language. Python is used where its ML/LLM ecosystem provides a clear advantage. Java/Spring Boot is not required.
+> **Language strategy:** Go remains the primary backend language. Python is used where its ML/LLM ecosystem provides a clear advantage, and for the explicitly approved Stage 5 PyFlink jobs that precede in-process ML. Flink's JVM is a container runtime dependency, not Java application code. Java/Spring Boot is not required.
 
 ---
 
@@ -63,7 +63,7 @@ These rules apply to the whole monorepo. Details for AI tools live in `AGENTS.md
   - **Promotion**: manually dispatched and permission-controlled; promote exact OCI digests through protected environments, create manifests/releases, and perform cleanup only after verification.
   - **Stable-version recording**: after successful production promotion, create a PR updating the stable catalog version; never push directly to protected `main`.
 - Self-hosted runners are used only for explicitly approved protected work, never for pull requests from forks.
-- Current implementation status: Stages 1-3 are accepted, including verified main image/chart publication and local replicated payment/event recovery. Stage 4 implements baseline observability and, by explicit scope extension, iteration-baseline module/solution releases. Deployment, GitOps, RC/production promotion, cleanup and stable-version PRs remain deferred. See Section 19 and [the publication runbook](release-publication.md).
+- Current implementation status: Stages 1-4 are merged; the first solution/module iteration baseline was released live. Stage 5 implements PyFlink event-time fundamentals and, by explicit user approval, automatic module/solution iteration, RC and stable artifact promotion with stable-catalog PRs. Deployment, GitOps and cleanup remain deferred. See Section 19 and [the publication runbook](release-publication.md).
 - Local application development is independent of those workflows. Stage 0
   supplies tools and Minikube lifecycle; Stage 1 supplies local image builds,
   image loading, Terraform/Helm deployment, updates, and smoke checks. No GitHub
@@ -998,6 +998,23 @@ Never use payment IDs, user IDs, raw URLs, or prompt text as metric labels.
 **Estimated effort:** 4-7 days  
 **Outcome:** Correct stateful processing of out-of-order payment events.
 
+Use PyFlink with its compatible JVM/Python runtime container. Add a separate
+synthetic processing-event contract with outcome/account/dimensions rather
+than treating existing initiation events as authorization results. Preserve
+the transactional payment path. See
+[ADR-022](adr/ADR-022-pyflink-event-time-semantics.md).
+
+**Approved scope extension (2026-11-03):** Replace manual release SHA/version
+inputs with `release` (`module`/`solution`), optional module name, explicit
+`type` (`major`/`minor`/`patch`) and `promote` (`iteration` default,
+`release_candidate`, `stable`). Iteration captures the exact dispatched main
+SHA and requires successful build/publication. Calculate targets from stable
+catalogs and explicit impact; independent solution impact never overwrites
+reviewed per-module targets. RC promotes an eligible frozen iteration for
+that target, stable promotes an eligible RC, and reruns preserve the frozen
+source/digests. Stable artifact releases use protected approval and automated
+catalog PRs, never direct writes to main. Deployment/GitOps remain deferred.
+
 Implement:
 
 - Event-time timestamp assignment
@@ -1815,8 +1832,9 @@ Do not commit OpenBao bootstrap or unseal material.
 ## Stage 17: GitOps and CI/CD
 
 Stage 1 establishes image/chart publication; Stage 4 brings forward protected
-module/solution iteration-baseline releases. This stage extends that foundation
-with GitOps, RC/production promotion, stable-version PRs, and verified cleanup.
+module/solution iteration-baseline releases; Stage 5 brings forward protected
+RC/stable artifact promotion and stable-version PRs. This stage extends that
+foundation with GitOps deployment and verified cleanup.
 Deployment remains deferred until explicitly implemented. Promote the exact image and chart
 digests without rebuilding either artifact.
 
@@ -2376,10 +2394,10 @@ excluded_initially:
 Update this block after every session.
 
 ```yaml
-current_milestone: stage-4-baseline-observability
-stage_status: Stages 1-3 accepted; Stage 4 local observability acceptance passed and baseline release automation passed offline checks; remote acceptance and approved live baseline release remain pending
-last_completed_task: Verified cluster-A shared backends, three collectors, payment/browser traces, correlated logs, native metrics, Grafana navigation, dirty-source rebuild, clean recreation and API pod recovery
-next_task: Review and merge the combined Stage 4 changes, then approve a main-only iteration-baseline release dispatch; deployment and GitOps remain deferred
+current_milestone: stage-5-event-time-and-releases
+stage_status: Stage 5 implementation and isolated local acceptance passed; expanded GitHub release promotion awaits merge and approved live acceptance
+last_completed_task: Verified exact event-time outputs, persistent checkpoints, TaskManager recovery, dirty-source savepoint continuation, clean recreation and cleanup
+next_task: Review Stage 5 changes, merge successful CI/publication, then exercise approved automatic iteration, RC and stable promotion without starting Stage 6
 known_issues:
   - one cold ingress CRD installation encountered a transient etcd timeout; ordinary dev-update recovered with state and node budgets unchanged
   - a stale pending-install Traefik Helm revision interrupted the first scale-check attempt; removing only that release allowed Terraform to recreate ingress and the retry passed
@@ -2389,8 +2407,13 @@ known_issues:
   - publication runs automatically after successful trusted push CI; required publication reviewers are not configured, an accepted optional policy choice
   - prior remote quality failure from the Python test fixture is resolved; user confirmed pushed changes pass quality
   - initial eight Trivy findings triaged on 2026-10-28: contract non-root user fixed; seven exact-file/check exceptions justified and expire 2027-01-01
-  - iteration-baseline release automation is not yet merged or verified live; deployment, RC/production promotion, cleanup and stable-version PRs remain deferred
+  - Stage 5 RC/stable automation is not merged or verified live; deployment, GitOps and cleanup remain deferred
+  - release-stable must have required reviewers configured; stable promotion and catalog PR creation fail closed otherwise
+  - local Flink JobManager and MinIO are not HA; external sinks are at-least-once, and deduplication has a 24-hour processing-time TTL
+  - Stage 5 scoped scanner exceptions retain official Flink UID/GID, Kubernetes health/namespace ownership and local Never images; exact paths expire 2027-01-01
 architecture_decisions:
+  - ADR-021 Automatic release selection, frozen artifact promotion and reviewed stable-catalog PRs
+  - ADR-022 PyFlink event-time and synthetic processing boundaries
   - ADR-020 Iteration baseline releases brought forward to Stage 4 without deployment or PI schedule changes
   - ADR-019 Per-cluster OpenTelemetry collectors with shared backends and a separate lineage boundary
   - ADR-017 Full-stack replication across three independent clusters
@@ -2402,6 +2425,17 @@ architecture_decisions:
   - ADR-014 Stage 1 artifact publication and separate security checks
   - ADR-015 PostgreSQL-backed synthetic payments and idempotency
 verification:
+  - 2026-11-03 final Stage 5 make ci passed with 195 shared tests plus module tests/builds and Terraform checks; explicit new-file hooks, STREAMING=1 make doctor and make security passed with documented scoped exceptions and existing parameterized-chart coverage limitations
+  - 2026-11-03 pinned-runtime API/control tests passed (6), bounded actual Flink execution produced 24 logical windows and the complete Kafka/upsert job graph compiled with 11 nodes; tests cover vendor Java defaults, real shaded SCRAM class, checkpoint-gated submission and explicit consumer positions
+  - 2026-11-03 isolated native Kafka/PyFlink fixtures produced exactly 26 EUR minute payments, 25 authorized and 2500 authorized minor units; first-minute late revision was 2, one fully expired event reached the side output and the unused third partition did not block watermarks
+  - 2026-11-03 deleting the owned TaskManager during 500 USD events and 10 duplicates restored checkpoint 47 after checkpoint 46 had been recorded; final minute totals remained 500 payments, 500 authorized and 50000 minor units
+  - 2026-11-03 real MinIO savepoint restore into dirty-source image dev-e5dc1c2f60f7ff22 retained five open-window GBP events; replaying those five and adding five new events produced exactly ten payments and 1000 minor units, with native duplicate counters confirming restored deduplication
+  - 2026-11-03 stateful update rejection was moved before builds/image loading and preserves prior inventory; actual no-URI update rejection and deterministic pre-build ordering tests passed; immutable image tags are reused
+  - 2026-11-03 complete dev-down/cluster-down/dev-up recreation passed with the corrected sources; repeated fixtures, persistent checkpoints, native counters (28 processed, four duplicates, one late, one too-late), API pod recovery and smoke passed
+  - 2026-11-03 warmed recreated dev-status passed for every workload; low-load node snapshots used approximately 3.85 GiB of 8 GiB in A and 2.03/2.15 GiB of 3 GiB in B/C, not sustained-load capacity guarantees
+  - 2026-11-03 verification-only forwards and rpp-stream-check clusters/network were removed; all nine existing user profiles remained stopped and kubectl context was restored to rpp-a; no Stage 5 commits, PRs or live releases were created
+  - 2026-11-03 verified GitHub prereleases solution/v0.1.0-it1 and modules/payment-api,web-portal,event-contracts/v0.0.1-it1 exist from the Stage 4 baseline release
+  - 2026-11-03 Stage 5 focused discovery/local/topology/publication tests passed (49); actual PyFlink operator tests passed (2) and bounded Flink execution produced 24 logical windows with deduplication and expected counts
   - 2026-11-02 verification-only forwards and rpp-observe-check clusters/network were removed; preserved rpp-a/b/c restarted without redeployment or migration; regular smoke/status passed with original API dev-9b99ed4dbd52677a and three 2-CPU / 3072-MiB node budgets; kubectl context restored to rpp-a
   - 2026-11-02 owned rpp-observe-check-a/b/c were destroyed and recreated; confirmed make dev-up, smoke, repeated payment/trace/log/exemplar/native-metric acceptance and API pod deletion/recovery passed; warmed make dev-status included all telemetry workloads with no missing samples
   - 2026-11-02 recreated low-load node snapshot used approximately 3.35 GiB / 5 GiB in A and 2.46 / 2.50 GiB of 3 GiB in B/C; these are measured development snapshots, not sustained-load guarantees

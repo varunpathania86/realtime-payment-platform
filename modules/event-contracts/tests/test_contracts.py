@@ -26,6 +26,16 @@ class PaymentContractTests(unittest.TestCase):
     def test_example_round_trips(self) -> None:
         validate_event(self.schema, self.event)
 
+    def test_processing_contract_is_separate_and_compatible(self) -> None:
+        schema = avro.schema.parse((MODULE / "schemas/payment-processing-v1.avsc").read_text())
+        event = json.loads((MODULE / "examples/payment-processing-v1.json").read_text())
+        validate_event(schema, event)
+        validate_compatibility(schema, sorted((MODULE / "compatibility/payment-processing-v1").glob("*.avsc")))
+        for field, value in (("country", "de"), ("outcome", "pending"), ("amount_minor", True)):
+            invalid = {**event, field: value}
+            with self.subTest(field=field), self.assertRaises((ValueError, avro.errors.AvroTypeException)):
+                validate_event(schema, invalid)
+
     def test_backward_compatibility_rejects_breaking_changes(self) -> None:
         baselines = sorted((MODULE / "compatibility" / "payment-initiated-v1").glob("*.avsc"))
         validate_compatibility(self.schema, baselines)

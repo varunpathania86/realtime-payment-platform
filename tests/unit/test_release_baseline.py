@@ -122,7 +122,7 @@ class BaselineTests(unittest.TestCase):
                 path.write_text(original + "\n# change\n")
                 self.commit()
                 newer = baseline.git(self.root, "rev-parse", "HEAD")
-                with self.assertRaisesRegex(ValueError, "changed since publication"):
+                with self.assertRaisesRegex(ValueError, "publication pending"):
                     baseline.select_publications(
                         self.root, {"schemaVersion": 1, "reservations": [entry(self.source)]}, newer,
                     )
@@ -148,7 +148,7 @@ class BaselineTests(unittest.TestCase):
         (dependency / "schema.json").write_text('{"changed": true}')
         self.commit()
         newer = baseline.git(self.root, "rev-parse", "HEAD")
-        with self.assertRaisesRegex(ValueError, "changed since publication"):
+        with self.assertRaisesRegex(ValueError, "publication pending"):
             baseline.select_publications(
                 self.root, {"schemaVersion": 1, "reservations": [entry(published)]}, newer,
             )
@@ -210,9 +210,11 @@ class BaselineTests(unittest.TestCase):
         api = MagicMock()
         good = {"conclusion": "success", "event": "workflow_run",
                 "path": ".github/workflows/publish.yml",
-                "head_repository": {"full_name": "example/platform"}}
+                "head_repository": {"full_name": "example/platform"},
+                "head_sha": SOURCE, "head_branch": "main"}
         api.request.return_value = good
         baseline.require_publication(api, "example/platform", RUN)
+        baseline.require_publication(api, "example/platform", RUN, SOURCE)
         for change in [
             {"conclusion": "failure"}, {"event": "pull_request"}, {"path": ".github/workflows/build.yml"},
         ]:
@@ -221,6 +223,9 @@ class BaselineTests(unittest.TestCase):
                 baseline.require_publication(api, "example/platform", RUN)
         with self.assertRaisesRegex(ValueError, "this repository"):
             baseline.require_publication(api, "example/platform", "https://github.com/fork/repo/actions/runs/123")
+        api.request.return_value = {**good, "head_sha": "d" * 40}
+        with self.assertRaisesRegex(ValueError, "exact reviewed main source"):
+            baseline.require_publication(api, "example/platform", RUN, SOURCE)
 
     def test_verify_chart_pins_selected_image(self):
         bundle = self.bundle()
@@ -261,6 +266,18 @@ class BaselineTests(unittest.TestCase):
         api.request.return_value["body"] = "changed"
         with self.assertRaisesRegex(ValueError, "conflicts"):
             baseline.release(api, manifest, "solution/v0.1.0-it1")
+
+    def test_stable_release_is_not_a_prerelease_and_is_latest(self):
+        api = MagicMock()
+        api.request.side_effect = [missing(), {}]
+        manifest = copy.deepcopy(self.bundle()["solution"])
+        manifest["solution"]["version"] = "0.1.0"
+        manifest["solution"]["gitTag"] = "solution/v0.1.0"
+        baseline.release(api, manifest, "solution/v0.1.0", prerelease=False)
+        payload = api.request.call_args.args[2]
+        self.assertFalse(payload["prerelease"])
+        self.assertEqual(payload["make_latest"], "false")
+        self.assertIn("Immutable stable release", payload["body"])
 
     def test_promotion_copies_exact_manifest_bytes_without_building(self):
         raw = b'{"schemaVersion":2,"mediaType":"application/vnd.oci.image.index.v1+json"}'
