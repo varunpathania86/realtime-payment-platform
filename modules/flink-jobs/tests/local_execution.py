@@ -7,6 +7,7 @@ from pyflink.common.watermark_strategy import TimestampAssigner
 from pyflink.datastream import StreamExecutionEnvironment
 
 from fixtures import dataset
+from analytics import payment_window
 from job import PaymentWindows
 from processing import decode, dimension
 
@@ -16,16 +17,24 @@ class Timestamp(TimestampAssigner):
         return decode(value)["timestamp_ms"]
 
 
+def validate_analytics_record(raw):
+    normalized = payment_window(raw)
+    assert normalized["result_id"] == json.loads(raw)["result_id"]
+    return raw
+
+
 env = StreamExecutionEnvironment.get_execution_environment()
 env.set_parallelism(1)
 env.add_python_file("/opt/job/processing.py")
+env.add_python_file("/opt/job/analytics.py")
 env.add_python_file("/opt/job/job.py")
 records = [json.dumps(record["event"]) for record in dataset()]
 stream = env.from_collection(records, type_info=Types.STRING()).assign_timestamps_and_watermarks(
     WatermarkStrategy.for_bounded_out_of_orderness(Duration.of_seconds(10))
     .with_timestamp_assigner(Timestamp()))
 results = stream.key_by(lambda raw: dimension(decode(raw)), key_type=Types.STRING()).process(
-    PaymentWindows(), output_type=Types.STRING()).execute_and_collect()
+    PaymentWindows(), output_type=Types.STRING()).map(
+        validate_analytics_record, output_type=Types.STRING()).execute_and_collect()
 materialized = {}
 with results:
     for raw in results:

@@ -80,6 +80,8 @@ not use the initiation topic's Confluent-wire encoding.
 Deployment preserves the image's Java 17 module-access flags and pins the
 BlobServer service port. The submission hook waits for a completed durable
 checkpoint, not just a successful detached submission, before reporting success.
+Submission ships both processing and analytics Python modules to distributed
+workers; merely including them in the image does not put them on worker import paths.
 
 The module's scoped, expiring scanner exceptions follow the existing module
 policy: Kubernetes owns health probes and namespace selection, development

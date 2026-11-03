@@ -2399,9 +2399,9 @@ Update this block after every session.
 
 ```yaml
 current_milestone: stage-6-clickhouse-analytics
-stage_status: Stage 6 implementation in progress; make ci, ClickHouse Docker integration and PyFlink integration passed; analytics benchmark and isolated Minikube acceptance remain pending
-last_completed_task: Added opt-in ClickHouse analytics, synchronous at-least-once Flink writes, credentials, benchmark tooling and beginner-friendly platform/chart guides
-next_task: Submit Stage 6 as a draft PR; complete isolated deployment, dirty-source rebuild, recovery/recreation and measured benchmark acceptance before merge; keep Stage 7 separate
+stage_status: Stage 6 draft PR 9; make ci and integrations passed; reduced single-cluster flow, dirty-source checkpoint restore, clean recreation, ClickHouse persistence and 100000-row benchmark passed; full three-cluster acceptance remains pending
+last_completed_task: Fixed distributed analytics Python packaging; verified 28 unique facts, 26 EUR minute payments, revision 2, one too-late event and 13 successful checkpoints; warmed query p95 6.65 ms
+next_task: Complete full three-cluster analytics topology acceptance on a host with sufficient resources before marking PR 9 ready; keep Stage 7 separate
 known_issues:
   - one cold ingress CRD installation encountered a transient etcd timeout; ordinary dev-update recovered with state and node budgets unchanged
   - a stale pending-install Traefik Helm revision interrupted the first scale-check attempt; removing only that release allowed Terraform to recreate ingress and the retry passed
