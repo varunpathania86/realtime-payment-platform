@@ -600,6 +600,25 @@
       "integrated": true,
       "iteration": 1,
       "module": "clickhouse-analytics",
+      "publication": {
+        "approvedImpact": "patch",
+        "branch": "main",
+        "chart": {
+          "digest": "sha256:05cb18b40f626e5a994f5cf249c9f307e96af513e944b1c6975c5e4ad4dd29a5",
+          "repository": "ghcr.io/varunpathania86/charts/clickhouse-analytics",
+          "version": "0.0.1-it1-rv.2"
+        },
+        "digest": "sha256:7f8391672cef147599c5f310c25ad7dbc3aae6d6f3b4f3913fd6417bb0be3853",
+        "module": "clickhouse-analytics",
+        "provenance": "ghcr.io/varunpathania86/clickhouse-analytics@sha256:7f8391672cef147599c5f310c25ad7dbc3aae6d6f3b4f3913fd6417bb0be3853",
+        "repository": "ghcr.io/varunpathania86/clickhouse-analytics",
+        "sbom": "ghcr.io/varunpathania86/clickhouse-analytics@sha256:7f8391672cef147599c5f310c25ad7dbc3aae6d6f3b4f3913fd6417bb0be3853",
+        "schemaVersion": 1,
+        "sourceCommit": "efd39e16e53d5c0c28da5e795fa86ff9591e8339",
+        "testRun": "https://github.com/varunpathania86/realtime-payment-platform/actions/runs/41873526744",
+        "version": "0.0.1-it1-rv.2",
+        "workflowRun": "https://github.com/varunpathania86/realtime-payment-platform/actions/runs/41874429913"
+      },
       "registry": "ghcr.io/varunpathania86",
       "releaseLine": "main",
       "reservedVersion": "0.0.1-it1-rv.2",
