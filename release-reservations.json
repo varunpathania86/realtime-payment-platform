@@ -755,6 +755,25 @@
       "integrated": true,
       "iteration": 1,
       "module": "flink-jobs",
+      "publication": {
+        "approvedImpact": "patch",
+        "branch": "main",
+        "chart": {
+          "digest": "sha256:0489ead811f2743dfc74a8bbdaeca2c90a9b5b075b26e07aa97050581ee22eff",
+          "repository": "ghcr.io/varunpathania86/charts/flink-jobs",
+          "version": "0.0.1-it1-rv.3"
+        },
+        "digest": "sha256:148e040025334aaa22dac62ba32f30b3f72448822209b8594bd06e7ec8aa60e7",
+        "module": "flink-jobs",
+        "provenance": "ghcr.io/varunpathania86/flink-jobs@sha256:148e040025334aaa22dac62ba32f30b3f72448822209b8594bd06e7ec8aa60e7",
+        "repository": "ghcr.io/varunpathania86/flink-jobs",
+        "sbom": "ghcr.io/varunpathania86/flink-jobs@sha256:148e040025334aaa22dac62ba32f30b3f72448822209b8594bd06e7ec8aa60e7",
+        "schemaVersion": 1,
+        "sourceCommit": "efd39e16e53d5c0c28da5e795fa86ff9591e8339",
+        "testRun": "https://github.com/varunpathania86/realtime-payment-platform/actions/runs/41873526744",
+        "version": "0.0.1-it1-rv.3",
+        "workflowRun": "https://github.com/varunpathania86/realtime-payment-platform/actions/runs/41874429913"
+      },
       "registry": "ghcr.io/varunpathania86",
       "releaseLine": "main",
       "reservedVersion": "0.0.1-it1-rv.3",
