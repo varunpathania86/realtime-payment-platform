@@ -1,0 +1,15 @@
+{{/*
+Stable internal address for the Polaris pod in deployment.yaml. Flink (writer), Trino (reader and
+maintainer catalogs) and setup-job.yaml call the Iceberg REST and management APIs on 8181;
+8182 exposes Quarkus health. No Ingress is created. See ../README.md.
+*/}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}
+spec:
+  selector:
+    app.kubernetes.io/name: {{ .Release.Name }}
+  ports:
+    - {name: api, port: 8181, targetPort: api}
+    - {name: management, port: 8182, targetPort: management}

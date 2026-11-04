@@ -5,7 +5,8 @@ locals {
     for name in local.catalog.modules : name => "${local.root}/modules/${name}/chart"
     if fileexists("${local.root}/modules/${name}/Dockerfile") && fileexists("${local.root}/modules/${name}/chart/Chart.yaml")
     && (try(yamldecode(file("${local.root}/modules/${name}/chart/values.yaml")).local.feature, "") == ""
-      || contains(concat(var.streaming_enabled ? ["streaming"] : [], var.analytics_enabled ? ["analytics"] : []),
+      || contains(concat(var.streaming_enabled ? ["streaming"] : [], var.analytics_enabled ? ["analytics"] : [],
+        var.lakehouse_enabled ? ["lakehouse"] : []),
     try(yamldecode(file("${local.root}/modules/${name}/chart/values.yaml")).local.feature, "")))
   }
 }
@@ -83,7 +84,7 @@ resource "helm_release" "clickhouse_analytics" {
 }
 
 resource "helm_release" "application" {
-  for_each        = { for name, chart in local.applications : name => chart if name != "clickhouse-analytics" }
+  for_each        = { for name, chart in local.applications : name => chart if !contains(["clickhouse-analytics", "iceberg-lakehouse"], name) }
   name            = each.key
   namespace       = kubernetes_namespace_v1.foundation["apps"].metadata[0].name
   chart           = each.value
@@ -91,7 +92,7 @@ resource "helm_release" "application" {
   wait            = true
   atomic          = true
   cleanup_on_fail = true
-  depends_on      = [helm_release.ingress, helm_release.clickhouse_analytics, kubernetes_stateful_set_v1.postgres, kubernetes_secret_v1.payment_database, kubernetes_stateful_set_v1.kafka, kubernetes_deployment_v1.registry, kubernetes_secret_v1.payment_events, kubernetes_secret_v1.clickhouse_analytics, kubernetes_config_map_v1.event_schema, kubernetes_deployment_v1.minio]
+  depends_on      = [helm_release.ingress, helm_release.clickhouse_analytics, kubernetes_stateful_set_v1.postgres, kubernetes_secret_v1.payment_database, kubernetes_stateful_set_v1.kafka, kubernetes_deployment_v1.registry, kubernetes_secret_v1.payment_events, kubernetes_secret_v1.clickhouse_analytics, kubernetes_config_map_v1.event_schema, kubernetes_deployment_v1.minio, helm_release.iceberg_lakehouse, kubernetes_secret_v1.lakehouse_writer, kubernetes_secret_v1.lakehouse_trino]
 
   values = [yamlencode({
     replicaCount   = lookup(var.application_replicas, each.key, 1)
@@ -104,6 +105,10 @@ resource "helm_release" "application" {
     streaming = {
       enabled     = var.streaming_enabled
       restorePath = var.streaming_restore_path
+    }
+    lakehouse = {
+      enabled     = var.lakehouse_enabled
+      restorePath = var.lakehouse_restore_path
     }
     analytics = {
       enabled        = var.analytics_enabled

@@ -15,6 +15,8 @@ Secrets and MinIO/Kafka services come from Terraform, not this template. See ../
 {{- if not (has .Values.runtimeProfile (list "standard" "low-memory")) }}
 {{- fail "runtimeProfile must be standard or low-memory" }}
 {{- end }}
+{{- if and .Values.lakehouse.enabled (not .Values.streaming.enabled) }}{{ fail "lakehouse requires streaming.enabled" }}{{ end }}
+{{- $lakehouse := index .Values.lakehouse.taskmanager .Values.runtimeProfile }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -25,8 +27,15 @@ data:
     jobmanager.bind-host: 0.0.0.0
     blob.server.port: 6124
     jobmanager.memory.process.size: {{ if eq .Values.runtimeProfile "low-memory" }}{{ .Values.lowMemory.jobmanager.processMemory }}{{ else }}1024m{{ end }}
+    {{- if .Values.lakehouse.enabled }}
+    # One slot per job: payment-event-time-v1 and payment-lakehouse-v1.
+    taskmanager.memory.process.size: {{ $lakehouse.processMemory }}
+    taskmanager.memory.managed.size: {{ $lakehouse.managedMemory }}
+    taskmanager.numberOfTaskSlots: 2
+    {{- else }}
     taskmanager.memory.process.size: {{ if eq .Values.runtimeProfile "low-memory" }}{{ .Values.lowMemory.taskmanager.processMemory }}{{ else }}2048m{{ end }}
     taskmanager.numberOfTaskSlots: 1
+    {{- end }}
     taskmanager.rpc.port: 6122
     taskmanager.data.port: 6121
     taskmanager.bind-host: 0.0.0.0
@@ -113,6 +122,8 @@ spec:
             - {name: KAFKA_TLS, value: {{ $.Values.events.tls | quote }}}
             - {name: ANALYTICS_ENABLED, value: {{ $.Values.analytics.enabled | quote }}}
             - {name: RISK_ENABLED, value: {{ $.Values.risk.enabled | quote }}}
+            # Read by streaming-control.py guard: toggling it restarts this session cluster.
+            - {name: LAKEHOUSE_ENABLED, value: {{ $.Values.lakehouse.enabled | quote }}}
             - {name: RISK_PACKAGE_KEY, value: {{ $.Values.risk.packageKey | quote }}}
             - {name: RISK_PACKAGE_SHA256, value: {{ $.Values.risk.packageSHA256 | quote }}}
             {{- if $.Values.analytics.enabled }}
@@ -161,7 +172,9 @@ spec:
             allowPrivilegeEscalation: false
             capabilities: {drop: ["ALL"]}
           resources:
-            {{- if eq $.Values.runtimeProfile "low-memory" }}
+            {{- if and $.Values.lakehouse.enabled (eq $role "taskmanager") }}
+            {{- toYaml (index $.Values.lakehouse.taskmanager $.Values.runtimeProfile).resources | nindent 12 }}
+            {{- else if eq $.Values.runtimeProfile "low-memory" }}
             {{- toYaml (index $.Values.lowMemory $role).resources | nindent 12 }}
             {{- else }}
             {{- toYaml (index $.Values $role).resources | nindent 12 }}

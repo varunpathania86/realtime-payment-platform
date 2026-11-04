@@ -40,3 +40,12 @@ minio-sha256-arm64 6c2f3142c94240206123177f4ba1e360daa5d1e0a4962e90757ef4f92c3ab
 clickhouse 25.8.16.34-alpine
 # Opt-in Stage 7 training toolchain, installed through make setup.
 risk-python 3.11.11-slim-bookworm
+# Stage 8 lakehouse: catalog/query images and checksum-verified Flink JARs (not host CLIs).
+polaris 1.8.0
+trino 484
+iceberg 1.12.0
+iceberg-flink-runtime-sha256 ee41221e55af021b61e485c2a22585bc8ada096c1cb81c470c832324fb0429f2
+iceberg-aws-bundle-sha256 dd7e49ffa4ac9b215bed846581991259e3aec9bb2fa08d6cec029c46cd66d957
+hadoop-client 3.4.2
+hadoop-client-api-sha256 607c0299f4df33013bd0a0f37c8cf255c635bbaddd247b8fec68c210cc17d19f
+hadoop-client-runtime-sha256 18d071c7f72f8a946677b398a57af9c7afa2dd41a81023c310f99373fec200b3

@@ -236,6 +236,42 @@ host limits, row/partition counts and query configuration, and fails if the
 selected warmed query exceeds 500 ms p95. This is local evidence for the
 recorded host/configuration, not a production capacity claim.
 
+### Optional Stage 8 Iceberg lakehouse
+
+`STREAMING=1 make setup` also downloads the Iceberg Flink runtime, Iceberg
+AWS bundle and Hadoop client JARs into the local Flink image, each verified
+against the SHA-256 pinned in `.tool-versions`. Polaris and Trino are pinned
+container images built by `make dev-images`; no host Java or Trino CLI is
+required. `make doctor` checks the pins.
+
+Use `make dev-up DEV_CONFIG=templates/lakehouse-topology.json` to enable
+streaming, the [Polaris catalog](../modules/iceberg-lakehouse/README.md),
+[Trino](../modules/trino-analytics/README.md) and the Flink lakehouse writer
+in cluster A. The lakehouse requires streaming and at least 4 CPUs/8192 MiB
+on A, or 10240 MiB together with analytics. It uses the profile-local
+PostgreSQL for catalog metadata and cannot be combined with the full-stack
+external database.
+
+On a resource-constrained host, verify with one dedicated profile (stop only
+owned unused profiles first; keep at least 2 GiB host memory free):
+
+```bash
+mkdir -p .local/rpp-stage8-verify
+printf '{"streaming_enabled": true, "lakehouse_enabled": true}\n' > .local/rpp-stage8-verify/events.tfvars.json
+MINIKUBE_PROFILE=rpp-stage8-verify MINIKUBE_CPUS=4 MINIKUBE_MEMORY=8192 bash scripts/local-dev.sh up
+make streaming-fixtures MINIKUBE_PROFILE=rpp-stage8-verify
+make lakehouse-verify MINIKUBE_PROFILE=rpp-stage8-verify
+make lakehouse-query MINIKUBE_PROFILE=rpp-stage8-verify SQL='SELECT currency, count(*) AS n FROM payment_events GROUP BY 1'
+make lakehouse-maintain MINIKUBE_PROFILE=rpp-stage8-verify
+minikube stop -p rpp-stage8-verify
+```
+
+Enabling or disabling the lakehouse on a running profile restarts the Flink
+session cluster: run `make streaming-stop` first and pass both printed
+savepoints as `STREAMING_RESTORE_PATH` and `LAKEHOUSE_RESTORE_PATH`. The
+[lakehouse runbook](runbooks/iceberg-lakehouse.md) covers diagnosis,
+maintenance and evolution.
+
 ### Clone and initialize
 
 ```bash

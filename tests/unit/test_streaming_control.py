@@ -66,3 +66,39 @@ class StreamingControlTests(unittest.TestCase):
                 [{"state": "RUNNING"}], settings=settings)
         self.invoke_guard(deployment, "s3://flink-state/savepoints/approved",
             [{"state": "CANCELED"}], settings=settings)
+
+    def test_lakehouse_toggle_and_running_lakehouse_need_their_own_restore_paths(self):
+        enabled = {"LAKEHOUSE_ENABLED": "true"}
+        self.assertFalse(CONTROL.runtime_changed({}, {}))
+        self.assertTrue(CONTROL.runtime_changed({}, {"lakehouse_enabled": True}))
+        self.assertTrue(CONTROL.runtime_changed(enabled, {}))
+        self.assertFalse(CONTROL.runtime_changed(enabled, {"lakehouse_enabled": True}))
+        payment = {"STREAMING_RESTORE_PATH": "s3://flink-state/savepoints/payment"}
+        self.assertIsNone(CONTROL.restore_failure({}, {"lakehouse_enabled": True}, payment))
+        self.assertIsNone(CONTROL.restore_failure(enabled, {}, payment))
+        self.assertRegex(CONTROL.restore_failure(enabled, {"lakehouse_enabled": True}, payment),
+            "LAKEHOUSE_RESTORE_PATH")
+        self.assertIsNone(CONTROL.restore_failure(enabled, {"lakehouse_enabled": True},
+            {**payment, "LAKEHOUSE_RESTORE_PATH": "s3://flink-state/savepoints/lakehouse"}))
+
+    def test_stop_saves_lakehouse_first_and_keeps_payment_uri_on_the_first_line(self):
+        jobs = {"jobs": [
+            {"jid": "payment", "name": CONTROL.PAYMENT_JOB, "state": "RUNNING"},
+            {"jid": "lakehouse", "name": CONTROL.LAKEHOUSE_JOB, "state": "RUNNING"},
+        ]}
+        locations = {"lakehouse": "s3://flink-state/savepoints/l", "payment": "s3://flink-state/savepoints/p"}
+        order = []
+
+        def savepoint(profile, job, stop):
+            self.assertTrue(stop)
+            order.append(job)
+            return locations[job]
+
+        with patch.object(sys, "argv", ["streaming-control", "stop", "--profile", "isolated-a"]), \
+                patch.object(CONTROL, "rest", return_value=jobs), \
+                patch.object(CONTROL, "savepoint", side_effect=savepoint), \
+                patch("builtins.print") as printed:
+            CONTROL.main()
+        self.assertEqual(order, ["lakehouse", "payment"])
+        self.assertEqual([call.args[0] for call in printed.call_args_list],
+            ["s3://flink-state/savepoints/p", "LAKEHOUSE_RESTORE_PATH=s3://flink-state/savepoints/l"])

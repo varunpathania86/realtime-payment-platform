@@ -25,6 +25,7 @@ export TF_DATA_DIR="$STATE_DIR/terraform"
 export TF_VAR_kube_context="$PROFILE"
 export TF_VAR_kube_config_path="${KUBECONFIG:-$HOME/.kube/config}"
 export TF_VAR_streaming_restore_path="${STREAMING_RESTORE_PATH:-}"
+export TF_VAR_lakehouse_restore_path="${LAKEHOUSE_RESTORE_PATH:-}"
 PYTHON="$REPO_ROOT/.venv/bin/python"
 
 modules() {
@@ -36,6 +37,10 @@ modules() {
   if [ -f "$STATE_DIR/events.tfvars.json" ] &&
     jq -e '.analytics_enabled == true' "$STATE_DIR/events.tfvars.json" >/dev/null; then
     arguments+=(--feature analytics)
+  fi
+  if [ -f "$STATE_DIR/events.tfvars.json" ] &&
+    jq -e '.lakehouse_enabled == true' "$STATE_DIR/events.tfvars.json" >/dev/null; then
+    arguments+=(--feature lakehouse)
   fi
   "$PYTHON" scripts/module_catalog.py local-modules "${arguments[@]}"
 }
@@ -109,6 +114,14 @@ PY
       --build-arg "FLINK_KAFKA_CONNECTOR_SHA256=$(pinned_version flink-kafka-connector-sha256)" \
       --build-arg "CLICKHOUSE_VERSION=$(pinned_version clickhouse)" \
       --build-arg "RISK_PYTHON_VERSION=$(pinned_version risk-python)" \
+      --build-arg "POLARIS_VERSION=$(pinned_version polaris)" \
+      --build-arg "TRINO_VERSION=$(pinned_version trino)" \
+      --build-arg "ICEBERG_VERSION=$(pinned_version iceberg)" \
+      --build-arg "ICEBERG_FLINK_RUNTIME_SHA256=$(pinned_version iceberg-flink-runtime-sha256)" \
+      --build-arg "ICEBERG_AWS_BUNDLE_SHA256=$(pinned_version iceberg-aws-bundle-sha256)" \
+      --build-arg "HADOOP_CLIENT_VERSION=$(pinned_version hadoop-client)" \
+      --build-arg "HADOOP_CLIENT_API_SHA256=$(pinned_version hadoop-client-api-sha256)" \
+      --build-arg "HADOOP_CLIENT_RUNTIME_SHA256=$(pinned_version hadoop-client-runtime-sha256)" \
       --build-arg "VERSION=$tag" --build-arg "COMMIT=$commit" -t "$image" "$path"
     minikube -p "$PROFILE" image load "$image" --overwrite=false
   done < "$inventory"

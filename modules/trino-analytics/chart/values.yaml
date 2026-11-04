@@ -1,0 +1,26 @@
+image:
+  repository: rpp-local/trino-analytics
+  tag: development
+  digest: ""
+  pullPolicy: Never
+local:
+  feature: lakehouse
+# Single coordinator that also executes work; more replicas would be separate clusters.
+replicaCount: 1
+lakehouse:
+  catalogURI: http://iceberg-lakehouse:8181/api/catalog
+  warehouse: lakehouse
+  # Keys reader-credential and maintainer-credential hold "client-id:client-secret".
+  existingSecret: lakehouse-trino
+storage:
+  endpoint: http://minio.data.svc.cluster.local:9000
+  region: us-east-1
+  existingSecret: streaming-storage
+query:
+  maxMemory: 512MB
+  maxMemoryPerNode: 384MB
+jvm:
+  maxRAMPercentage: 65
+resources:
+  requests: {cpu: 250m, memory: 1024Mi}
+  limits: {cpu: "2", memory: 1536Mi}

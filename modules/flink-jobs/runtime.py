@@ -1,4 +1,4 @@
-"""Prepare writable Flink configuration and submit one explicitly named job."""
+"""Prepare writable Flink configuration and submit the explicitly named jobs."""
 
 import argparse
 import json
@@ -21,6 +21,8 @@ from ruamel.yaml import YAML
 from configuration import overlay
 
 JOB_NAME = "payment-event-time-v1"
+LAKEHOUSE_JOB_NAME = "payment-lakehouse-v1"
+INACTIVE = ("FINISHED", "CANCELED", "FAILED")
 
 
 def overview():
@@ -28,25 +30,25 @@ def overview():
         return json.load(response)["jobs"]
 
 
-def wait_for_checkpoint(previous_ids=()):
+def wait_for_checkpoint(previous_ids=(), name=JOB_NAME):
     for _ in range(120):
-        jobs = [job for job in overview() if job["name"] == JOB_NAME
+        jobs = [job for job in overview() if job["name"] == name
             and job["jid"] not in previous_ids]
         if not jobs:
             time.sleep(2)
             continue
         if len(jobs) != 1:
-            raise RuntimeError("expected exactly one submitted payment job")
+            raise RuntimeError(f"expected exactly one submitted {name} job")
         job = jobs[0]
-        if job["state"] in ("FINISHED", "CANCELED", "FAILED"):
-            raise RuntimeError(f"submitted payment job is {job['state']}; inspect Flink exceptions before retry")
+        if job["state"] in INACTIVE:
+            raise RuntimeError(f"submitted {name} job is {job['state']}; inspect Flink exceptions before retry")
         if job["state"] == "RUNNING":
             with urllib.request.urlopen(
                 f"http://flink-jobs:8081/jobs/{job['jid']}/checkpoints", timeout=5
             ) as response:
                 checkpoint = json.load(response)["latest"]["completed"]
             if checkpoint is not None:
-                print(f"Job {job['jid']} completed checkpoint {checkpoint['id']}", flush=True)
+                print(f"Job {name} {job['jid']} completed checkpoint {checkpoint['id']}", flush=True)
                 return
         time.sleep(2)
     raise TimeoutError("submitted job did not complete its first durable checkpoint within four minutes")
@@ -101,6 +103,36 @@ def bootstrap():
         admin.close()
 
 
+def expected_jobs(environ=os.environ):
+    return [JOB_NAME] + ([LAKEHOUSE_JOB_NAME] if environ.get("LAKEHOUSE_ENABLED") == "true" else [])
+
+
+def missing_jobs(jobs, expected):
+    """Return expected job names to submit; refuse duplicate or unexpected active jobs."""
+    active = [job["name"] for job in jobs if job["state"] not in INACTIVE]
+    if len(active) != len(set(active)) or set(active) - set(expected):
+        raise RuntimeError(f"unexpected active jobs {sorted(active)}; refusing duplicate or conflicting submission")
+    for name in active:
+        print(f"Job {name} is already active; no duplicate submitted", flush=True)
+    return [name for name in expected if name not in active]
+
+
+def submit_command(name, environ=os.environ):
+    command = ["/opt/flink/bin/flink", "run", "-d", "-m", "flink-jobs:8081"]
+    restore = environ.get("RESTORE_PATH" if name == JOB_NAME else "LAKEHOUSE_RESTORE_PATH")
+    if restore:
+        command.extend(["--fromSavepoint", restore])
+    if name == LAKEHOUSE_JOB_NAME:
+        # Pure SQL: TaskManagers run no Python, so no --pyFiles are distributed.
+        return command + ["--python", "/opt/job/lakehouse.py"]
+    python_files = ["/opt/job/processing.py", "/opt/job/analytics.py"]
+    if environ.get("RISK_ENABLED") == "true":
+        from model_registry import download_package
+
+        python_files.extend(["/opt/job/risk.py", download_package()])
+    return command + ["--python", "/opt/job/job.py", "--pyFiles", ",".join(python_files)]
+
+
 def submit():
     for attempt in range(120):
         try:
@@ -111,28 +143,15 @@ def submit():
             time.sleep(2)
     else:
         raise RuntimeError("Flink REST endpoint did not become ready")
-    active = [job for job in jobs if job["state"] not in ("FINISHED", "CANCELED", "FAILED")]
-    if active:
-        if len(active) != 1 or active[0]["name"] != JOB_NAME:
-            raise RuntimeError("unexpected active jobs; refusing duplicate or conflicting submission")
-        print(f"Job {active[0]['jid']} is already active; no duplicate submitted", flush=True)
-        wait_for_checkpoint({job["jid"] for job in jobs if job["jid"] != active[0]["jid"]})
-        return
-    bootstrap()
-    command = ["/opt/flink/bin/flink", "run", "-d", "-m", "flink-jobs:8081"]
-    if os.environ.get("RESTORE_PATH"):
-        command.extend(["--fromSavepoint", os.environ["RESTORE_PATH"]])
-    python_files = ["/opt/job/processing.py", "/opt/job/analytics.py"]
-    if os.environ.get("RISK_ENABLED") == "true":
-        from model_registry import download_package
-
-        python_files.extend(["/opt/job/risk.py", download_package()])
-    command.extend([
-        "--python", "/opt/job/job.py",
-        "--pyFiles", ",".join(python_files),
-    ])
-    subprocess.run(command, check=True)
-    wait_for_checkpoint({job["jid"] for job in jobs})
+    expected = expected_jobs()
+    missing = missing_jobs(jobs, expected)
+    if missing:
+        bootstrap()
+    previous = {job["jid"] for job in jobs if job["state"] in INACTIVE}
+    for name in expected:
+        if name in missing:
+            subprocess.run(submit_command(name), check=True)
+        wait_for_checkpoint(previous, name)
 
 
 if __name__ == "__main__":

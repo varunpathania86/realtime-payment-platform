@@ -17,6 +17,31 @@ analytics:
   url: http://clickhouse-analytics:8123
   user: rpp_analytics
   existingSecret: clickhouse-analytics
+# Opt-in second job (payment-lakehouse-v1) appending to Iceberg through Polaris; needs streaming.
+lakehouse:
+  enabled: false
+  restorePath: ""
+  catalogURI: http://iceberg-lakehouse:8181/api/catalog
+  warehouse: lakehouse
+  namespace: payments
+  checkpointURI: s3://flink-state/checkpoints/payment-lakehouse-v1
+  # Keys client-id and client-secret of the least-privilege Polaris writer principal.
+  existingSecret: lakehouse-writer
+  # The writer adds one TaskManager slot. Managed memory is split evenly per slot, so it is set to
+  # twice the one-slot default to keep the payment job's Python worker budget unchanged.
+  taskmanager:
+    standard:
+      processMemory: 2560m
+      managedMemory: 1270m
+      resources:
+        requests: {cpu: 250m, memory: 2048Mi}
+        limits: {cpu: "2", memory: 3072Mi}
+    low-memory:
+      processMemory: 1792m
+      managedMemory: 666m
+      resources:
+        requests: {cpu: 250m, memory: 1792Mi}
+        limits: {cpu: "2", memory: 2560Mi}
 # Opt-in advisory branch; the submit hook verifies this immutable MinIO ZIP before distribution.
 risk:
   enabled: false

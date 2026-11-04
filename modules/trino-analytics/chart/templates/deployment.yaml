@@ -1,0 +1,93 @@
+{{/*
+Runs one Trino coordinator that also executes queries. Reads config.yaml's ConfigMap as /etc/trino,
+the lakehouse-trino Secret (Polaris reader/maintainer credentials) and the shared streaming-storage
+Secret (MinIO keys). Talks to the iceberg-lakehouse Service and MinIO; callers reach it through
+service.yaml. Spill and data directories are pod-local emptyDirs. See ../README.md.
+*/}}
+{{- if ne (int .Values.replicaCount) 1 }}
+{{- fail "trino-analytics runs one coordinator; replicaCount must be 1" }}
+{{- end }}
+{{- $image := printf "%s:%s" .Values.image.repository .Values.image.tag }}
+{{- if .Values.image.digest }}{{ $image = printf "%s@%s" .Values.image.repository .Values.image.digest }}{{ end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+spec:
+  replicas: 1
+  # A second coordinator during rollout would double memory; replace instead.
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app.kubernetes.io/name: {{ .Release.Name }}}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: {{ .Release.Name }}}
+      annotations:
+        # Restart when catalog or JVM configuration changes.
+        config-checksum: {{ include (print $.Template.BasePath "/config.yaml") . | sha256sum | quote }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: trino
+          image: {{ $image | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: LAKEHOUSE_READER_CREDENTIAL
+              valueFrom:
+                secretKeyRef: {name: {{ .Values.lakehouse.existingSecret }}, key: reader-credential}
+            - name: LAKEHOUSE_MAINTAINER_CREDENTIAL
+              valueFrom:
+                secretKeyRef: {name: {{ .Values.lakehouse.existingSecret }}, key: maintainer-credential}
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef: {name: {{ .Values.storage.existingSecret }}, key: access-key}
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef: {name: {{ .Values.storage.existingSecret }}, key: secret-key}
+          ports:
+            - {name: http, containerPort: 8080}
+          startupProbe:
+            exec: {command: [/usr/lib/trino/bin/health-check]}
+            failureThreshold: 60
+            periodSeconds: 5
+          readinessProbe:
+            # Fails until Trino reports "starting": false.
+            exec: {command: [/usr/lib/trino/bin/health-check]}
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet: {path: /v1/info, port: http}
+            periodSeconds: 15
+            timeoutSeconds: 5
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+          volumeMounts:
+            - {name: config, mountPath: /etc/trino/config.properties, subPath: config.properties, readOnly: true}
+            - {name: config, mountPath: /etc/trino/node.properties, subPath: node.properties, readOnly: true}
+            - {name: config, mountPath: /etc/trino/jvm.config, subPath: jvm.config, readOnly: true}
+            - {name: config, mountPath: /etc/trino/log.properties, subPath: log.properties, readOnly: true}
+            - {name: catalogs, mountPath: /etc/trino/catalog, readOnly: true}
+            - {name: data, mountPath: /data/trino}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ .Release.Name }}-config
+        - name: catalogs
+          configMap:
+            name: {{ .Release.Name }}-config
+            items:
+              - {key: lakehouse.properties, path: lakehouse.properties}
+              - {key: lakehouse_admin.properties, path: lakehouse_admin.properties}
+        - {name: data, emptyDir: {}}
+        - {name: tmp, emptyDir: {}}

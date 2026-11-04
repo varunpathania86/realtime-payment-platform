@@ -1289,6 +1289,10 @@ Do not copy every dataset into both systems without a documented consumer need.
 
 **Exit criteria:** Query a curated dataset through Trino, run a time-travel query, add a backward-compatible field, and demonstrate maintenance procedures.
 
+Implementation uses Apache Polaris as the Iceberg REST catalog with PostgreSQL
+metadata; see [ADR-026](adr/ADR-026-polaris-iceberg-lakehouse.md) and the
+[lakehouse runbook](runbooks/iceberg-lakehouse.md).
+
 ---
 
 ## Stage 9: Superset BI embedded in React
@@ -2557,10 +2561,13 @@ and [ClickHouse query report](../tests/benchmarks/pipeline/2026-11-03-clickhouse
 
 ```yaml
 current_milestone: stage-8-iceberg-lakehouse
-stage_status: Stage 7 merged as PR #10 with main build and publication passing; roadmap reordered by ADR-025 so Iceberg/Trino (8), Superset in React (9) and the AI assistant with RAG, LangChain, LangGraph and MCP (10) come next; Keycloak moves to Stage 11
-last_completed_task: Stage 7 advisory ONNX risk scoring merged; single-cluster live acceptance passed and main publication succeeded with the merged stateful-chart validator and risk build arguments
-next_task: Start Stage 8 with an Iceberg REST catalog on MinIO, a Flink Iceberg sink for curated payment facts, Trino queries, time travel, a backward-compatible field and documented maintenance, in a lean single-cluster profile
+stage_status: Stage 8 Iceberg lakehouse implemented on feature/stage-8-iceberg-lakehouse; Apache Polaris REST catalog on MinIO, Flink Iceberg writer and Trino with writer, reader and admin catalogs passed single-cluster live acceptance; awaiting PR review
+last_completed_task: Stage 8 single-cluster acceptance on 4 CPU / 8 GiB passed bronze/curated queries, deduplication, time travel, read-only denial, schema and partition evolution, compaction/expiry maintenance, savepoint stop and restore of both Flink jobs, and stable Terraform plans
+next_task: Merge Stage 8, then start Stage 9 with Superset over Trino and ClickHouse embedded in the React application
 known_issues:
+  - Kafka storage formatting passed a random cluster id that could start with "-" as a separate argument; Terraform now uses --cluster-id=<id>
+  - Polaris rejects Trino DROP TABLE with purge unless polaris.config.drop-with-purge.enabled is set; catalog setup converges it on existing catalogs
+  - the Stage 8 single-cluster node used about 6.7 GiB of 8 GiB with streaming and lakehouse enabled; analytics together with the lakehouse requires 10 GiB
   - one cold ingress CRD installation encountered a transient etcd timeout; ordinary dev-update recovered with state and node budgets unchanged
   - a stale pending-install Traefik Helm revision interrupted the first scale-check attempt; removing only that release allowed Terraform to recreate ingress and the retry passed
   - Trivy skips parameterized CNPG/observability charts without runtime values; an additional rendered observability scan reported KSV-0109 on the Kafka password environment reference, not a plaintext credential; no check was suppressed
@@ -2574,6 +2581,7 @@ known_issues:
   - local Flink JobManager and MinIO are not HA; external sinks are at-least-once, and deduplication has a 24-hour processing-time TTL
   - Stage 5 scoped scanner exceptions retain official Flink UID/GID, Kubernetes health/namespace ownership and local Never images; exact paths expire 2027-01-01
 architecture_decisions:
+  - ADR-026 Apache Polaris Iceberg REST catalog, Flink Iceberg writer and Trino lakehouse
   - ADR-025 Interview-focused roadmap order (Stages 10-13) and platform-hosted read-only MCP tools
   - ADR-024 Advisory prior-event risk features, immutable model artifacts and audit-preserving prediction revisions
   - ADR-021 Automatic release selection, frozen artifact promotion and reviewed stable-catalog PRs

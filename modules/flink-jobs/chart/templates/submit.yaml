@@ -1,6 +1,7 @@
 {{/*
-One-off Helm hook: after install/upgrade, runtime.py submits job.py to the session cluster
-from runtime.yaml and waits for a completed durable checkpoint. Only rendered when streaming
+One-off Helm hook: after install/upgrade, runtime.py submits job.py (and lakehouse.py when
+lakehouse.enabled) to the session cluster from runtime.yaml and waits for each job's completed
+durable checkpoint. The lakehouse writer credential reaches only this client pod. Only rendered when streaming
 is enabled. Uses the shared config, Kafka Secret and MinIO Secret; successful hooks are deleted,
 failed hooks remain for diagnosis until the next run. See ../README.md.
 */}}
@@ -16,7 +17,8 @@ metadata:
     helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
 spec:
   backoffLimit: 0
-  activeDeadlineSeconds: 300
+  # The lakehouse job's first checkpoint completes after its 60-second interval.
+  activeDeadlineSeconds: {{ if .Values.lakehouse.enabled }}480{{ else }}300{{ end }}
   template:
     spec:
       restartPolicy: Never
@@ -61,6 +63,20 @@ spec:
             - {name: RISK_ENABLED, value: {{ .Values.risk.enabled | quote }}}
             - {name: RISK_PACKAGE_KEY, value: {{ .Values.risk.packageKey | quote }}}
             - {name: RISK_PACKAGE_SHA256, value: {{ .Values.risk.packageSHA256 | quote }}}
+            - {name: LAKEHOUSE_ENABLED, value: {{ .Values.lakehouse.enabled | quote }}}
+            {{- if .Values.lakehouse.enabled }}
+            - {name: LAKEHOUSE_RESTORE_PATH, value: {{ .Values.lakehouse.restorePath | quote }}}
+            - {name: LAKEHOUSE_CHECKPOINT_URI, value: {{ .Values.lakehouse.checkpointURI | quote }}}
+            - {name: LAKEHOUSE_CATALOG_URI, value: {{ .Values.lakehouse.catalogURI | quote }}}
+            - {name: LAKEHOUSE_WAREHOUSE, value: {{ .Values.lakehouse.warehouse | quote }}}
+            - {name: LAKEHOUSE_NAMESPACE, value: {{ .Values.lakehouse.namespace | quote }}}
+            - name: LAKEHOUSE_CLIENT_ID
+              valueFrom:
+                secretKeyRef: {name: {{ .Values.lakehouse.existingSecret }}, key: client-id}
+            - name: LAKEHOUSE_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef: {name: {{ .Values.lakehouse.existingSecret }}, key: client-secret}
+            {{- end }}
             - name: KAFKA_PASSWORD
               valueFrom:
                 secretKeyRef: {name: {{ .Values.events.existingSecret }}, key: KAFKA_PASSWORD}

@@ -6,7 +6,7 @@ export PATH := $(HOME)/.local/bin:$(PATH)
 .DEFAULT_GOAL := help
 .PHONY: security security-solution security-module security-plan publication-login quality-report quality-module-report release-baseline
 .PHONY: dev-metrics dev-observability db-switchover db-failover db-rejoin
-.PHONY: streaming-fixtures streaming-inspect streaming-load streaming-savepoint streaming-stop streaming-benchmark streaming-benchmark-preflight risk-publish risk-verify
+.PHONY: streaming-fixtures streaming-inspect streaming-load streaming-savepoint streaming-stop streaming-benchmark streaming-benchmark-preflight risk-publish risk-verify lakehouse-query lakehouse-verify lakehouse-maintain
 
 # Use a system pre-commit if present, otherwise the one installed by `make setup`.
 VENV       := .venv
@@ -116,6 +116,19 @@ risk-publish: ## Publish immutable trained model artifacts to the explicitly sel
 
 risk-verify: ## Verify advisory predictions, late-history revision and model telemetry on the selected profile
 	$(VENV)/bin/python -m scripts.risk_acceptance --profile "$(MINIKUBE_PROFILE)"
+
+# Raw value, single-quoted for the shell, so Iceberg names like "t$snapshots" and quotes survive.
+LAKEHOUSE_SQL = $(subst ','\'',$(value SQL))
+
+lakehouse-query: ## Run read-only Trino SQL against the lakehouse (SQL="SELECT ...")
+	@test -n '$(LAKEHOUSE_SQL)' || { echo "Set SQL, for example SQL='SELECT count(*) FROM payment_events'" >&2; exit 2; }
+	$(VENV)/bin/python scripts/lakehouse.py query '$(LAKEHOUSE_SQL)'
+
+lakehouse-verify: ## Verify lakehouse rows, deduplication, time travel, read-only access and evolution
+	$(VENV)/bin/python scripts/lakehouse.py verify
+
+lakehouse-maintain: ## Compact files and expire snapshots/orphans (LAKEHOUSE_RETENTION, default 7d)
+	$(VENV)/bin/python scripts/lakehouse.py maintain --retention "$(or $(LAKEHOUSE_RETENTION),7d)"
 
 streaming-inspect: ## Inspect current compacted window results and too-late output
 	$(VENV)/bin/python scripts/streaming-control.py inspect

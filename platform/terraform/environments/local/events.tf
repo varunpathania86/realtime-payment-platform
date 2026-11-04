@@ -137,7 +137,7 @@ resource "kubernetes_stateful_set_v1" "kafka" {
           name    = "format"
           image   = "apache/kafka:${local.tool_versions["kafka"]}"
           command = ["/bin/bash", "-ec"]
-          args    = ["/opt/kafka/bin/kafka-storage.sh format --ignore-formatted --cluster-id \"$CLUSTER_ID\" --config /etc/kafka/tls/server.properties --add-scram \"SCRAM-SHA-512=[name=payments,password=$KAFKA_PASSWORD]\""]
+          args    = ["/opt/kafka/bin/kafka-storage.sh format --ignore-formatted --cluster-id=\"$CLUSTER_ID\" --config /etc/kafka/tls/server.properties --add-scram \"SCRAM-SHA-512=[name=payments,password=$KAFKA_PASSWORD]\""]
           env {
             name = "CLUSTER_ID"
             value_from {

@@ -14,6 +14,22 @@ variable "analytics_enabled" {
   }
 }
 
+variable "lakehouse_enabled" {
+  description = "Opt-in Stage 8 Polaris/Iceberg lakehouse, Trino and the Flink lakehouse writer."
+  type        = bool
+  default     = false
+  validation {
+    condition     = !var.lakehouse_enabled || var.streaming_enabled
+    error_message = "lakehouse_enabled requires streaming_enabled."
+  }
+}
+
+variable "lakehouse_restore_path" {
+  description = "Explicit compatible savepoint URI for the payment-lakehouse-v1 job."
+  type        = string
+  default     = ""
+}
+
 variable "streaming_restore_path" {
   description = "Explicit compatible savepoint/checkpoint URI for job submission."
   type        = string

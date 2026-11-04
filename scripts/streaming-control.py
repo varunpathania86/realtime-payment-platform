@@ -10,6 +10,10 @@ import subprocess
 import sys
 import time
 
+PAYMENT_JOB = "payment-event-time-v1"
+LAKEHOUSE_JOB = "payment-lakehouse-v1"
+INACTIVE = ("FINISHED", "CANCELED", "FAILED")
+
 
 def command(profile, *args):
     return subprocess.run(["kubectl", "--context", profile, "--request-timeout=30s", "-n", "apps", *args],
@@ -25,6 +29,54 @@ def rest(profile, path, body=None):
         "print(urllib.request.urlopen(r,timeout=30).read().decode())"
     )
     return json.loads(command(profile, "exec", "deployment/flink-jobs-jobmanager", "--", "python", "-c", program))
+
+
+def desired_runtime(settings):
+    """Flink JobManager environment that Terraform will render from the profile settings."""
+    return {
+        "RISK_ENABLED": str(settings.get("risk_enabled", False)).lower(),
+        "RISK_PACKAGE_KEY": settings.get("risk_package_key", ""),
+        "RISK_PACKAGE_SHA256": settings.get("risk_package_sha256", ""),
+        "LAKEHOUSE_ENABLED": str(settings.get("lakehouse_enabled", False)).lower(),
+    }
+
+
+def runtime_changed(current, settings):
+    # Any of these restarts the session cluster, which discards running jobs without HA.
+    return any(current.get(key, "false" if key.endswith("_ENABLED") else "") != value
+        for key, value in desired_runtime(settings).items())
+
+
+def restore_failure(current, settings, environ):
+    """Return why a replacing update would lose Flink state, or None when restore paths are set."""
+    if not environ.get("STREAMING_RESTORE_PATH"):
+        return ("stateful image changed (or the lakehouse or risk configuration changed): run make streaming-stop, "
+            "then set STREAMING_RESTORE_PATH to its URI before dev-update")
+    if current.get("LAKEHOUSE_ENABLED") == "true" and desired_runtime(settings)["LAKEHOUSE_ENABLED"] == "true" \
+            and not environ.get("LAKEHOUSE_RESTORE_PATH"):
+        return "the lakehouse job was running: also set LAKEHOUSE_RESTORE_PATH from make streaming-stop output"
+    return None
+
+
+def savepoint(profile, job, stop):
+    endpoint = "stop" if stop else "savepoints"
+    body = {"targetDirectory": "s3://flink-state/savepoints", "drain": False} if stop else {
+        "target-directory": "s3://flink-state/savepoints", "cancel-job": False,
+    }
+    request = rest(profile, f"/jobs/{job}/{endpoint}", body)
+    for _ in range(120):
+        result = rest(profile, f"/jobs/{job}/savepoints/{request['request-id']}")
+        if result["status"]["id"] == "COMPLETED":
+            operation = result["operation"]
+            if "failure-cause" in operation:
+                raise ValueError(f"savepoint failed: {operation['failure-cause']}")
+            return operation["location"]
+        time.sleep(2)
+    raise TimeoutError("savepoint did not complete within four minutes")
+
+
+def running(jobs, name):
+    return [job["jid"] for job in jobs if job["state"] == "RUNNING" and job["name"] == name]
 
 
 def main():
@@ -48,45 +100,29 @@ def main():
         settings_path = root / ".local" / args.profile / "events.tfvars.json"
         settings = json.loads(settings_path.read_text()) if settings_path.exists() else {}
         current = {item["name"]: item.get("value", "") for item in container.get("env", [])}
-        risk = {
-            "RISK_ENABLED": str(settings.get("risk_enabled", False)).lower(),
-            "RISK_PACKAGE_KEY": settings.get("risk_package_key", ""),
-            "RISK_PACKAGE_SHA256": settings.get("risk_package_sha256", ""),
-        }
-        risk_changed = any(current.get(key, "false" if key == "RISK_ENABLED" else "") != value
-            for key, value in risk.items())
-        if image == expected and not risk_changed:
+        if image == expected and not runtime_changed(current, settings):
             return
-        if not os.environ.get("STREAMING_RESTORE_PATH"):
-            raise ValueError("stateful image changed or risk configuration changed: run make streaming-stop, then set STREAMING_RESTORE_PATH to its URI before dev-update")
+        failure = restore_failure(current, settings, os.environ)
+        if failure:
+            raise ValueError(failure)
         jobs = rest(args.profile, "/jobs/overview")["jobs"]
-        if any(job["state"] not in ("FINISHED", "CANCELED", "FAILED") for job in jobs):
-            raise ValueError("stop the existing Flink job with a savepoint before replacing its image")
+        if any(job["state"] not in INACTIVE for job in jobs):
+            raise ValueError("stop the existing Flink jobs with make streaming-stop before replacing them")
         return
     if args.action in ("fixtures", "inspect", "load"):
         print(command(args.profile, "exec", "deployment/flink-jobs-jobmanager", "--", "python",
             "/opt/job/control.py", args.action), end="")
         return
     jobs = rest(args.profile, "/jobs/overview")["jobs"]
-    active = [job for job in jobs if job["state"] == "RUNNING" and job["name"] == "payment-event-time-v1"]
-    if len(active) != 1:
-        raise ValueError("expected exactly one running payment event-time job")
-    job = active[0]["jid"]
-    endpoint = "stop" if args.action == "stop" else "savepoints"
-    body = {"targetDirectory": "s3://flink-state/savepoints", "drain": False} if endpoint == "stop" else {
-        "target-directory": "s3://flink-state/savepoints", "cancel-job": False,
-    }
-    request = rest(args.profile, f"/jobs/{job}/{endpoint}", body)
-    for _ in range(120):
-        result = rest(args.profile, f"/jobs/{job}/savepoints/{request['request-id']}")
-        if result["status"]["id"] == "COMPLETED":
-            operation = result["operation"]
-            if "failure-cause" in operation:
-                raise ValueError(f"savepoint failed: {operation['failure-cause']}")
-            print(operation["location"])
-            return
-        time.sleep(2)
-    raise TimeoutError("savepoint did not complete within four minutes")
+    payment, lakehouse = running(jobs, PAYMENT_JOB), running(jobs, LAKEHOUSE_JOB)
+    if len(payment) != 1 or len(lakehouse) > 1:
+        raise ValueError("expected exactly one running payment event-time job and at most one lakehouse job")
+    # Stop the lakehouse writer first so the payment job keeps producing until the writer has a savepoint.
+    lakehouse_location = savepoint(args.profile, lakehouse[0], args.action == "stop") if lakehouse else None
+    # The first line stays the bare payment savepoint URI for existing STREAMING_RESTORE_PATH usage.
+    print(savepoint(args.profile, payment[0], args.action == "stop"))
+    if lakehouse_location:
+        print(f"LAKEHOUSE_RESTORE_PATH={lakehouse_location}")
 
 
 if __name__ == "__main__":

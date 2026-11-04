@@ -192,6 +192,27 @@ class OperatorTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "FAILED"):
                 runtime.wait_for_checkpoint()
 
+    def test_lakehouse_job_is_submitted_only_when_enabled(self):
+        self.assertEqual(runtime.expected_jobs({}), [runtime.JOB_NAME])
+        expected = runtime.expected_jobs({"LAKEHOUSE_ENABLED": "true"})
+        self.assertEqual(expected, [runtime.JOB_NAME, runtime.LAKEHOUSE_JOB_NAME])
+        running = {"name": runtime.JOB_NAME, "state": "RUNNING"}
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(runtime.missing_jobs([running], expected), [runtime.LAKEHOUSE_JOB_NAME])
+            self.assertEqual(runtime.missing_jobs([{**running, "state": "CANCELED"}], expected), expected)
+        with self.assertRaisesRegex(RuntimeError, "unexpected active jobs"):
+            runtime.missing_jobs([running, {"name": runtime.LAKEHOUSE_JOB_NAME, "state": "RUNNING"}],
+                [runtime.JOB_NAME])
+        with self.assertRaisesRegex(RuntimeError, "unexpected active jobs"):
+            runtime.missing_jobs([running, running], expected)
+        command = runtime.submit_command(runtime.LAKEHOUSE_JOB_NAME,
+            {"RESTORE_PATH": "s3://flink-state/payment", "LAKEHOUSE_RESTORE_PATH": "s3://flink-state/lake"})
+        self.assertEqual(command[-4:], ["--fromSavepoint", "s3://flink-state/lake", "--python", "/opt/job/lakehouse.py"])
+        self.assertNotIn("--pyFiles", command)
+        command = runtime.submit_command(runtime.JOB_NAME, {"RESTORE_PATH": "s3://flink-state/payment"})
+        self.assertIn("s3://flink-state/payment", command)
+        self.assertNotIn("/opt/job/lakehouse.py", command)
+
     def test_scram_login_module_exists_in_the_pinned_connector(self):
         with patch.dict(os.environ, {"KAFKA_BROKERS": "localhost:9092", "KAFKA_TLS": "true",
                 "KAFKA_PASSWORD": "synthetic-test-only"}):

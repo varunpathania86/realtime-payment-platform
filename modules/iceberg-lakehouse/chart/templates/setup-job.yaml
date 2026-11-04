@@ -1,0 +1,54 @@
+{{/*
+Helm hook that runs after every install/upgrade, once the Polaris pod in deployment.yaml is ready.
+setup_catalog.py (baked into the image) creates the MinIO warehouse bucket, catalog, namespace,
+bronze/curated tables, the writer/reader/maintainer principals and their grants. Every step is
+idempotent and never alters existing tables. Reads the iceberg-lakehouse Secret (root and principal
+credentials) and streaming-storage (MinIO keys). Successful hooks are deleted. See ../README.md.
+*/}}
+{{- $image := printf "%s:%s" .Values.image.repository .Values.image.tag }}
+{{- if .Values.image.digest }}{{ $image = printf "%s@%s" .Values.image.repository .Values.image.digest }}{{ end }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-setup
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 300
+  template:
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10000
+        runAsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: setup
+          image: {{ $image | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python3", "/opt/rpp/setup_catalog.py"]
+          env:
+            - {name: POLARIS_URL, value: {{ printf "http://%s:8181" .Release.Name | quote }}}
+            - {name: POLARIS_REALM, value: {{ .Values.realm | quote }}}
+            - {name: CATALOG_NAME, value: {{ .Values.catalog | quote }}}
+            - {name: NAMESPACE, value: {{ .Values.namespace | quote }}}
+            - {name: WAREHOUSE_LOCATION, value: {{ .Values.warehouseLocation | quote }}}
+            - {name: S3_ENDPOINT, value: {{ .Values.storage.endpoint | quote }}}
+            - {name: S3_REGION, value: {{ .Values.storage.region | quote }}}
+            {{- include "iceberg-lakehouse.storageEnv" . | nindent 12 }}
+            {{- range $variable, $key := dict "ROOT_CLIENT_ID" "root-client-id" "ROOT_CLIENT_SECRET" "root-client-secret" "WRITER_CLIENT_ID" "writer-client-id" "WRITER_CLIENT_SECRET" "writer-client-secret" "READER_CLIENT_ID" "reader-client-id" "READER_CLIENT_SECRET" "reader-client-secret" "MAINTAINER_CLIENT_ID" "maintainer-client-id" "MAINTAINER_CLIENT_SECRET" "maintainer-client-secret" }}
+            - name: {{ $variable }}
+              valueFrom:
+                secretKeyRef: {name: {{ $.Values.existingSecret }}, key: {{ $key }}}
+            {{- end }}
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 500m, memory: 128Mi}
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}

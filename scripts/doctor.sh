@@ -96,6 +96,18 @@ if [[ "$(pinned_version flink)" =~ ^[0-9]+\.[0-9]+\.[0-9]+-scala_2.12-java17$ ]]
 else
   bad "invalid streaming runtime pins in .tool-versions (restore pins and run STREAMING=1 make setup)"
 fi
+if [[ "$(pinned_version polaris)" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] &&
+  [[ "$(pinned_version trino)" =~ ^[0-9]+$ ]] &&
+  [[ "$(pinned_version iceberg)" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] &&
+  [[ "$(pinned_version hadoop-client)" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] &&
+  [[ "$(pinned_version iceberg-flink-runtime-sha256)" =~ ^[a-f0-9]{64}$ ]] &&
+  [[ "$(pinned_version iceberg-aws-bundle-sha256)" =~ ^[a-f0-9]{64}$ ]] &&
+  [[ "$(pinned_version hadoop-client-api-sha256)" =~ ^[a-f0-9]{64}$ ]] &&
+  [[ "$(pinned_version hadoop-client-runtime-sha256)" =~ ^[a-f0-9]{64}$ ]]; then
+  ok "Polaris $(pinned_version polaris), Trino $(pinned_version trino) and Iceberg $(pinned_version iceberg) lakehouse pins (built by local deployment)"
+else
+  bad "invalid lakehouse pins in .tool-versions (restore polaris, trino, iceberg and hadoop-client pins/checksums)"
+fi
 flink_pin=$(pinned_version flink)
 if [ "${flink_pin%%-*}" != "$(pinned_version flink-python)" ]; then
   bad "Flink and PyFlink pins must match (restore .tool-versions and run STREAMING=1 make setup)"

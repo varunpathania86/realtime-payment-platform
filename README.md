@@ -87,6 +87,16 @@ LangGraph, a local llama.cpp model and platform-hosted read-only MCP tools
 assistant use a clearly labelled local development identity. See the
 [roadmap](docs/master-plan.md#stage-10-ai-operations-assistant-with-rag-langchain-langgraph-and-mcp).
 
+Stage 8 adds an opt-in Iceberg lakehouse: an
+[Apache Polaris REST catalog](modules/iceberg-lakehouse/README.md) with
+PostgreSQL-backed metadata, a Flink job that commits bronze and curated
+payment facts to MinIO per checkpoint, and [Trino](modules/trino-analytics/README.md)
+read-only and maintainer catalogs. `templates/lakehouse-topology.json` enables
+it in cluster A; `make lakehouse-verify` demonstrates time travel and
+schema/partition evolution, and `make lakehouse-maintain` compacts and expires
+snapshots. See [ADR-026](docs/adr/ADR-026-polaris-iceberg-lakehouse.md) and the
+[lakehouse runbook](docs/runbooks/iceberg-lakehouse.md).
+
 ## Repository map
 
 | Path | Purpose |
@@ -107,8 +117,10 @@ New to Kubernetes or Helm? The module chart guides explain each template and
 show resource relationships with Mermaid:
 [API and shared terminology](modules/payment-api/chart/README.md),
 [portal](modules/web-portal/chart/README.md),
-[Flink](modules/flink-jobs/chart/README.md), and
-[ClickHouse](modules/clickhouse-analytics/chart/README.md).
+[Flink](modules/flink-jobs/chart/README.md),
+[ClickHouse](modules/clickhouse-analytics/chart/README.md),
+[Polaris](modules/iceberg-lakehouse/chart/README.md), and
+[Trino](modules/trino-analytics/chart/README.md).
 
 Start with the [local platform walkthrough](docs/architecture/local-platform-guide.md)
 to connect the repository layout, Make scripts, Terraform, Helm and Kubernetes.

@@ -1,0 +1,97 @@
+{{/*
+Runs one Apache Polaris REST catalog pod. Before the server starts, the bootstrap initContainer runs
+the bundled admin tool, which creates the Polaris tables in PostgreSQL and the root principal once
+(later runs skip). Reads config.yaml's ConfigMap, the polaris-database Secret (JDBC login), the
+iceberg-lakehouse Secret (root credential and token-signing key) and streaming-storage (MinIO keys,
+because Polaris writes table metadata files itself). Callers use service.yaml; setup-job.yaml then
+creates the catalog content. See ../README.md.
+*/}}
+{{- $image := printf "%s:%s" .Values.image.repository .Values.image.tag }}
+{{- if .Values.image.digest }}{{ $image = printf "%s@%s" .Values.image.repository .Values.image.digest }}{{ end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: {{ .Release.Name }}}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: {{ .Release.Name }}}
+      annotations:
+        config-checksum: {{ include (print $.Template.BasePath "/config.yaml") . | sha256sum | quote }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10000
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      initContainers:
+        - name: bootstrap
+          image: {{ $image | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["sh", "-ec"]
+          args:
+            - >-
+              exec java -Xmx192m -jar /opt/polaris-admin/polaris-admin-tool.jar bootstrap
+              -r "$POLARIS_REALM" -c "$POLARIS_REALM,$ROOT_CLIENT_ID,$ROOT_CLIENT_SECRET"
+          env:
+            - {name: POLARIS_REALM, value: {{ .Values.realm | quote }}}
+            - {name: POLARIS_PERSISTENCE_TYPE, value: relational-jdbc}
+            {{- include "iceberg-lakehouse.databaseEnv" . | nindent 12 }}
+            - name: ROOT_CLIENT_ID
+              valueFrom:
+                secretKeyRef: {name: {{ .Values.existingSecret }}, key: root-client-id}
+            - name: ROOT_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef: {name: {{ .Values.existingSecret }}, key: root-client-secret}
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {cpu: "1", memory: 512Mi}
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      containers:
+        - name: polaris
+          image: {{ $image | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - {name: JAVA_OPTS_APPEND, value: {{ printf "-Xmx%s" .Values.javaMaxHeap | quote }}}
+            {{- include "iceberg-lakehouse.databaseEnv" . | nindent 12 }}
+            - name: POLARIS_AUTHENTICATION_TOKEN_BROKER_SYMMETRIC_KEY_SECRET
+              valueFrom:
+                secretKeyRef: {name: {{ .Values.existingSecret }}, key: token-secret}
+            {{- include "iceberg-lakehouse.storageEnv" . | nindent 12 }}
+          ports:
+            - {name: api, containerPort: 8181}
+            - {name: management, containerPort: 8182}
+          startupProbe:
+            httpGet: {path: /q/health/started, port: management}
+            failureThreshold: 60
+            periodSeconds: 5
+          readinessProbe:
+            httpGet: {path: /q/health/ready, port: management}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /q/health/live, port: management}
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+          volumeMounts:
+            - {name: config, mountPath: /deployments/config, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ .Release.Name }}-config
+        - {name: tmp, emptyDir: {}}

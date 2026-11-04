@@ -9,7 +9,7 @@ help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
 
 build: ## Compile job sources without requiring a running cluster
-	$(PYTHON) -m py_compile analytics.py benchmark.py configuration.py processing.py fixtures.py job.py runtime.py control.py risk.py model_registry.py
+	$(PYTHON) -m py_compile analytics.py benchmark.py configuration.py processing.py fixtures.py job.py lakehouse.py runtime.py control.py risk.py model_registry.py
 
 test: ## Run deterministic processing tests offline
 	$(PYTHON) -m unittest discover -s tests -p 'test_*.py'
@@ -19,7 +19,7 @@ test: risk-ci
 endif
 
 lint: ## Validate Python syntax and module packaging
-	$(PYTHON) -m py_compile analytics.py benchmark.py configuration.py processing.py fixtures.py job.py runtime.py control.py risk.py model_registry.py
+	$(PYTHON) -m py_compile analytics.py benchmark.py configuration.py processing.py fixtures.py job.py lakehouse.py runtime.py control.py risk.py model_registry.py
 
 integration: ## Check the actual PyFlink operator using the setup-built runtime
 	docker run --rm --entrypoint python -e PYTHONPATH=/opt/job -v "$(CURDIR):/opt/job:ro" \
@@ -31,6 +31,8 @@ integration: ## Check the actual PyFlink operator using the setup-built runtime
 		-e CLICKHOUSE_USER=rpp_analytics -e CLICKHOUSE_PASSWORD=test-password \
 		-e CHECKPOINT_URI=file:///tmp/flink-checkpoints -v "$(CURDIR):/opt/job:ro" \
 		"rpp-tools/flink:$$(awk '$$1 == "flink-python" {print $$2}' ../../.tool-versions)" /opt/job/tests/graph_check.py
+	docker run --rm --entrypoint python -e PYTHONPATH=/opt/job -v "$(CURDIR):/opt/job:ro" \
+		"rpp-tools/flink:$$(awk '$$1 == "flink-python" {print $$2}' ../../.tool-versions)" /opt/job/tests/lakehouse_execution.py
 
 risk-integration: ## Verify exported model golden parity and revisions in the real Flink worker
 	docker run --rm --entrypoint python -e PYTHONPATH=/opt/job:/models/payment_risk.zip \
@@ -43,7 +45,7 @@ risk-ci: ## Prepare pinned runtimes and run baseline plus three-way model parity
 	$(MAKE) integration
 
 fmt: ## Check shared whitespace rules without rewriting unrelated code
-	../../.venv/bin/pre-commit run --files modules/flink-jobs/analytics.py modules/flink-jobs/processing.py modules/flink-jobs/fixtures.py modules/flink-jobs/job.py modules/flink-jobs/tests/test_analytics.py
+	../../.venv/bin/pre-commit run --files modules/flink-jobs/analytics.py modules/flink-jobs/processing.py modules/flink-jobs/fixtures.py modules/flink-jobs/job.py modules/flink-jobs/lakehouse.py modules/flink-jobs/runtime.py modules/flink-jobs/tests/test_analytics.py modules/flink-jobs/tests/test_lakehouse.py modules/flink-jobs/tests/lakehouse_execution.py
 
 clean: ## Remove compiled job caches only
 	$(PYTHON) -c 'import pathlib; [p.unlink() for p in pathlib.Path("__pycache__").glob("*.pyc")]'

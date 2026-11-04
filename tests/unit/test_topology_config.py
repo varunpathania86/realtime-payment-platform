@@ -39,6 +39,23 @@ class TopologyConfigurationTests(unittest.TestCase):
             with self.subTest(invalid=invalid), self.assertRaises(ValueError):
                 validate(invalid)
 
+    def test_lakehouse_requires_streaming_and_a_larger_cluster_a_budget_with_analytics(self):
+        config = json.loads((ROOT / "templates/lakehouse-topology.json").read_text())
+        settings = validate(config)
+        self.assertTrue(settings["lakehouse"])
+        self.assertEqual(settings["nodes"]["a"], {"cpus": 4, "memory_mib": 8192})
+        both = {**config, "analytics": True, "nodes": {"a": {"cpus": 4, "memory_mib": 10240}}}
+        self.assertTrue(validate(both)["analytics"])
+        for invalid in (
+            {**config, "streaming": False},
+            {**config, "lakehouse": "yes"},
+            {**config, "nodes": {"a": {"cpus": 4, "memory_mib": 7168}}},
+            {**config, "nodes": {"a": {"cpus": 3, "memory_mib": 8192}}},
+            {**both, "nodes": {"a": {"cpus": 4, "memory_mib": 8192}}},
+        ):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                validate(invalid)
+
     def test_explicit_observability_and_per_node_budgets(self):
         config = json.loads((ROOT / "templates/observability-topology.json").read_text())
         settings = validate(config)

@@ -15,6 +15,25 @@ RUN set -eu; artifact="flink-sql-connector-kafka-${FLINK_KAFKA_CONNECTOR_VERSION
     printf '%s  %s\n' "$FLINK_KAFKA_CONNECTOR_SHA256" "/opt/flink/lib/$artifact" | sha256sum -c -; \
     mkdir -p /opt/flink/plugins/s3-fs-hadoop; \
     cp /opt/flink/opt/flink-s3-fs-hadoop-*.jar /opt/flink/plugins/s3-fs-hadoop/
+# Iceberg's Flink runtime needs shaded Hadoop classes even with the REST catalog and S3FileIO.
+ARG ICEBERG_VERSION
+ARG ICEBERG_FLINK_RUNTIME_SHA256
+ARG ICEBERG_AWS_BUNDLE_SHA256
+ARG HADOOP_CLIENT_VERSION
+ARG HADOOP_CLIENT_API_SHA256
+ARG HADOOP_CLIENT_RUNTIME_SHA256
+RUN set -eu; maven="https://repo.maven.apache.org/maven2/org/apache"; \
+    flink_minor="$(echo "$FLINK_PYTHON_VERSION" | cut -d. -f1,2)"; \
+    fetch() { curl -fsSL "$maven/$1/$2" -o "/opt/flink/lib/$2"; \
+      printf '%s  %s\n' "$3" "/opt/flink/lib/$2" | sha256sum -c -; }; \
+    fetch "iceberg/iceberg-flink-runtime-$flink_minor/$ICEBERG_VERSION" \
+      "iceberg-flink-runtime-$flink_minor-$ICEBERG_VERSION.jar" "$ICEBERG_FLINK_RUNTIME_SHA256"; \
+    fetch "iceberg/iceberg-aws-bundle/$ICEBERG_VERSION" "iceberg-aws-bundle-$ICEBERG_VERSION.jar" \
+      "$ICEBERG_AWS_BUNDLE_SHA256"; \
+    fetch "hadoop/hadoop-client-api/$HADOOP_CLIENT_VERSION" "hadoop-client-api-$HADOOP_CLIENT_VERSION.jar" \
+      "$HADOOP_CLIENT_API_SHA256"; \
+    fetch "hadoop/hadoop-client-runtime/$HADOOP_CLIENT_VERSION" "hadoop-client-runtime-$HADOOP_CLIENT_VERSION.jar" \
+      "$HADOOP_CLIENT_RUNTIME_SHA256"
 ENV PATH="/opt/pyflink/bin:${PATH}" \
     PYFLINK_CLIENT_EXECUTABLE="/opt/pyflink/bin/python" \
     PYFLINK_PYTHON="/opt/pyflink/bin/python"

@@ -1,0 +1,32 @@
+misconfigurations:
+  - id: KSV-0020
+    paths: [chart/templates/deployment.yaml]
+    expired_at: 2027-01-01
+    statement: >-
+      Preserve the official Trino image's trino UID 1000. The pod is non-root,
+      read-only, and drops all capabilities. Revisit with a runtime-user change.
+  - id: KSV-0021
+    paths: [chart/templates/deployment.yaml]
+    expired_at: 2027-01-01
+    statement: >-
+      Preserve the official Trino image's trino GID 1000 for its writable
+      data volume. Revisit with a runtime-user change.
+  - id: KSV-0110
+    paths: [chart/templates/deployment.yaml]
+    expired_at: 2027-01-01
+    statement: >-
+      Terraform installs this reusable Helm release in the apps namespace.
+      Raw chart scanning lacks the release namespace; keep templates reusable.
+  - id: KSV-0125
+    paths: [chart/templates/deployment.yaml]
+    expired_at: 2027-01-01
+    statement: >-
+      Local development intentionally loads rpp-local images with pull policy
+      Never. Trusted publication supplies verified GHCR digests.
+  - id: KSV-01010
+    paths: [chart/templates/config.yaml]
+    expired_at: 2027-01-01
+    statement: >-
+      Trino catalog files name credential properties but hold only
+      ${ENV:...} placeholders resolved from Kubernetes Secrets at startup.
+      No credential value is stored in the ConfigMap.
