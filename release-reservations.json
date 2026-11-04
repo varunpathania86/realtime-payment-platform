@@ -591,6 +591,20 @@
       "reservedVersion": "0.0.1-it1-rv.2",
       "sourceCommit": "9bb34d897613c8f07845a47cafb71452fffdfff4",
       "targetVersion": "0.0.1"
+    },
+    {
+      "approvedImpact": "patch",
+      "branch": "main",
+      "chartRegistry": "oci://ghcr.io/varunpathania86/charts",
+      "counter": 2,
+      "integrated": true,
+      "iteration": 1,
+      "module": "clickhouse-analytics",
+      "registry": "ghcr.io/varunpathania86",
+      "releaseLine": "main",
+      "reservedVersion": "0.0.1-it1-rv.2",
+      "sourceCommit": "efd39e16e53d5c0c28da5e795fa86ff9591e8339",
+      "targetVersion": "0.0.1"
     }
   ],
   "schemaVersion": 1
