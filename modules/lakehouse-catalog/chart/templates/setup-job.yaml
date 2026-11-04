@@ -2,7 +2,7 @@
 Helm hook that runs after every install/upgrade, once the Polaris pod in deployment.yaml is ready.
 setup_catalog.py (baked into the image) creates the MinIO warehouse bucket, catalog, namespace,
 bronze/curated tables, the writer/reader/maintainer principals and their grants. Every step is
-idempotent and never alters existing tables. Reads the iceberg-lakehouse Secret (root and principal
+idempotent and never alters existing tables. Reads the lakehouse-catalog Secret (root and principal
 credentials) and streaming-storage (MinIO keys). Successful hooks are deleted. See ../README.md.
 */}}
 {{- $image := printf "%s:%s" .Values.image.repository .Values.image.tag }}
@@ -39,7 +39,7 @@ spec:
             - {name: WAREHOUSE_LOCATION, value: {{ .Values.warehouseLocation | quote }}}
             - {name: S3_ENDPOINT, value: {{ .Values.storage.endpoint | quote }}}
             - {name: S3_REGION, value: {{ .Values.storage.region | quote }}}
-            {{- include "iceberg-lakehouse.storageEnv" . | nindent 12 }}
+            {{- include "lakehouse-catalog.storageEnv" . | nindent 12 }}
             {{- range $variable, $key := dict "ROOT_CLIENT_ID" "root-client-id" "ROOT_CLIENT_SECRET" "root-client-secret" "WRITER_CLIENT_ID" "writer-client-id" "WRITER_CLIENT_SECRET" "writer-client-secret" "READER_CLIENT_ID" "reader-client-id" "READER_CLIENT_SECRET" "reader-client-secret" "MAINTAINER_CLIENT_ID" "maintainer-client-id" "MAINTAINER_CLIENT_SECRET" "maintainer-client-secret" }}
             - name: {{ $variable }}
               valueFrom:

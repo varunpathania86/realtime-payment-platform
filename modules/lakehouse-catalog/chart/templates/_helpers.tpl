@@ -1,7 +1,7 @@
 {{/*
 Shared environment snippets used by deployment.yaml and setup-job.yaml (renders no resource).
 */}}
-{{- define "iceberg-lakehouse.databaseEnv" -}}
+{{- define "lakehouse-catalog.databaseEnv" -}}
 - {name: QUARKUS_DATASOURCE_JDBC_URL, value: {{ .Values.database.url | quote }}}
 - name: QUARKUS_DATASOURCE_USERNAME
   valueFrom:
@@ -11,7 +11,7 @@ Shared environment snippets used by deployment.yaml and setup-job.yaml (renders 
     secretKeyRef: {name: {{ .Values.database.existingSecret }}, key: password}
 {{- end }}
 
-{{- define "iceberg-lakehouse.storageEnv" -}}
+{{- define "lakehouse-catalog.storageEnv" -}}
 - {name: AWS_REGION, value: {{ .Values.storage.region | quote }}}
 - name: AWS_ACCESS_KEY_ID
   valueFrom:

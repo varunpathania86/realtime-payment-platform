@@ -1,5 +1,5 @@
 apiVersion: v2
-name: trino-analytics
+name: lakehouse-query
 description: Single-node Trino SQL engine over the Polaris Iceberg lakehouse for Stage 8
 type: application
 version: 0.1.0

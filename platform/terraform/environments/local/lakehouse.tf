@@ -38,10 +38,10 @@ resource "kubernetes_secret_v1" "polaris_database" {
   }
 }
 
-resource "kubernetes_secret_v1" "iceberg_lakehouse" {
+resource "kubernetes_secret_v1" "lakehouse_catalog" {
   count = var.lakehouse_enabled ? 1 : 0
   metadata {
-    name      = "iceberg-lakehouse"
+    name      = "lakehouse-catalog"
     namespace = kubernetes_namespace_v1.foundation["apps"].metadata[0].name
   }
   data = merge(
@@ -64,10 +64,10 @@ resource "kubernetes_secret_v1" "lakehouse_writer" {
   }
 }
 
-resource "kubernetes_secret_v1" "lakehouse_trino" {
+resource "kubernetes_secret_v1" "lakehouse_query" {
   count = var.lakehouse_enabled ? 1 : 0
   metadata {
-    name      = "lakehouse-trino"
+    name      = "lakehouse-query"
     namespace = kubernetes_namespace_v1.foundation["apps"].metadata[0].name
   }
   data = {
@@ -174,24 +174,24 @@ resource "kubernetes_job_v1" "polaris_database" {
   }
 }
 
-resource "helm_release" "iceberg_lakehouse" {
+resource "helm_release" "lakehouse_catalog" {
   count           = var.lakehouse_enabled ? 1 : 0
-  name            = "iceberg-lakehouse"
+  name            = "lakehouse-catalog"
   namespace       = kubernetes_namespace_v1.foundation["apps"].metadata[0].name
-  chart           = "${local.root}/modules/iceberg-lakehouse/chart"
+  chart           = "${local.root}/modules/lakehouse-catalog/chart"
   timeout         = 600
   wait            = true
   atomic          = true
   cleanup_on_fail = true
   depends_on = [
-    kubernetes_job_v1.polaris_database, kubernetes_secret_v1.polaris_database, kubernetes_secret_v1.iceberg_lakehouse,
+    kubernetes_job_v1.polaris_database, kubernetes_secret_v1.polaris_database, kubernetes_secret_v1.lakehouse_catalog,
     kubernetes_secret_v1.streaming, kubernetes_deployment_v1.minio,
   ]
 
   values = [yamlencode({
     image = {
-      repository = split(":", lookup(var.local_images, "iceberg-lakehouse", "missing:missing"))[0]
-      tag        = split(":", lookup(var.local_images, "iceberg-lakehouse", "missing:missing"))[1]
+      repository = split(":", lookup(var.local_images, "lakehouse-catalog", "missing:missing"))[0]
+      tag        = split(":", lookup(var.local_images, "lakehouse-catalog", "missing:missing"))[1]
       pullPolicy = "Never"
       digest     = ""
     }
@@ -199,7 +199,7 @@ resource "helm_release" "iceberg_lakehouse" {
 
   lifecycle {
     precondition {
-      condition     = contains(keys(var.local_images), "iceberg-lakehouse")
+      condition     = contains(keys(var.local_images), "lakehouse-catalog")
       error_message = "Missing local Polaris image. Run make dev-images before planning or deploying the lakehouse."
     }
     precondition {
@@ -207,7 +207,7 @@ resource "helm_release" "iceberg_lakehouse" {
       error_message = "The lakehouse stores Polaris metadata in the profile-local PostgreSQL; it is not supported with external_database."
     }
     precondition {
-      condition     = !contains(keys(var.application_replicas), "iceberg-lakehouse")
+      condition     = !contains(keys(var.application_replicas), "lakehouse-catalog")
       error_message = "Polaris runs one replica in the local lakehouse and cannot use application_replicas."
     }
   }

@@ -449,13 +449,13 @@ The initial catalog maps the capabilities above to these module boundaries:
 | `flink-jobs` | `streaming/flink-jobs` | Stateful event-time processing and sinks |
 | `event-contracts` | `contracts` | Avro events, OpenAPI, compatibility rules, and examples |
 | `clickhouse-analytics` | `analytics/clickhouse` | Real-time analytical serving |
-| `iceberg-lakehouse` | `analytics/iceberg` | Historical lakehouse table definitions and integration |
-| `trino-analytics` | `analytics/trino` | SQL access over the lakehouse |
+| `lakehouse-catalog` | `analytics/iceberg` | Historical lakehouse table definitions and integration |
+| `lakehouse-query` | `analytics/trino` | SQL access over the lakehouse |
 | `superset-bi` | `analytics/superset` | BI dashboards and embedding integration |
 | `payment-risk-model` | `ml` | Payment-risk training, evaluation, and deployable model artifacts |
 | `operations-knowledge` | `knowledge` | Versioned LLM retrieval sources and prepared context |
 
-The current module names and manifest types are documented in [module-development.md](module-development.md). Infrastructure and third-party platform services do not become modules merely because the solution deploys them; give them independent module identities only if they acquire a distinct product boundary and release lifecycle.
+The current module names and manifest types are documented in [module-development.md](module-development.md). New modules use capability names rather than product names. `flink-jobs`, `clickhouse-analytics` and `superset-bi` are planned to become `stream-processor`, `realtime-analytics` and `bi-dashboards` in a separate patch. Infrastructure and third-party platform services do not become modules merely because the solution deploys them; give them independent module identities only if they acquire a distinct product boundary and release lifecycle.
 
 ## 4.1 Possible future repository split
 
@@ -1291,7 +1291,7 @@ Do not copy every dataset into both systems without a documented consumer need.
 
 Implementation uses Apache Polaris as the Iceberg REST catalog with PostgreSQL
 metadata; see [ADR-026](adr/ADR-026-polaris-iceberg-lakehouse.md) and the
-[lakehouse runbook](runbooks/iceberg-lakehouse.md).
+[lakehouse runbook](runbooks/lakehouse.md).
 
 ---
 

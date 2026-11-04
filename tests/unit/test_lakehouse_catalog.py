@@ -12,7 +12,7 @@ from scripts.check_local_chart import validate as validate_chart
 from scripts.module_catalog import ROOT
 
 SPEC = importlib.util.spec_from_file_location(
-    "setup_catalog", ROOT / "modules/iceberg-lakehouse/setup_catalog.py",
+    "setup_catalog", ROOT / "modules/lakehouse-catalog/setup_catalog.py",
 )
 SETUP = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(SETUP)
@@ -124,7 +124,7 @@ class IcebergLakehouseSetupTests(unittest.TestCase):
 
     def test_chart_bootstraps_before_serving_and_converges_in_a_hook(self):
         rendered = subprocess.run(
-            ["helm", "template", "iceberg-lakehouse", str(ROOT / "modules/iceberg-lakehouse/chart"),
+            ["helm", "template", "lakehouse-catalog", str(ROOT / "modules/lakehouse-catalog/chart"),
                 "--namespace", "apps"],
             check=True, capture_output=True, text=True, timeout=30,
         )
@@ -139,7 +139,7 @@ class IcebergLakehouseSetupTests(unittest.TestCase):
         self.assertEqual(bootstrap["image"], pod["containers"][0]["image"])
         server_env = {item["name"]: item for item in pod["containers"][0]["env"]}
         self.assertEqual(server_env["POLARIS_AUTHENTICATION_TOKEN_BROKER_SYMMETRIC_KEY_SECRET"]["valueFrom"],
-            {"secretKeyRef": {"name": "iceberg-lakehouse", "key": "token-secret"}})
+            {"secretKeyRef": {"name": "lakehouse-catalog", "key": "token-secret"}})
         job = next(item for item in resources if item["kind"] == "Job")
         self.assertEqual(job["metadata"]["annotations"]["helm.sh/hook"], "post-install,post-upgrade")
         setup = job["spec"]["template"]["spec"]["containers"][0]

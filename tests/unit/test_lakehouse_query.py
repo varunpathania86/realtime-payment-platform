@@ -6,12 +6,12 @@ import yaml
 from scripts.check_local_chart import validate as validate_chart
 from scripts.module_catalog import ROOT
 
-CHART = ROOT / "modules/trino-analytics/chart"
+CHART = ROOT / "modules/lakehouse-query/chart"
 
 
 def render(*arguments):
     return subprocess.run(
-        ["helm", "template", "trino-analytics", str(CHART), "--namespace", "apps", *arguments],
+        ["helm", "template", "lakehouse-query", str(CHART), "--namespace", "apps", *arguments],
         check=True, capture_output=True, text=True, timeout=30,
     )
 
@@ -44,7 +44,7 @@ class TrinoAnalyticsTests(unittest.TestCase):
         self.assertEqual(maintainer["iceberg.rest-catalog.oauth2.credential"],
             "${ENV:LAKEHOUSE_MAINTAINER_CREDENTIAL}")
         self.assertEqual(reader["iceberg.rest-catalog.oauth2.server-uri"],
-            "http://iceberg-lakehouse:8181/api/catalog/v1/oauth/tokens")
+            "http://lakehouse-catalog:8181/api/catalog/v1/oauth/tokens")
         self.assertEqual(reader["s3.aws-secret-key"], "${ENV:AWS_SECRET_ACCESS_KEY}")
         self.assertNotIn("cache-manager", data["config.properties"])
 

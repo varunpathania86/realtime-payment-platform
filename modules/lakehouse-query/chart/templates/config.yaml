@@ -1,12 +1,12 @@
 {{/*
 Trino configuration mounted at /etc/trino by deployment.yaml (replacing the image defaults, so the
 sample tpch/memory catalogs and the 2 GB filesystem cache are not loaded).
-Two Iceberg REST catalogs point at the iceberg-lakehouse Polaris service:
+Two Iceberg REST catalogs point at the lakehouse-catalog Polaris service:
   lakehouse        read-only engine security plus the Polaris reader principal (queries, dashboards)
   lakehouse_admin  Polaris maintainer principal (schema evolution and table maintenance)
 Credentials are ${ENV:...} references filled from Secrets, never stored here. See ../README.md.
 */}}
-{{- define "trino-analytics.catalog" -}}
+{{- define "lakehouse-query.catalog" -}}
 connector.name=iceberg
 iceberg.catalog.type=rest
 iceberg.rest-catalog.uri={{ .root.Values.lakehouse.catalogURI }}
@@ -56,7 +56,7 @@ data:
   log.properties: |
     io.trino=INFO
   lakehouse.properties: |
-    {{- include "trino-analytics.catalog" (dict "root" . "credential" "LAKEHOUSE_READER_CREDENTIAL") | nindent 4 }}
+    {{- include "lakehouse-query.catalog" (dict "root" . "credential" "LAKEHOUSE_READER_CREDENTIAL") | nindent 4 }}
     iceberg.security=read_only
   lakehouse_admin.properties: |
-    {{- include "trino-analytics.catalog" (dict "root" . "credential" "LAKEHOUSE_MAINTAINER_CREDENTIAL") | nindent 4 }}
+    {{- include "lakehouse-query.catalog" (dict "root" . "credential" "LAKEHOUSE_MAINTAINER_CREDENTIAL") | nindent 4 }}

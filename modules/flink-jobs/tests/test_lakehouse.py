@@ -4,7 +4,7 @@ import unittest
 import lakehouse
 
 ENVIRON = {
-    "LAKEHOUSE_CATALOG_URI": "http://iceberg-lakehouse:8181/api/catalog/",
+    "LAKEHOUSE_CATALOG_URI": "http://lakehouse-catalog:8181/api/catalog/",
     "LAKEHOUSE_WAREHOUSE": "lakehouse",
     "LAKEHOUSE_CLIENT_ID": "writer-id",
     "LAKEHOUSE_CLIENT_SECRET": "synthetic-secret",
@@ -22,7 +22,7 @@ class LakehouseSqlTest(unittest.TestCase):
     def test_catalog_uses_oauth_endpoint_and_s3_file_io(self):
         statement = lakehouse.iceberg_catalog(ENVIRON)
         self.assertIn("'credential' = 'writer-id:synthetic-secret'", statement)
-        self.assertIn("'oauth2-server-uri' = 'http://iceberg-lakehouse:8181/api/catalog/v1/oauth/tokens'", statement)
+        self.assertIn("'oauth2-server-uri' = 'http://lakehouse-catalog:8181/api/catalog/v1/oauth/tokens'", statement)
         self.assertIn("'io-impl' = 'org.apache.iceberg.aws.s3.S3FileIO'", statement)
         self.assertIn("'client.region' = 'us-east-1'", statement)
 

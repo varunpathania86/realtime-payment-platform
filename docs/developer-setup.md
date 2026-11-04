@@ -245,8 +245,8 @@ container images built by `make dev-images`; no host Java or Trino CLI is
 required. `make doctor` checks the pins.
 
 Use `make dev-up DEV_CONFIG=templates/lakehouse-topology.json` to enable
-streaming, the [Polaris catalog](../modules/iceberg-lakehouse/README.md),
-[Trino](../modules/trino-analytics/README.md) and the Flink lakehouse writer
+streaming, the [Polaris catalog](../modules/lakehouse-catalog/README.md),
+[Trino](../modules/lakehouse-query/README.md) and the Flink lakehouse writer
 in cluster A. The lakehouse requires streaming and at least 4 CPUs/8192 MiB
 on A, or 10240 MiB together with analytics. It uses the profile-local
 PostgreSQL for catalog metadata and cannot be combined with the full-stack
@@ -269,7 +269,7 @@ minikube stop -p rpp-stage8-verify
 Enabling or disabling the lakehouse on a running profile restarts the Flink
 session cluster: run `make streaming-stop` first and pass both printed
 savepoints as `STREAMING_RESTORE_PATH` and `LAKEHOUSE_RESTORE_PATH`. The
-[lakehouse runbook](runbooks/iceberg-lakehouse.md) covers diagnosis,
+[lakehouse runbook](runbooks/lakehouse.md) covers diagnosis,
 maintenance and evolution.
 
 ### Clone and initialize

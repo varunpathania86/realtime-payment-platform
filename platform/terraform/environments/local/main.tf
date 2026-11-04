@@ -84,7 +84,7 @@ resource "helm_release" "clickhouse_analytics" {
 }
 
 resource "helm_release" "application" {
-  for_each        = { for name, chart in local.applications : name => chart if !contains(["clickhouse-analytics", "iceberg-lakehouse"], name) }
+  for_each        = { for name, chart in local.applications : name => chart if !contains(["clickhouse-analytics", "lakehouse-catalog"], name) }
   name            = each.key
   namespace       = kubernetes_namespace_v1.foundation["apps"].metadata[0].name
   chart           = each.value
@@ -92,7 +92,7 @@ resource "helm_release" "application" {
   wait            = true
   atomic          = true
   cleanup_on_fail = true
-  depends_on      = [helm_release.ingress, helm_release.clickhouse_analytics, kubernetes_stateful_set_v1.postgres, kubernetes_secret_v1.payment_database, kubernetes_stateful_set_v1.kafka, kubernetes_deployment_v1.registry, kubernetes_secret_v1.payment_events, kubernetes_secret_v1.clickhouse_analytics, kubernetes_config_map_v1.event_schema, kubernetes_deployment_v1.minio, helm_release.iceberg_lakehouse, kubernetes_secret_v1.lakehouse_writer, kubernetes_secret_v1.lakehouse_trino]
+  depends_on      = [helm_release.ingress, helm_release.clickhouse_analytics, kubernetes_stateful_set_v1.postgres, kubernetes_secret_v1.payment_database, kubernetes_stateful_set_v1.kafka, kubernetes_deployment_v1.registry, kubernetes_secret_v1.payment_events, kubernetes_secret_v1.clickhouse_analytics, kubernetes_config_map_v1.event_schema, kubernetes_deployment_v1.minio, helm_release.lakehouse_catalog, kubernetes_secret_v1.lakehouse_writer, kubernetes_secret_v1.lakehouse_query]
 
   values = [yamlencode({
     replicaCount   = lookup(var.application_replicas, each.key, 1)

@@ -23,8 +23,8 @@ modules:
   - flink-jobs
   - event-contracts
   - clickhouse-analytics
-  - iceberg-lakehouse
-  - trino-analytics
+  - lakehouse-catalog
+  - lakehouse-query
   - superset-bi
   - payment-risk-model
   - operations-knowledge

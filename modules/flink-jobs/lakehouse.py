@@ -3,7 +3,7 @@
 Runs as its own job (``payment-lakehouse-v1``) beside ``payment-event-time-v1``:
 Iceberg commits once per checkpoint, so a slower interval bounds small files
 without changing the payment job's graph. No Python UDFs run on TaskManagers.
-Tables are created by the iceberg-lakehouse module; this job only appends.
+Tables are created by the lakehouse-catalog module; this job only appends.
 """
 
 import os

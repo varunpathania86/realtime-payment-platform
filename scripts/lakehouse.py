@@ -17,7 +17,7 @@ RETENTION = re.compile(r"[1-9][0-9]*(m|h|d)")
 def trino(profile, sql, catalog="lakehouse", runner=subprocess.run):
     """Run one statement; the reader catalog is the default so ad-hoc queries cannot write."""
     result = runner(["kubectl", "--context", profile, "--request-timeout=30s", "-n", "apps", "exec",
-        "deploy/trino-analytics", "--", "trino", "--catalog", catalog, "--schema", NAMESPACE,
+        "deploy/lakehouse-query", "--", "trino", "--catalog", catalog, "--schema", NAMESPACE,
         "--output-format", "JSON", "--execute", sql], check=False, text=True, capture_output=True)
     if result.returncode:
         raise RuntimeError(result.stderr.strip() or result.stdout.strip() or f"Trino exited {result.returncode}")

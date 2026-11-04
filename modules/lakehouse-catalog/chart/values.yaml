@@ -1,5 +1,5 @@
 image:
-  repository: rpp-local/iceberg-lakehouse
+  repository: rpp-local/lakehouse-catalog
   tag: development
   digest: ""
   pullPolicy: Never
@@ -11,7 +11,7 @@ namespace: payments
 warehouseLocation: s3://lakehouse/warehouse
 # Keys: root-client-id, root-client-secret, token-secret and
 # {writer,reader,maintainer}-client-{id,secret}; Terraform generates them per profile.
-existingSecret: iceberg-lakehouse
+existingSecret: lakehouse-catalog
 database:
   url: jdbc:postgresql://payments-postgres.data.svc.cluster.local:5432/polaris
   # Keys username and password for the dedicated polaris role.

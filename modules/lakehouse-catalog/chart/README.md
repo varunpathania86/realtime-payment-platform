@@ -1,4 +1,4 @@
-# Iceberg lakehouse Helm chart
+# Lakehouse catalog Helm chart
 
 Deploys one Apache Polaris catalog server and converges its catalog, tables
 and least-privilege principals. Part of
@@ -19,7 +19,7 @@ File layout (the next diagram shows how the installed resources connect):
 
 ```mermaid
 flowchart TB
-    C["iceberg-lakehouse/chart/"] --> M["Chart.yaml: identity"]
+    C["lakehouse-catalog/chart/"] --> M["Chart.yaml: identity"]
     C --> V["values.yaml: default inputs"]
     C --> T["templates/"]
     T --> HP["_helpers.tpl: shared env blocks"]
@@ -44,7 +44,7 @@ flowchart TB
 ```mermaid
 flowchart LR
     TF["Local Terraform"] --> DBJ["polaris DB init Job (data)"]
-    TF --> X["Secrets: iceberg-lakehouse, polaris-database"]
+    TF --> X["Secrets: lakehouse-catalog, polaris-database"]
     TF --> H["Helm release"]
     DBJ --> PG[("PostgreSQL polaris DB")]
     H --> D["Deployment"]
@@ -73,7 +73,7 @@ Flink) and the profile-local PostgreSQL.
 From the repository root:
 
 ```bash
-make -C modules/iceberg-lakehouse test lint
+make -C modules/lakehouse-catalog test lint
 make dev-up DEV_CONFIG=templates/lakehouse-topology.json
 ```
 
@@ -97,6 +97,6 @@ two as one recovery unit, as described in the runbook.
 ## Documentation
 
 - [Module guide](../README.md)
-- [Lakehouse runbook](../../../docs/runbooks/iceberg-lakehouse.md)
-- [Trino chart](../../trino-analytics/chart/README.md)
+- [Lakehouse runbook](../../../docs/runbooks/lakehouse.md)
+- [Trino chart](../../lakehouse-query/chart/README.md)
 - [Flink chart](../../flink-jobs/chart/README.md)

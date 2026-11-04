@@ -1,12 +1,12 @@
-# Runbook: Iceberg lakehouse
+# Runbook: Lakehouse
 
 - **Severity:** Medium
 - **Owner:** varunpathania86
 - **Last reviewed:** 2026-11-06
 
 Covers the opt-in Stage 8 lakehouse: the
-[Polaris catalog](../../modules/iceberg-lakehouse/README.md),
-[Trino](../../modules/trino-analytics/README.md) and the Flink
+[Polaris catalog](../../modules/lakehouse-catalog/README.md),
+[Trino](../../modules/lakehouse-query/README.md) and the Flink
 `payment-lakehouse-v1` writer. Design: [ADR-026](../adr/ADR-026-polaris-iceberg-lakehouse.md).
 
 ```mermaid
@@ -26,8 +26,8 @@ flowchart LR
   time-travel/evolution check.
 - The Flink `payment-lakehouse-v1` job is missing or restarting, or its
   checkpoints stop completing.
-- `iceberg-lakehouse` or `trino-analytics` pods are not ready, or the
-  `iceberg-lakehouse-setup` hook Job fails during `dev-update`.
+- `lakehouse-catalog` or `lakehouse-query` pods are not ready, or the
+  `lakehouse-catalog-setup` hook Job fails during `dev-update`.
 - Queries slow down as many small files accumulate.
 
 ## Impact
@@ -43,10 +43,10 @@ lag of one checkpoint interval is normal, not an incident.
 2. Check the workloads and setup hook:
 
     ```bash
-    kubectl --context "$PROFILE" -n apps get deploy,pod -l 'app.kubernetes.io/name in (iceberg-lakehouse,trino-analytics)'
-    kubectl --context "$PROFILE" -n apps get job iceberg-lakehouse-setup  # present only while running or failed
-    kubectl --context "$PROFILE" -n apps logs deploy/iceberg-lakehouse -c bootstrap
-    kubectl --context "$PROFILE" -n apps logs deploy/iceberg-lakehouse
+    kubectl --context "$PROFILE" -n apps get deploy,pod -l 'app.kubernetes.io/name in (lakehouse-catalog,lakehouse-query)'
+    kubectl --context "$PROFILE" -n apps get job lakehouse-catalog-setup  # present only while running or failed
+    kubectl --context "$PROFILE" -n apps logs deploy/lakehouse-catalog -c bootstrap
+    kubectl --context "$PROFILE" -n apps logs deploy/lakehouse-catalog
     kubectl --context "$PROFILE" -n data logs job/polaris-database-init
     ```
 

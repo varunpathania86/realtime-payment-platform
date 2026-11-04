@@ -1,4 +1,4 @@
-# Trino analytics
+# Lakehouse query
 
 Single-node Trino query engine for the local Iceberg lakehouse. Part of
 [realtime-payment-platform](../../README.md).
@@ -30,13 +30,13 @@ See the [Helm chart guide](chart/README.md) for resource relationships.
 ## Prerequisites
 
 The opt-in lakehouse topology, which also installs
-[Polaris](../iceberg-lakehouse/README.md). No host Trino CLI is needed: the
+[Polaris](../lakehouse-catalog/README.md). No host Trino CLI is needed: the
 root Make targets run the CLI inside the pod.
 
 ## Quick start
 
 ```bash
-make -C modules/trino-analytics build test lint
+make -C modules/lakehouse-query build test lint
 make dev-up DEV_CONFIG=templates/lakehouse-topology.json
 make lakehouse-query SQL='SELECT currency, count(*) AS payments FROM payment_events GROUP BY 1'
 ```
@@ -58,7 +58,7 @@ The ConfigMap replaces the image defaults: it removes the sample `tpch` and
 (`query.maxMemory` 512MB, per node 384MB) inside a 1.5 GiB container. The JVM
 heap is a percentage of the container limit.
 
-Catalog credentials come from the `lakehouse-trino` Secret through
+Catalog credentials come from the `lakehouse-query` Secret through
 environment variables, never from the ConfigMap. Object-storage credentials
 come from `streaming-storage`. Only one replica is supported (the chart fails
 otherwise), and updates use the `Recreate` strategy to avoid running two
@@ -67,5 +67,5 @@ memory-heavy pods at once.
 ## Documentation
 
 - [Chart guide](chart/README.md)
-- [Lakehouse runbook](../../docs/runbooks/iceberg-lakehouse.md)
-- [Iceberg lakehouse](../iceberg-lakehouse/README.md)
+- [Lakehouse runbook](../../docs/runbooks/lakehouse.md)
+- [Lakehouse catalog (Polaris)](../lakehouse-catalog/README.md)

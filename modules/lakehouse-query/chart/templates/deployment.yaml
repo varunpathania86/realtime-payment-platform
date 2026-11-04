@@ -1,11 +1,11 @@
 {{/*
 Runs one Trino coordinator that also executes queries. Reads config.yaml's ConfigMap as /etc/trino,
-the lakehouse-trino Secret (Polaris reader/maintainer credentials) and the shared streaming-storage
-Secret (MinIO keys). Talks to the iceberg-lakehouse Service and MinIO; callers reach it through
+the lakehouse-query Secret (Polaris reader/maintainer credentials) and the shared streaming-storage
+Secret (MinIO keys). Talks to the lakehouse-catalog Service and MinIO; callers reach it through
 service.yaml. Spill and data directories are pod-local emptyDirs. See ../README.md.
 */}}
 {{- if ne (int .Values.replicaCount) 1 }}
-{{- fail "trino-analytics runs one coordinator; replicaCount must be 1" }}
+{{- fail "lakehouse-query runs one coordinator; replicaCount must be 1" }}
 {{- end }}
 {{- $image := printf "%s:%s" .Values.image.repository .Values.image.tag }}
 {{- if .Values.image.digest }}{{ $image = printf "%s@%s" .Values.image.repository .Values.image.digest }}{{ end }}

@@ -6,4 +6,4 @@ owners:
   - varunpathania86
 dependencies:
   - clickhouse-analytics
-  - trino-analytics
+  - lakehouse-query

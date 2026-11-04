@@ -21,7 +21,7 @@ analytics:
 lakehouse:
   enabled: false
   restorePath: ""
-  catalogURI: http://iceberg-lakehouse:8181/api/catalog
+  catalogURI: http://lakehouse-catalog:8181/api/catalog
   warehouse: lakehouse
   namespace: payments
   checkpointURI: s3://flink-state/checkpoints/payment-lakehouse-v1

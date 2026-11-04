@@ -1,4 +1,4 @@
-# Iceberg lakehouse
+# Lakehouse catalog
 
 Apache Polaris REST catalog for the local Iceberg lakehouse, with idempotent
 catalog, table, principal and grant setup. Part of
@@ -46,14 +46,14 @@ profile-local PostgreSQL (`external_database` is not supported).
 ## Quick start
 
 ```bash
-make -C modules/iceberg-lakehouse build test lint
+make -C modules/lakehouse-catalog build test lint
 make dev-up DEV_CONFIG=templates/lakehouse-topology.json
 make streaming-fixtures
 make lakehouse-verify
 ```
 
 For a single-cluster verification on a resource-constrained host, follow
-[lakehouse operations](../../docs/runbooks/iceberg-lakehouse.md).
+[lakehouse operations](../../docs/runbooks/lakehouse.md).
 
 ## Make targets
 
@@ -85,6 +85,6 @@ Tables use Iceberg format v2, zstd Parquet and hidden `day()` partitions on
 ## Documentation
 
 - [Chart guide](chart/README.md)
-- [Lakehouse runbook](../../docs/runbooks/iceberg-lakehouse.md)
-- [Trino analytics](../trino-analytics/README.md)
+- [Lakehouse runbook](../../docs/runbooks/lakehouse.md)
+- [Lakehouse query (Trino)](../lakehouse-query/README.md)
 - [Flink jobs](../flink-jobs/README.md)

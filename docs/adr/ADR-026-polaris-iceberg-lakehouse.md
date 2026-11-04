@@ -23,7 +23,7 @@ Flink 1.20.3 and Trino 484.
 
 ## Decision
 
-- **Catalog:** use Apache Polaris (`iceberg-lakehouse` module).
+- **Catalog:** use Apache Polaris (`lakehouse-catalog` module).
   - It persists to the existing local PostgreSQL in a dedicated `polaris`
     role, database and `polaris_schema`.
   - Terraform creates these as the database owner.
@@ -58,7 +58,7 @@ Flink 1.20.3 and Trino 484.
     unchanged.
   - The TaskManager gains a second slot and 512 MiB when the lakehouse is
     enabled.
-- **SQL engine:** Trino (`trino-analytics` module), with two Iceberg REST
+- **SQL engine:** Trino (`lakehouse-query` module), with two Iceberg REST
   catalogs.
   - `lakehouse` is read-only (`iceberg.security=read_only`) and uses the
     reader principal.

@@ -1,7 +1,8 @@
 schemaVersion: 1
-name: iceberg-lakehouse
+name: lakehouse-query
 type: analytics
 version: 0.0.0
 owners:
   - varunpathania86
-dependencies: []
+dependencies:
+  - lakehouse-catalog

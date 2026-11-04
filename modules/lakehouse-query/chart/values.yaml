@@ -1,5 +1,5 @@
 image:
-  repository: rpp-local/trino-analytics
+  repository: rpp-local/lakehouse-query
   tag: development
   digest: ""
   pullPolicy: Never
@@ -8,10 +8,10 @@ local:
 # Single coordinator that also executes work; more replicas would be separate clusters.
 replicaCount: 1
 lakehouse:
-  catalogURI: http://iceberg-lakehouse:8181/api/catalog
+  catalogURI: http://lakehouse-catalog:8181/api/catalog
   warehouse: lakehouse
   # Keys reader-credential and maintainer-credential hold "client-id:client-secret".
-  existingSecret: lakehouse-trino
+  existingSecret: lakehouse-query
 storage:
   endpoint: http://minio.data.svc.cluster.local:9000
   region: us-east-1

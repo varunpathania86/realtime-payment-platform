@@ -1,4 +1,4 @@
-# Trino analytics Helm chart
+# Lakehouse query Helm chart
 
 Deploys one Trino coordinator (also the worker) with read-only and maintainer
 Iceberg catalogs. Part of [realtime-payment-platform](../../../README.md).
@@ -7,7 +7,7 @@ Iceberg catalogs. Part of [realtime-payment-platform](../../../README.md).
 
 Local [Terraform](../../../platform/terraform/environments/local/main.tf)
 installs this chart in `apps` only when the lakehouse is enabled, after the
-Polaris release and the generated `lakehouse-trino` Secret. For Make,
+Polaris release and the generated `lakehouse-query` Secret. For Make,
 Terraform, Helm and Kubernetes context see the
 [local platform guide](../../../docs/architecture/local-platform-guide.md).
 
@@ -17,7 +17,7 @@ File layout (the next diagram shows how the installed resources connect):
 
 ```mermaid
 flowchart TB
-    C["trino-analytics/chart/"] --> M["Chart.yaml: identity"]
+    C["lakehouse-query/chart/"] --> M["Chart.yaml: identity"]
     C --> V["values.yaml: default inputs"]
     C --> T["templates/"]
     T --> CM["config.yaml: Trino and catalog properties"]
@@ -36,7 +36,7 @@ flowchart TB
 
 ```mermaid
 flowchart LR
-    TF["Local Terraform"] --> X["Secrets: lakehouse-trino, streaming-storage"]
+    TF["Local Terraform"] --> X["Secrets: lakehouse-query, streaming-storage"]
     TF --> H["Helm release"]
     H --> C["ConfigMap"]
     H --> D["Deployment"]
@@ -56,14 +56,14 @@ flowchart LR
 Use [developer setup](../../../docs/developer-setup.md) and the
 [API chart glossary](../../payment-api/chart/README.md#configuration) for
 Kubernetes terms and Helm syntax. Requires the
-[Polaris chart](../../iceberg-lakehouse/chart/README.md).
+[Polaris chart](../../lakehouse-catalog/chart/README.md).
 
 ## Quick start
 
 From the repository root:
 
 ```bash
-make -C modules/trino-analytics test lint
+make -C modules/lakehouse-query test lint
 make dev-up DEV_CONFIG=templates/lakehouse-topology.json
 make lakehouse-query SQL='SELECT count(*) FROM payment_events'
 ```
@@ -84,5 +84,5 @@ volumes back `/data/trino` and `/tmp`; the root filesystem is read-only.
 ## Documentation
 
 - [Module guide](../README.md)
-- [Lakehouse runbook](../../../docs/runbooks/iceberg-lakehouse.md)
-- [Polaris chart](../../iceberg-lakehouse/chart/README.md)
+- [Lakehouse runbook](../../../docs/runbooks/lakehouse.md)
+- [Polaris chart](../../lakehouse-catalog/chart/README.md)
