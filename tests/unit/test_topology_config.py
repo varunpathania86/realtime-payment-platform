@@ -11,6 +11,22 @@ from scripts.module_catalog import ROOT
 
 
 class TopologyConfigurationTests(unittest.TestCase):
+    def test_analytics_requires_streaming_and_a_sufficient_cluster_a_budget(self):
+        config = json.loads((ROOT / "templates/analytics-topology.json").read_text())
+        settings = validate(config)
+        self.assertTrue(settings["analytics"])
+        self.assertTrue(settings["streaming"])
+        self.assertEqual(settings["nodes"]["a"], {"cpus": 4, "memory_mib": 8192})
+        for invalid in (
+            {"analytics": True},
+            {"streaming": True, "analytics": True},
+            {"node": {"cpus": 3, "memory_mib": 8192}, "streaming": True, "analytics": True},
+            {"node": {"cpus": 4, "memory_mib": 5120}, "streaming": True, "analytics": True},
+            {"nodes": {"a": {"cpus": 3, "memory_mib": 8192}}, "streaming": True, "analytics": True},
+        ):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                validate(invalid)
+
     def test_explicit_observability_and_per_node_budgets(self):
         config = json.loads((ROOT / "templates/observability-topology.json").read_text())
         settings = validate(config)

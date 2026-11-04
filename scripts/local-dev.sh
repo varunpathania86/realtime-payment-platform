@@ -33,6 +33,10 @@ modules() {
     jq -e '.streaming_enabled == true' "$STATE_DIR/events.tfvars.json" >/dev/null; then
     arguments+=(--feature streaming)
   fi
+  if [ -f "$STATE_DIR/events.tfvars.json" ] &&
+    jq -e '.analytics_enabled == true' "$STATE_DIR/events.tfvars.json" >/dev/null; then
+    arguments+=(--feature analytics)
+  fi
   "$PYTHON" scripts/module_catalog.py local-modules "${arguments[@]}"
 }
 
@@ -103,6 +107,7 @@ PY
       --build-arg "FLINK_PYTHON_VERSION=$(pinned_version flink-python)" \
       --build-arg "FLINK_KAFKA_CONNECTOR_VERSION=$(pinned_version flink-kafka-connector)" \
       --build-arg "FLINK_KAFKA_CONNECTOR_SHA256=$(pinned_version flink-kafka-connector-sha256)" \
+      --build-arg "CLICKHOUSE_VERSION=$(pinned_version clickhouse)" \
       --build-arg "VERSION=$tag" --build-arg "COMMIT=$commit" -t "$image" "$path"
     minikube -p "$PROFILE" image load "$image" --overwrite=false
   done < "$inventory"

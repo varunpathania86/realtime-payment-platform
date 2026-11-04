@@ -64,6 +64,9 @@ These rules apply to the whole monorepo. Details for AI tools live in `AGENTS.md
   - **Stable-version recording**: after successful production promotion, create a PR updating the stable catalog version; never push directly to protected `main`.
 - Self-hosted runners are used only for explicitly approved protected work, never for pull requests from forks.
 - Current implementation status: Stages 1-4 are merged; the first solution/module iteration baseline was released live. Stage 5 implements PyFlink event-time fundamentals and, by explicit user approval, automatic module/solution iteration, RC and stable artifact promotion with stable-catalog PRs. Deployment, GitOps and cleanup remain deferred. See Section 19 and [the publication runbook](release-publication.md).
+- Stage 6 is being implemented on its own branch/PR: opt-in persistent ClickHouse
+  tables, checkpoint-aligned at-least-once Flink sinks, dataset lineage and a
+  bounded local query benchmark. Stage 7 remains sequenced after Stage 6.
 - Local application development is independent of those workflows. Stage 0
   supplies tools and Minikube lifecycle; Stage 1 supplies local image builds,
   image loading, Terraform/Helm deployment, updates, and smoke checks. No GitHub
@@ -1096,10 +1099,11 @@ Implement:
 
 - ClickHouse persistent storage
 - Flink sink for normalized facts and window aggregates
+- Durable record-level job, transformation, source and output dataset identities
 - Query-driven `ORDER BY` and partition design
 - Retention policy for detailed events
 - Materialized views only where a measured query justifies them
-- Load test with p50, p95, and p99 query latency
+- Reproducible synthetic load test with p50, p95, and p99 query latency
 
 PostgreSQL remains the transactional source of truth. ClickHouse is not the authoritative payment store.
 
@@ -2392,12 +2396,16 @@ excluded_initially:
 # 19. Current implementation status
 
 Update this block after every session.
+Benchmark procedures, targets and measured evidence are indexed in
+[tests/benchmarks](../tests/benchmarks/README.md), separately from operational
+runbooks. See the [low-memory pipeline report](../tests/benchmarks/pipeline/2026-11-04-low-memory.md)
+and [ClickHouse query report](../tests/benchmarks/pipeline/2026-11-03-clickhouse-query.md).
 
 ```yaml
-current_milestone: stage-5-event-time-and-releases
-stage_status: Stage 5 implementation and isolated local acceptance passed; expanded GitHub release promotion awaits merge and approved live acceptance
-last_completed_task: Verified exact event-time outputs, persistent checkpoints, TaskManager recovery, dirty-source savepoint continuation, clean recreation and cleanup
-next_task: Review Stage 5 changes, merge successful CI/publication, then exercise approved automatic iteration, RC and stable promotion without starting Stage 6
+current_milestone: stage-6-clickhouse-analytics
+stage_status: Stage 6 draft PR 9; opt-in low-memory Flink profile deployed on an isolated single cluster; 50 events/s baseline p95 4.73 seconds failed the 2-second target; three-cluster run remains memory-blocked
+last_completed_task: Measured 285-second low-memory 50/100 events/s run; all 16000 facts drained, 30 checkpoints and no restarts; stress backlog grew, ClickHouse cgroup reached its existing 2-GiB cap; dirty-source savepoint restore passed
+next_task: Investigate ingestion/visibility bottlenecks without weakening latency targets or memory safeguards; full three-cluster acceptance still needs sufficient host resources; keep Stage 7 separate
 known_issues:
   - one cold ingress CRD installation encountered a transient etcd timeout; ordinary dev-update recovered with state and node budgets unchanged
   - a stale pending-install Traefik Helm revision interrupted the first scale-check attempt; removing only that release allowed Terraform to recreate ingress and the retry passed

@@ -8,6 +8,7 @@ All design documentation lives here, written in Markdown with Mermaid diagrams. 
 | [module-development.md](module-development.md) | Module boundaries, catalog types, and adding modules |
 | [release-publication.md](release-publication.md) | Trusted OCI publication, activation, counters, and recovery |
 | [architecture/repository-overview.md](architecture/repository-overview.md) | Module catalog and delivery flow |
+| [architecture/local-platform-guide.md](architecture/local-platform-guide.md) | Start here: repository layout and how Make, Docker, Minikube, Terraform, Helm and Kubernetes connect |
 | [developer-setup.md](developer-setup.md) | Developer environment setup (`make setup`) |
 | [adr/ADR-001-terraform-local-development.md](adr/ADR-001-terraform-local-development.md) | Terraform ownership and independent local image/deployment loop |
 | [runbooks/local-development.md](runbooks/local-development.md) | Local image, deployment, ingress, and recovery troubleshooting |
@@ -28,8 +29,13 @@ All design documentation lives here, written in Markdown with Mermaid diagrams. 
 | [runbooks/iteration-baseline.md](runbooks/iteration-baseline.md) | Protected manual baseline release, exact digests, conflicts and safe reruns |
 | [adr/ADR-021-automatic-release-promotion.md](adr/ADR-021-automatic-release-promotion.md) | Automatic module/solution iteration, RC and stable artifact promotion |
 | [adr/ADR-022-pyflink-event-time-semantics.md](adr/ADR-022-pyflink-event-time-semantics.md) | PyFlink, separate synthetic outcomes, revision identities and checkpoint boundaries |
+| [adr/ADR-023-clickhouse-analytics.md](adr/ADR-023-clickhouse-analytics.md) | Persistent ClickHouse tables, checkpoint-aligned batch sink, query keys, retention and benchmark |
 | [runbooks/flink-recovery.md](runbooks/flink-recovery.md) | Synthetic fixtures, lateness, persistent checkpoints and savepoint/restore |
+| [runbooks/clickhouse-analytics.md](runbooks/clickhouse-analytics.md) | ClickHouse readiness, sink recovery, replacement queries and failure boundaries |
+| [../tests/benchmarks/](../tests/benchmarks/README.md) | Cross-module benchmark goals, targets, setup/cleanup, measured reports and raw JSON |
 | [adr/](adr/) | Architecture Decision Records |
 | [runbooks/](runbooks/) | Operational procedures |
 
-Later stages add `benchmarks/`, `incident-reports/`, `threat-model/`, and `interviews/` as described in the master plan.
+Cross-module benchmark evidence lives under `tests/benchmarks/`, separately
+from operational runbooks. Later stages add `incident-reports/`, `threat-model/`,
+and `interviews/` as described in the master plan.

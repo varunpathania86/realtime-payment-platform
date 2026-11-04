@@ -10,6 +10,9 @@ a local rebuild is visible. No payment operations or identity integration yet.
 
 ## Layout
 
+See the [Helm chart guide](chart/README.md) for template purposes and how browser
+traffic reaches the portal and API.
+
 ```text
 .
 ├── Dockerfile

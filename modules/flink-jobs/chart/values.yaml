@@ -12,6 +12,11 @@ streaming:
   savepointURI: s3://flink-state/savepoints
   endpoint: http://minio.data.svc.cluster.local:9000
   existingSecret: streaming-storage
+analytics:
+  enabled: false
+  url: http://clickhouse-analytics:8123
+  user: rpp_analytics
+  existingSecret: clickhouse-analytics
 events:
   brokers: kafka.data.svc.cluster.local:9092
   existingSecret: payment-api-events
@@ -25,3 +30,15 @@ taskmanager:
   resources:
     requests: {cpu: 250m, memory: 1536Mi}
     limits: {cpu: "2", memory: 2560Mi}
+runtimeProfile: standard
+lowMemory:
+  jobmanager:
+    processMemory: 768m
+    resources:
+      requests: {cpu: 100m, memory: 768Mi}
+      limits: {cpu: "1", memory: 1024Mi}
+  taskmanager:
+    processMemory: 1280m
+    resources:
+      requests: {cpu: 250m, memory: 1280Mi}
+      limits: {cpu: "2", memory: 2048Mi}

@@ -1,3 +1,8 @@
+{{/*
+Provides a stable internal address for the portal pods created by deployment.yaml.
+ingress.yaml uses Service port 80, forwarded to the pod's named "http" port (8080).
+A Service routes to matching ready pods; it does not create containers. See ../README.md.
+*/}}
 apiVersion: v1
 kind: Service
 metadata:

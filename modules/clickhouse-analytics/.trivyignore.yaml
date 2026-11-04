@@ -1,0 +1,26 @@
+misconfigurations:
+  - id: KSV-0020
+    paths: [chart/templates/statefulset.yaml, chart/templates/schema-job.yaml]
+    expired_at: 2027-01-01
+    statement: >-
+      Preserve the official ClickHouse image's mapped clickhouse UID 101.
+      The pod is non-root, uses a matching writable volume group, and drops
+      all capabilities. Revisit with a runtime-user change.
+  - id: KSV-0021
+    paths: [chart/templates/statefulset.yaml, chart/templates/schema-job.yaml]
+    expired_at: 2027-01-01
+    statement: >-
+      Preserve the official ClickHouse image's mapped clickhouse UID/GID 101
+      and writable-volume group. Revisit with a runtime-user change.
+  - id: KSV-0110
+    paths: [chart/templates/statefulset.yaml, chart/templates/schema-job.yaml]
+    expired_at: 2027-01-01
+    statement: >-
+      Terraform installs this reusable Helm release in the apps namespace.
+      Raw chart scanning lacks the release namespace; keep templates reusable.
+  - id: KSV-0125
+    paths: [chart/templates/statefulset.yaml, chart/templates/schema-job.yaml]
+    expired_at: 2027-01-01
+    statement: >-
+      Local development intentionally loads rpp-local images with pull policy
+      Never. Trusted publication supplies verified GHCR digests.

@@ -119,7 +119,10 @@ def submit():
     command = ["/opt/flink/bin/flink", "run", "-d", "-m", "flink-jobs:8081"]
     if os.environ.get("RESTORE_PATH"):
         command.extend(["--fromSavepoint", os.environ["RESTORE_PATH"]])
-    command.extend(["--python", "/opt/job/job.py", "--pyFiles", "/opt/job/processing.py"])
+    command.extend([
+        "--python", "/opt/job/job.py",
+        "--pyFiles", "/opt/job/processing.py,/opt/job/analytics.py",
+    ])
     subprocess.run(command, check=True)
     wait_for_checkpoint({job["jid"] for job in jobs})
 

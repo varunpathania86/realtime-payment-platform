@@ -100,6 +100,18 @@ class Context:
 
 
 class OperatorTests(unittest.TestCase):
+    def test_submit_distributes_all_imported_job_modules(self):
+        with patch.object(runtime, "overview", return_value=[]), \
+                patch.object(runtime, "bootstrap"), \
+                patch.object(runtime, "wait_for_checkpoint"), \
+                patch.object(runtime.subprocess, "run") as run:
+            runtime.submit()
+        command = run.call_args.args[0]
+        self.assertEqual(
+            command[command.index("--pyFiles") + 1].split(","),
+            ["/opt/job/processing.py", "/opt/job/analytics.py"],
+        )
+
     def test_inspection_initializes_explicit_positions_before_checking_progress(self):
         consumer = unittest.mock.MagicMock()
         consumer.partitions_for_topic.return_value = {0}

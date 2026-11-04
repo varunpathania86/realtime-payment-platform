@@ -34,8 +34,8 @@ Use the [opt-in topology](templates/observability-topology.json) with `DEV_CONFI
 The [observability runbook](docs/runbooks/observability.md) covers dashboards,
 alerts and local-only network limitations.
 See [ADR-019](docs/adr/ADR-019-shared-observability-backends.md).
-Durable data lineage is a separate Stage 5 design / Stage 6 pipeline follow-up,
-not a guarantee provided by Stage 4 traces.
+Stage 4 traces diagnose executions; Stage 6 records dataset, job-version and
+transformation lineage with durable ClickHouse facts and window aggregates.
 
 Stage 4 also brings forward a manual **Release iteration baseline** workflow:
 freeze approved main artifacts into module/solution releases without rebuilding,
@@ -52,6 +52,23 @@ Stage 5 also replaces manual release SHA/version inputs with `release`, `module`
 `type` and `promote`, including approved RC/stable artifact promotion and
 reviewed stable-catalog PRs. Deployment and GitOps remain deferred.
 
+Stage 6 is in progress: it adds opt-in persistent
+[ClickHouse analytics](modules/clickhouse-analytics/README.md) and
+checkpoint-aligned Flink sinks for normalized facts and revision-aware windows.
+Use `templates/analytics-topology.json` to select the feature in cluster A;
+default payment-only development remains unchanged. PostgreSQL continues as
+the transactional source of truth.
+
+The [bounded pipeline benchmark](modules/flink-jobs/README.md#bounded-pipeline-benchmark)
+provides a 50 events/s baseline and separate 100 events/s stress phase with
+fact-visibility latency and Kafka lag reporting. Run its memory preflight before
+starting the [compact three-cluster topology](templates/analytics-benchmark-topology.json);
+these are test targets, not established capacity claims.
+An [opt-in low-memory Flink profile](modules/flink-jobs/chart/README.md#opt-in-low-memory-runtime)
+coordinates process memory and container budgets without changing shared
+defaults; procedures, measured results and raw evidence live in the
+[benchmark reports](tests/benchmarks/README.md).
+
 ## Repository map
 
 | Path | Purpose |
@@ -67,6 +84,16 @@ reviewed stable-catalog PRs. Deployment and GitOps remain deferred.
 | [ai/](ai/) | Path-specific AI rules and reusable AI skills |
 | [.github/](.github/) | Workflows, CODEOWNERS, PR template |
 | `platform/`, `tests/`, `scripts/` | Shared solution infrastructure, cross-module tests, and tooling |
+
+New to Kubernetes or Helm? The module chart guides explain each template and
+show resource relationships with Mermaid:
+[API and shared terminology](modules/payment-api/chart/README.md),
+[portal](modules/web-portal/chart/README.md),
+[Flink](modules/flink-jobs/chart/README.md), and
+[ClickHouse](modules/clickhouse-analytics/chart/README.md).
+
+Start with the [local platform walkthrough](docs/architecture/local-platform-guide.md)
+to connect the repository layout, Make scripts, Terraform, Helm and Kubernetes.
 
 ## Quick start
 

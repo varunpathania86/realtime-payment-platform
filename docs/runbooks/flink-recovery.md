@@ -55,6 +55,15 @@ STREAMING_RESTORE_PATH=s3://flink-state/savepoints/<returned-savepoint> make dev
 The local update guard refuses a changed stateful image without an explicit
 restore path and a stopped prior job. Restore must keep compatible operator
 UIDs and state serializers.
+
+With Stage 6 analytics enabled, ClickHouse writes occur synchronously inside
+Flink operators before those records are forwarded. A failed insert fails the
+record path before a later checkpoint can acknowledge it; after recovery,
+Kafka replay can create physical duplicates, so query replacement tables with
+`FINAL`. The ClickHouse tables do not participate in a transaction with Kafka
+or each other. An unavailable ClickHouse service must be recovered before
+checkpoint progress can resume.
+
 The guard runs before building/loading candidate images and keeps the previous
 image inventory on rejection. Unchanged immutable application tags are reused.
 The path is explicit: never silently start from empty state after failed restore.

@@ -36,3 +36,5 @@ flink-kafka-connector-sha256 1086f3eee73d727e234860fcd03adafc0d76f2fc70a25d39c36
 minio RELEASE.2025-04-22T22-12-26Z
 minio-sha256-amd64 53e2a2cb16c5366ea6fbbc479c19ddb4c6a0948273e752f740fb1fbf27bb817c
 minio-sha256-arm64 6c2f3142c94240206123177f4ba1e360daa5d1e0a4962e90757ef4f92c3ab57c
+# Stage 6 local analytics image, not a host CLI.
+clickhouse 25.8.16.34-alpine

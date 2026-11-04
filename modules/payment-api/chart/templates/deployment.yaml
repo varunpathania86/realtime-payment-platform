@@ -1,3 +1,8 @@
+{{/*
+Runs the HTTP API pods; service.yaml selects their labels and ingress.yaml routes /api to them.
+The migrate init container completes before the API starts. _helpers.tpl supplies the shared
+image, database Secret/TLS mounts and optional telemetry settings. See ../README.md.
+*/}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -57,6 +62,7 @@ spec:
             capabilities:
               drop: ["ALL"]
           readinessProbe:
+            # Failed readiness removes this pod from Service traffic; liveness restarts a stuck process.
             httpGet:
               path: /readyz
               port: http

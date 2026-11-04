@@ -1,0 +1,6 @@
+{
+  "node": { "cpus": 2, "memory_mib": 3072 },
+  "nodes": { "a": { "cpus": 4, "memory_mib": 6144 } },
+  "streaming": true,
+  "analytics": true
+}

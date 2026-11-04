@@ -1,3 +1,8 @@
+{{/*
+Gives ingress.yaml and other in-cluster callers a stable address for the API pods.
+The selector matches deployment.yaml (not the relay/consumer worker labels).
+Service port 80 forwards to the pod's named "http" port, which is 8080. See ../README.md.
+*/}}
 apiVersion: v1
 kind: Service
 metadata:

@@ -1,0 +1,15 @@
+{{/*
+Stable internal address selecting the ClickHouse pod created by statefulset.yaml.
+Flink writes over HTTP (8123); schema-job.yaml uses the native client protocol (9000).
+No Ingress is created: developer access uses an explicit loopback port-forward. See ../README.md.
+*/}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}
+spec:
+  selector:
+    app.kubernetes.io/name: {{ .Release.Name }}
+  ports:
+    - {name: http, port: 8123, targetPort: http}
+    - {name: native, port: 9000, targetPort: native}

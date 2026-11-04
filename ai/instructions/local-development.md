@@ -18,6 +18,9 @@ Applies to: `scripts/local-dev.sh`, `scripts/smoke.py`, `scripts/check_local_cha
   transition. Do not add competing imperative Helm/Kubernetes ownership.
 - Preserve non-root, read-only containers, probes, resource requests/limits,
   and loopback-only developer ingress forwarding.
+- Follow the beginner-friendly Helm documentation rule in `AGENTS.md`: keep
+  template comments and `chart/README.md` resource maps/Mermaid diagrams aligned
+  with actual callers, dependencies, conditional resources, and hook lifecycles.
 - Smoke checks must let kubectl bind an available temporary port directly, not
   probe then release a port before binding. Keep browser access undisturbed and
   clean up only the smoke check's own forwarding process on success or failure.

@@ -29,6 +29,14 @@ This file is the single, tool-neutral source of project instructions, using the 
 
 - Create documents from `templates/` (SDD, LLD, ADR, runbook, project README).
 - Use Mermaid for diagrams. Put design docs in `docs/` or the sub-project's `docs/`.
+- Keep module Helm charts beginner-friendly: comment each `chart/templates/`
+  resource's purpose, callers/consumers, and dependencies, including conditional
+  resources and hooks. Maintain a short `chart/README.md` with a template-to-resource
+  map, Mermaid file-layout diagram and resource relationship diagram, linked
+  from the module README. Link to the shared local-platform walkthrough for
+  Make/Terraform/Helm/Kubernetes context. Explain
+  non-obvious Helm expressions without annotating every YAML field; comment-only
+  edits must preserve rendered manifests, including configuration checksums.
 - Record significant decisions as `docs/adr/ADR-NNN-title.md`.
 - Update the sub-project README and the root README index when behavior or layout changes.
 - When adding or renaming a module, update both `solution.yaml` and `modules/<name>/module.yaml`; workflow logic must discover modules dynamically, never use hard-coded module names or infer behavior from the descriptive `type`.
