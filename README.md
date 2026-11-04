@@ -43,7 +43,7 @@ deploying, advancing the PI schedule, or changing stable catalog versions.
 The first live solution baseline `0.1.0-it1` and three module baselines succeeded.
 See the [baseline runbook](docs/runbooks/iteration-baseline.md).
 
-Stage 5 adds [PyFlink event-time processing](modules/flink-jobs/README.md):
+Stage 5 adds [PyFlink event-time processing](modules/stream-processor/README.md):
 separate synthetic outcomes, native Kafka-partition watermarks/idleness,
 revision-aware windows and persistent MinIO checkpoints/savepoints.
 Use the [streaming topology](templates/streaming-topology.json) to opt in.
@@ -53,18 +53,18 @@ Stage 5 also replaces manual release SHA/version inputs with `release`, `module`
 reviewed stable-catalog PRs. Deployment and GitOps remain deferred.
 
 Stage 6 is in progress: it adds opt-in persistent
-[ClickHouse analytics](modules/clickhouse-analytics/README.md) and
+[realtime analytics (ClickHouse)](modules/realtime-analytics/README.md) and
 checkpoint-aligned Flink sinks for normalized facts and revision-aware windows.
 Use `templates/analytics-topology.json` to select the feature in cluster A;
 default payment-only development remains unchanged. PostgreSQL continues as
 the transactional source of truth.
 
-The [bounded pipeline benchmark](modules/flink-jobs/README.md#bounded-pipeline-benchmark)
+The [bounded pipeline benchmark](modules/stream-processor/README.md#bounded-pipeline-benchmark)
 provides a 50 events/s baseline and separate 100 events/s stress phase with
 fact-visibility latency and Kafka lag reporting. Run its memory preflight before
 starting the [compact three-cluster topology](templates/analytics-benchmark-topology.json);
 these are test targets, not established capacity claims.
-An [opt-in low-memory Flink profile](modules/flink-jobs/chart/README.md#opt-in-low-memory-runtime)
+An [opt-in low-memory Flink profile](modules/stream-processor/chart/README.md#opt-in-low-memory-runtime)
 coordinates process memory and container budgets without changing shared
 defaults; procedures, measured results and raw evidence live in the
 [benchmark reports](tests/benchmarks/README.md).
@@ -117,8 +117,8 @@ New to Kubernetes or Helm? The module chart guides explain each template and
 show resource relationships with Mermaid:
 [API and shared terminology](modules/payment-api/chart/README.md),
 [portal](modules/web-portal/chart/README.md),
-[Flink](modules/flink-jobs/chart/README.md),
-[ClickHouse](modules/clickhouse-analytics/chart/README.md),
+[Flink](modules/stream-processor/chart/README.md),
+[ClickHouse](modules/realtime-analytics/chart/README.md),
 [Polaris](modules/lakehouse-catalog/chart/README.md), and
 [Trino](modules/lakehouse-query/chart/README.md).
 

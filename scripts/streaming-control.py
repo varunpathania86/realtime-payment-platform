@@ -23,12 +23,12 @@ def command(profile, *args):
 def rest(profile, path, body=None):
     program = (
         "import urllib.request; "
-        f"r=urllib.request.Request('http://flink-jobs:8081{path}', "
+        f"r=urllib.request.Request('http://stream-processor:8081{path}', "
         f"data={None if body is None else json.dumps(body).encode()!r}, "
         "headers={'Content-Type':'application/json'}); "
         "print(urllib.request.urlopen(r,timeout=30).read().decode())"
     )
-    return json.loads(command(profile, "exec", "deployment/flink-jobs-jobmanager", "--", "python", "-c", program))
+    return json.loads(command(profile, "exec", "deployment/stream-processor-jobmanager", "--", "python", "-c", program))
 
 
 def desired_runtime(settings):
@@ -88,7 +88,7 @@ def main():
     if not re.fullmatch(r"[a-z][a-z0-9-]{0,39}", args.profile):
         raise ValueError("invalid explicit Minikube profile")
     if args.action == "guard":
-        deployment = command(args.profile, "get", "deployment", "flink-jobs-jobmanager",
+        deployment = command(args.profile, "get", "deployment", "stream-processor-jobmanager",
             "--ignore-not-found", "-o", "json")
         if not deployment.strip():
             return
@@ -96,7 +96,7 @@ def main():
         image = container["image"]
         root = Path(__file__).resolve().parents[1]
         inventory = args.images or root / ".local" / args.profile / "images.tfvars.json"
-        expected = json.loads(inventory.read_text())["local_images"]["flink-jobs"]
+        expected = json.loads(inventory.read_text())["local_images"]["stream-processor"]
         settings_path = root / ".local" / args.profile / "events.tfvars.json"
         settings = json.loads(settings_path.read_text()) if settings_path.exists() else {}
         current = {item["name"]: item.get("value", "") for item in container.get("env", [])}
@@ -110,7 +110,7 @@ def main():
             raise ValueError("stop the existing Flink jobs with make streaming-stop before replacing them")
         return
     if args.action in ("fixtures", "inspect", "load"):
-        print(command(args.profile, "exec", "deployment/flink-jobs-jobmanager", "--", "python",
+        print(command(args.profile, "exec", "deployment/stream-processor-jobmanager", "--", "python",
             "/opt/job/control.py", args.action), end="")
         return
     jobs = rest(args.profile, "/jobs/overview")["jobs"]

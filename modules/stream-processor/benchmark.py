@@ -120,7 +120,7 @@ def make_event(run_id, phase, index, timestamp):
 
 
 def job_health():
-    root = "http://flink-jobs:8081"
+    root = "http://stream-processor:8081"
     with urlopen(root + "/jobs/overview", timeout=5) as response:
         jobs = [job for job in json.load(response)["jobs"]
                 if job["name"] == "payment-event-time-v1" and job["state"] == "RUNNING"]

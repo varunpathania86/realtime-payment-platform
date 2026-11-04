@@ -33,8 +33,9 @@ All design documentation lives here, written in Markdown with Mermaid diagrams. 
 | [adr/ADR-024-advisory-event-time-risk-features.md](adr/ADR-024-advisory-event-time-risk-features.md) | Optional synthetic context, event-time history, advisory model contract and staged ONNX acceptance |
 | [adr/ADR-025-interview-roadmap-and-read-only-mcp.md](adr/ADR-025-interview-roadmap-and-read-only-mcp.md) | Iceberg, Superset and AI assistant first; local identity until Keycloak; read-only MCP tools |
 | [adr/ADR-026-polaris-iceberg-lakehouse.md](adr/ADR-026-polaris-iceberg-lakehouse.md) | Polaris REST catalog on PostgreSQL, Flink bronze/curated Iceberg writer, Trino reader/maintainer catalogs |
+| [adr/ADR-027-capability-module-names.md](adr/ADR-027-capability-module-names.md) | Capability-based module names; product names stay inside modules |
 | [runbooks/flink-recovery.md](runbooks/flink-recovery.md) | Synthetic fixtures, lateness, persistent checkpoints and savepoint/restore |
-| [runbooks/clickhouse-analytics.md](runbooks/clickhouse-analytics.md) | ClickHouse readiness, sink recovery, replacement queries and failure boundaries |
+| [runbooks/realtime-analytics.md](runbooks/realtime-analytics.md) | ClickHouse readiness, sink recovery, replacement queries and failure boundaries |
 | [runbooks/lakehouse.md](runbooks/lakehouse.md) | Polaris/Trino diagnosis, Iceberg maintenance, evolution and savepoint-safe toggling |
 | [../tests/benchmarks/](../tests/benchmarks/README.md) | Cross-module benchmark goals, targets, setup/cleanup, measured reports and raw JSON |
 | [adr/](adr/) | Architecture Decision Records |

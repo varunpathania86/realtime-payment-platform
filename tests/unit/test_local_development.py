@@ -267,16 +267,16 @@ if name == "kubectl" and "port-forward" in sys.argv:
                 self.assertEqual(list((self.root / ".local" / "isolated").glob("images.*")), [])
 
     def test_stateful_guard_precedes_build_and_load_and_keeps_previous_inventory(self):
-        flink = self.root / "modules" / "flink-jobs"
+        flink = self.root / "modules" / "stream-processor"
         shutil.copytree(self.source.parent, flink)
-        (flink / "module.yaml").write_text("name: flink-jobs\ntype: library\n")
-        (self.root / "solution.yaml").write_text("modules: [demo, flink-jobs]\n")
+        (flink / "module.yaml").write_text("name: stream-processor\ntype: library\n")
+        (self.root / "solution.yaml").write_text("modules: [demo, stream-processor]\n")
         state = self.root / ".local" / "isolated"
         state.mkdir(parents=True)
         (state / "events.tfvars.json").write_text('{"streaming_enabled":true}\n')
-        previous = {"local_images": {"flink-jobs": "rpp-local/flink-jobs:dev-old"}}
+        previous = {"local_images": {"stream-processor": "rpp-local/stream-processor:dev-old"}}
         (state / "images.tfvars.json").write_text(json.dumps(previous))
-        result = self.run_command("images", DEPLOYED_FLINK_IMAGE=previous["local_images"]["flink-jobs"],
+        result = self.run_command("images", DEPLOYED_FLINK_IMAGE=previous["local_images"]["stream-processor"],
             STREAMING_RESTORE_PATH="")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("stateful image changed", result.stderr)

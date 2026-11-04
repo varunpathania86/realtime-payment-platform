@@ -1,4 +1,4 @@
-# ClickHouse analytics Helm chart
+# Realtime analytics Helm chart
 
 Deploys one persistent analytics database and applies its table schema.
 Part of [realtime-payment-platform](../../../README.md).
@@ -16,7 +16,7 @@ File layout (the next diagram shows how the installed resources connect):
 
 ```mermaid
 flowchart TB
-    C["clickhouse-analytics/chart/"] --> M["Chart.yaml: identity"]
+    C["realtime-analytics/chart/"] --> M["Chart.yaml: identity"]
     C --> V["values.yaml: default inputs"]
     C --> F["files/schema.sql: packaged SQL"]
     C --> T["templates/"]
@@ -71,7 +71,7 @@ From the repository root:
 
 ```bash
 make dev-up DEV_CONFIG=templates/analytics-topology.json
-make -C modules/clickhouse-analytics test lint
+make -C modules/realtime-analytics test lint
 ```
 
 There is no public Ingress in this chart. Developer database access uses the
@@ -102,5 +102,5 @@ database migration system; changes to existing tables need explicit planning.
 ## Documentation
 
 - [Module guide](../README.md)
-- [Analytics runbook](../../../docs/runbooks/clickhouse-analytics.md)
-- [Flink chart](../../flink-jobs/chart/README.md)
+- [Analytics runbook](../../../docs/runbooks/realtime-analytics.md)
+- [Flink chart](../../stream-processor/chart/README.md)

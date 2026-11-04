@@ -1,4 +1,4 @@
-# Flink jobs Helm chart
+# Stream processor Helm chart
 
 Deploys the opt-in session cluster and submits the payment processing job.
 Part of [realtime-payment-platform](../../../README.md).
@@ -16,7 +16,7 @@ File layout (one template can render several Kubernetes resources):
 
 ```mermaid
 flowchart TB
-    C["flink-jobs/chart/"] --> M["Chart.yaml: identity"]
+    C["stream-processor/chart/"] --> M["Chart.yaml: identity"]
     C --> V["values.yaml: default inputs"]
     C --> T["templates/"]
     T --> R["runtime.yaml: config, Service, two Deployments"]
@@ -144,4 +144,4 @@ No new inference Service or per-event MinIO access is introduced.
 
 - [Module guide](../README.md)
 - [Recovery runbook](../../../docs/runbooks/flink-recovery.md)
-- [ClickHouse chart](../../clickhouse-analytics/chart/README.md)
+- [ClickHouse chart](../../realtime-analytics/chart/README.md)

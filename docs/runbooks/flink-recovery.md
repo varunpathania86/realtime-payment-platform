@@ -17,11 +17,11 @@ MinIO is persistent local development storage, not a replicated backup.
 ## Diagnosis
 
 1. Run `make dev-status` and check both Flink roles, MinIO and Kafka readiness.
-2. Inspect `kubectl --context rpp-a -n apps logs deployment/flink-jobs-taskmanager`.
+2. Inspect `kubectl --context rpp-a -n apps logs deployment/stream-processor-taskmanager`.
 3. Use a loopback REST forward:
 
     ```bash
-    kubectl --context rpp-a -n apps port-forward --address 127.0.0.1 service/flink-jobs 8081:8081
+    kubectl --context rpp-a -n apps port-forward --address 127.0.0.1 service/stream-processor 8081:8081
     ```
 
 4. Inspect the running job and completed checkpoint at `/jobs/overview` and

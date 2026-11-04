@@ -1,5 +1,5 @@
 schemaVersion: 1
-name: flink-jobs
+name: stream-processor
 type: stream-processing
 version: 0.0.0
 owners:

@@ -69,7 +69,7 @@ def collect(predicate, timeout=90):
     raise TimeoutError("risk acceptance timed out waiting for expected audit records")
 
 def rest(path):
-    with urllib.request.urlopen("http://flink-jobs:8081" + path, timeout=10) as response:
+    with urllib.request.urlopen("http://stream-processor:8081" + path, timeout=10) as response:
         return json.load(response)
 
 first, later, late = fixture(1, 0), fixture(2, 60), fixture(3, 30, outcome="rejected")
@@ -174,7 +174,7 @@ def main():
         raise ValueError("invalid explicit profile")
     subprocess.run(
         ["kubectl", "--context", args.profile, "--request-timeout=30s", "-n", "apps",
-            "exec", "-i", "deployment/flink-jobs-jobmanager", "--",
+            "exec", "-i", "deployment/stream-processor-jobmanager", "--",
             "env", "PYTHONPATH=/opt/job", "python", "-"],
         input=PROGRAM, text=True, check=True, timeout=300,
     )

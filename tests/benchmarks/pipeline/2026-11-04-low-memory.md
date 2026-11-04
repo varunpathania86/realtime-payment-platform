@@ -151,8 +151,8 @@ script; it is not a new public single-cluster Make workflow.
     [alongside this report](2026-11-04-low-memory.json):
 
     ```bash
-    kubectl --context rpp-stage6-lowmem -n apps exec -i deployment/flink-jobs-jobmanager \
-      -- env PYTHONPATH=/opt/job python - < modules/flink-jobs/benchmark.py
+    kubectl --context rpp-stage6-lowmem -n apps exec -i deployment/stream-processor-jobmanager \
+      -- env PYTHONPATH=/opt/job python - < modules/stream-processor/benchmark.py
     ```
 
 5. After collecting node/container memory and pod status, the following
@@ -228,6 +228,6 @@ Investigate the ingestion/observation bottleneck before lowering memory further.
 Repeat with unchanged targets and record source/image identity and resources
 for comparisons. Keep three-cluster safety reserves and node minimums intact.
 
-See [operational recovery](../../../docs/runbooks/clickhouse-analytics.md),
-[profile settings](../../../modules/flink-jobs/chart/README.md#opt-in-low-memory-runtime)
+See [operational recovery](../../../docs/runbooks/realtime-analytics.md),
+[profile settings](../../../modules/stream-processor/chart/README.md#opt-in-low-memory-runtime)
 and the separate [query benchmark](2026-11-03-clickhouse-query.md).

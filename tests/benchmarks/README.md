@@ -98,15 +98,15 @@ Run commands from the repository root, in order:
 | `make smoke` | Verify application readiness, not throughput |
 | `make dev-status` | Inspect resource allocations and usage |
 | `make streaming-benchmark` | Run the bounded 50/100 events/s pipeline test |
-| `make -C modules/clickhouse-analytics benchmark` | Separate disposable-table query benchmark |
+| `make -C modules/realtime-analytics benchmark` | Separate disposable-table query benchmark |
 | `make dev-down` then `make cluster-down` | Destructively dispose of an owned three-cluster test base |
 
 ## Configuration
 
 Executable benchmark logic stays with its module and launcher:
-[pipeline](../../modules/flink-jobs/benchmark.py),
+[pipeline](../../modules/stream-processor/benchmark.py),
 [launcher/preflight](../../scripts/streaming_benchmark.py), and
-[query benchmark](../../modules/clickhouse-analytics/benchmark.py).
+[query benchmark](../../modules/realtime-analytics/benchmark.py).
 This directory holds procedures and evidence, not duplicated implementations.
 
 For new reports, record goal, targets, achieved results, workload, hardware,
@@ -116,7 +116,7 @@ reconstructing it as measured evidence.
 
 ## Documentation
 
-- [Pipeline metric definitions](../../modules/flink-jobs/README.md#bounded-pipeline-benchmark)
-- [Low-memory chart settings](../../modules/flink-jobs/chart/README.md#opt-in-low-memory-runtime)
-- [Operational recovery and failure boundaries](../../docs/runbooks/clickhouse-analytics.md)
+- [Pipeline metric definitions](../../modules/stream-processor/README.md#bounded-pipeline-benchmark)
+- [Low-memory chart settings](../../modules/stream-processor/chart/README.md#opt-in-low-memory-runtime)
+- [Operational recovery and failure boundaries](../../docs/runbooks/realtime-analytics.md)
 - [Master plan](../../docs/master-plan.md)

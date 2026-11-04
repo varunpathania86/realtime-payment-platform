@@ -53,7 +53,7 @@ lag of one checkpoint interval is normal, not an incident.
 3. Check both Flink jobs are `RUNNING` and checkpoints complete:
 
     ```bash
-    kubectl --context "$PROFILE" -n apps exec deploy/flink-jobs-jobmanager -- \
+    kubectl --context "$PROFILE" -n apps exec deploy/stream-processor-jobmanager -- \
       curl -fsS http://localhost:8081/jobs/overview
     ```
 

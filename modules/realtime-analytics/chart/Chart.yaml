@@ -1,5 +1,5 @@
 apiVersion: v2
-name: clickhouse-analytics
+name: realtime-analytics
 description: Persistent local ClickHouse analytics for Stage 6
 type: application
 version: 0.1.0

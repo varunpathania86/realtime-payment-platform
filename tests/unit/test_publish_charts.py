@@ -163,7 +163,7 @@ class ChartPublicationTests(unittest.TestCase):
 
     def test_real_helm_packages_application_and_stateful_charts_and_metadata_is_read_by_digest(self):
         real_run = subprocess.run
-        for name in ("payment-api", "web-portal", "clickhouse-analytics"):
+        for name in ("payment-api", "web-portal", "realtime-analytics"):
             with self.subTest(module=name):
                 chart = self.source / "modules" / name / "chart"
                 if not chart.exists():

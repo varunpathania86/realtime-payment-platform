@@ -48,8 +48,8 @@ PyFlink or Maven installation is needed. First-use downloads require internet.
 From the repository root:
 
 ```bash
-make -C modules/flink-jobs build test lint
-make -C modules/flink-jobs integration
+make -C modules/stream-processor build test lint
+make -C modules/stream-processor integration
 make dev-up DEV_CONFIG=templates/streaming-topology.json
 make streaming-fixtures
 make streaming-inspect
@@ -172,7 +172,7 @@ and [actual test results](../../tests/benchmarks/pipeline/2026-11-04-low-memory.
 The measured single-cluster run drained all facts but failed the 2-second p95
 target; do not lower node minimums or claim capacity from reduced limits.
 
-See the [analytics runbook](../../docs/runbooks/clickhouse-analytics.md#three-cluster-resources-and-failure-boundaries)
+See the [analytics runbook](../../docs/runbooks/realtime-analytics.md#three-cluster-resources-and-failure-boundaries)
 for resource ownership and separate-server failure boundaries.
 
 Kafka result records use a compacted key and JSON `{result_id, payload}`;

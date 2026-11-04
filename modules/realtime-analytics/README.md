@@ -1,4 +1,4 @@
-# ClickHouse analytics
+# Realtime analytics
 
 Persistent local ClickHouse storage for synthetic event facts and revision-aware
 Flink aggregates. Part of [realtime-payment-platform](../../README.md).
@@ -36,7 +36,7 @@ the pinned ClickHouse image version; no host ClickHouse client is required.
 ## Quick start
 
 ```bash
-make -C modules/clickhouse-analytics build test lint
+make -C modules/realtime-analytics build test lint
 make dev-up DEV_CONFIG=templates/analytics-topology.json
 ```
 

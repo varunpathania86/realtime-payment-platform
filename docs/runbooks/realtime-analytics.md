@@ -1,4 +1,4 @@
-# Runbook: ClickHouse analytics
+# Runbook: Realtime analytics (ClickHouse)
 
 - **Severity:** Medium
 - **Owner:** varunpathania86
@@ -22,7 +22,7 @@ payment processing remains the transactional source of truth.
 
     ```bash
     kubectl --context "$PROFILE" -n apps get statefulset,pod,service,pvc
-    kubectl --context "$PROFILE" -n apps logs statefulset/clickhouse-analytics
+    kubectl --context "$PROFILE" -n apps logs statefulset/realtime-analytics
     ```
 
 3. Check Flink task logs for `ClickHouse insert failed` and inspect Flink's
@@ -84,8 +84,8 @@ Kafka cluster across the three Kubernetes clusters. There are not three
 independently running analytics pipelines.
 
 Application container requests/limits come from module chart values:
-[Flink](../../modules/flink-jobs/chart/values.yaml),
-[ClickHouse](../../modules/clickhouse-analytics/chart/values.yaml),
+[Flink](../../modules/stream-processor/chart/values.yaml),
+[ClickHouse](../../modules/realtime-analytics/chart/values.yaml),
 [payment API/workers](../../modules/payment-api/chart/values.yaml) and
 [portal](../../modules/web-portal/chart/values.yaml).
 Infrastructure budgets are in the

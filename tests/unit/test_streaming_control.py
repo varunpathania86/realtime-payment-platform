@@ -18,13 +18,13 @@ class StreamingControlTests(unittest.TestCase):
         error = CONTROL.subprocess.TimeoutExpired("kubectl", 180)
         with patch.object(CONTROL.subprocess, "run", side_effect=error) as run:
             with self.assertRaises(CONTROL.subprocess.TimeoutExpired):
-                CONTROL.command("isolated-a", "exec", "deployment/flink-jobs-jobmanager", "--", "python")
+                CONTROL.command("isolated-a", "exec", "deployment/stream-processor-jobmanager", "--", "python")
         self.assertEqual(run.call_args.kwargs["timeout"], 180)
         self.assertIn("isolated-a", run.call_args.args[0])
 
     def invoke_guard(self, deployment, restore="", jobs=None, settings=None):
         argv = ["streaming-control", "guard", "--profile", "isolated-a"]
-        inventory = json.dumps({"local_images": {"flink-jobs": "rpp-local/flink-jobs:dev-new"}})
+        inventory = json.dumps({"local_images": {"stream-processor": "rpp-local/stream-processor:dev-new"}})
         with patch.object(sys, "argv", argv), \
             patch.dict(os.environ, {"STREAMING_RESTORE_PATH": restore}), \
             patch.object(CONTROL, "command", return_value=deployment), \
@@ -38,10 +38,10 @@ class StreamingControlTests(unittest.TestCase):
 
     def test_initial_install_and_unchanged_image_are_idempotent(self):
         self.invoke_guard("")
-        self.invoke_guard(self.deployment("rpp-local/flink-jobs:dev-new"))
+        self.invoke_guard(self.deployment("rpp-local/stream-processor:dev-new"))
 
     def test_changed_stateful_image_needs_explicit_restore_and_stopped_job(self):
-        changed = self.deployment("rpp-local/flink-jobs:dev-old")
+        changed = self.deployment("rpp-local/stream-processor:dev-old")
         with self.assertRaisesRegex(ValueError, "STREAMING_RESTORE_PATH"):
             self.invoke_guard(changed)
         with self.assertRaisesRegex(ValueError, "stop the existing"):
@@ -56,7 +56,7 @@ class StreamingControlTests(unittest.TestCase):
             command.assert_not_called()
 
     def test_risk_configuration_change_needs_a_stopped_job_and_restore_even_with_same_image(self):
-        deployment = self.deployment("rpp-local/flink-jobs:dev-new")
+        deployment = self.deployment("rpp-local/stream-processor:dev-new")
         settings = {"risk_enabled": True, "risk_package_key": "payment-risk/1.0.0/payment_risk.zip",
             "risk_package_sha256": "a" * 64}
         with self.assertRaisesRegex(ValueError, "risk configuration changed"):

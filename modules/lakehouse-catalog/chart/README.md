@@ -99,4 +99,4 @@ two as one recovery unit, as described in the runbook.
 - [Module guide](../README.md)
 - [Lakehouse runbook](../../../docs/runbooks/lakehouse.md)
 - [Trino chart](../../lakehouse-query/chart/README.md)
-- [Flink chart](../../flink-jobs/chart/README.md)
+- [Flink chart](../../stream-processor/chart/README.md)

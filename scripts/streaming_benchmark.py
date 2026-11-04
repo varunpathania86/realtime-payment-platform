@@ -97,11 +97,11 @@ def main():
             }
             for item in json.loads(result.stdout)["items"]
         ]
-    source = Path("modules/flink-jobs/benchmark.py").read_text()
+    source = Path("modules/stream-processor/benchmark.py").read_text()
     result = subprocess.run(
         [
             "kubectl", "--context", args.base + "-a", "--request-timeout=15s", "-n", "apps",
-            "exec", "-i", "deployment/flink-jobs-jobmanager", "--",
+            "exec", "-i", "deployment/stream-processor-jobmanager", "--",
             "env", "PYTHONPATH=/opt/job", "python", "-",
         ],
         input=source, text=True, capture_output=True, timeout=max(1, 380 - (time.monotonic() - started)),

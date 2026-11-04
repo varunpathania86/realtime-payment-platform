@@ -1,5 +1,5 @@
 image:
-  repository: rpp-local/clickhouse-analytics
+  repository: rpp-local/realtime-analytics
   tag: development
   digest: ""
   pullPolicy: Never
@@ -7,7 +7,7 @@ local:
   feature: analytics
 database: analytics
 user: rpp_analytics
-existingSecret: clickhouse-analytics
+existingSecret: realtime-analytics
 storage: 8Gi
 resources:
   requests: {cpu: 500m, memory: 768Mi}

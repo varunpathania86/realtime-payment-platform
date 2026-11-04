@@ -15,5 +15,5 @@ docker build --build-arg "FLINK_VERSION=$(pinned_version flink)" \
   --build-arg "HADOOP_CLIENT_VERSION=$(pinned_version hadoop-client)" \
   --build-arg "HADOOP_CLIENT_API_SHA256=$(pinned_version hadoop-client-api-sha256)" \
   --build-arg "HADOOP_CLIENT_RUNTIME_SHA256=$(pinned_version hadoop-client-runtime-sha256)" \
-  -t "rpp-tools/flink:$(pinned_version flink-python)" "$REPO_ROOT/modules/flink-jobs"
+  -t "rpp-tools/flink:$(pinned_version flink-python)" "$REPO_ROOT/modules/stream-processor"
 bash "$REPO_ROOT/scripts/build-minio.sh"

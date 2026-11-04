@@ -6,7 +6,7 @@ Secrets and MinIO/Kafka services come from Terraform, not this template. See ../
 */}}
 {{- $image := printf "%s:%s" .Values.image.repository .Values.image.tag }}
 {{- if .Values.image.digest }}{{ $image = printf "%s@%s" .Values.image.repository .Values.image.digest }}{{ end }}
-{{- define "flink-jobs.configuration" }}
+{{- define "stream-processor.configuration" }}
 {{- if .Values.risk.enabled }}
 {{- if not .Values.streaming.enabled }}{{ fail "risk requires streaming.enabled" }}{{ end }}
 {{- if not (regexMatch "^payment-risk/[0-9]+\\.[0-9]+\\.[0-9]+/payment_risk\\.zip$" .Values.risk.packageKey) }}{{ fail "risk requires a versioned packageKey" }}{{ end }}
@@ -53,7 +53,7 @@ data:
     s3.path.style.access: true
     s3.connection.ssl.enabled: false
 {{- end }}
-{{ include "flink-jobs.configuration" . }}
+{{ include "stream-processor.configuration" . }}
 ---
 apiVersion: v1
 kind: Service
@@ -81,7 +81,7 @@ spec:
     metadata:
       labels: {app.kubernetes.io/name: {{ $.Release.Name }}, component: {{ $role }}}
       annotations:
-        config-checksum: {{ include "flink-jobs.configuration" $ | sha256sum | quote }}
+        config-checksum: {{ include "stream-processor.configuration" $ | sha256sum | quote }}
     spec:
       automountServiceAccountToken: false
       securityContext:

@@ -179,13 +179,13 @@ module. Feature selection uses chart metadata, never descriptive module types.
 Unchanged source-content image tags are reused rather than reimported.
 The stateful update guard checks candidate images before building or loading
 them; changed Flink code requires a stopped job and an explicit savepoint URI.
-The [Flink guide](../modules/flink-jobs/README.md) and
+The [Flink guide](../modules/stream-processor/README.md) and
 [recovery runbook](runbooks/flink-recovery.md) cover fixtures and safe upgrades.
 
 ### Optional Stage 6 ClickHouse analytics
 
 For the bounded 50 events/s baseline and 100 events/s stress test, follow the
-[pipeline benchmark guide](../modules/flink-jobs/README.md#bounded-pipeline-benchmark).
+[pipeline benchmark guide](../modules/stream-processor/README.md#bounded-pipeline-benchmark).
 Its compact topology uses A=4 CPUs/6144 MiB, B/C=2 CPUs/3072 MiB each. Run
 `make streaming-benchmark-preflight DEV_PROFILE=rpp-stage6-perf` first;
 it requires 14336 MiB available host memory before any nodes are started.
@@ -204,7 +204,7 @@ Reducing Pod requests is not a reduction in actual application usage. The
 records a successful isolated deployment but a failed latency target; this is
 not proof that three clusters fit this laptop.
 For independent servers, see the
-[failure boundaries](runbooks/clickhouse-analytics.md#three-cluster-resources-and-failure-boundaries);
+[failure boundaries](runbooks/realtime-analytics.md#three-cluster-resources-and-failure-boundaries);
 the local Minikube Docker network is not a multi-server deployment adapter.
 
 Use `make dev-up DEV_CONFIG=templates/analytics-topology.json` to enable
@@ -214,20 +214,20 @@ and other clusters at 4 CPUs/6144 MiB; analytics requires at least 4 CPUs and
 profile-local 8 GiB persistent volume and generated Secret. Normal payment-only
 or streaming-only development does not build or deploy ClickHouse.
 
-The [ClickHouse guide](../modules/clickhouse-analytics/README.md) describes the
+The [ClickHouse guide](../modules/realtime-analytics/README.md) describes the
 tables and benchmark. To benchmark a running profile, forward the internal
 service in one terminal:
 
 ```bash
-kubectl --context rpp-a -n apps port-forward --address 127.0.0.1 service/clickhouse-analytics 8123:8123
+kubectl --context rpp-a -n apps port-forward --address 127.0.0.1 service/realtime-analytics 8123:8123
 ```
 
 In another terminal, pass the password only through the process environment:
 
 ```bash
-export CLICKHOUSE_PASSWORD="$(kubectl --context rpp-a -n apps get secret clickhouse-analytics \
+export CLICKHOUSE_PASSWORD="$(kubectl --context rpp-a -n apps get secret realtime-analytics \
   -o jsonpath='{.data.password}' | base64 --decode)"
-CLICKHOUSE_URL=http://127.0.0.1:8123 make -C modules/clickhouse-analytics benchmark
+CLICKHOUSE_URL=http://127.0.0.1:8123 make -C modules/realtime-analytics benchmark
 unset CLICKHOUSE_PASSWORD
 ```
 

@@ -27,7 +27,7 @@ integration: ## Check the actual PyFlink operator using the setup-built runtime
 	docker run --rm --entrypoint python -e PYTHONPATH=/opt/job -v "$(CURDIR):/opt/job:ro" \
 		"rpp-tools/flink:$$(awk '$$1 == "flink-python" {print $$2}' ../../.tool-versions)" /opt/job/tests/local_execution.py
 	docker run --rm --entrypoint python -e PYTHONPATH=/opt/job -e KAFKA_BROKERS=localhost:9092 \
-		-e ANALYTICS_ENABLED=true -e CLICKHOUSE_URL=http://clickhouse-analytics:8123 \
+		-e ANALYTICS_ENABLED=true -e CLICKHOUSE_URL=http://realtime-analytics:8123 \
 		-e CLICKHOUSE_USER=rpp_analytics -e CLICKHOUSE_PASSWORD=test-password \
 		-e CHECKPOINT_URI=file:///tmp/flink-checkpoints -v "$(CURDIR):/opt/job:ro" \
 		"rpp-tools/flink:$$(awk '$$1 == "flink-python" {print $$2}' ../../.tool-versions)" /opt/job/tests/graph_check.py
@@ -45,7 +45,7 @@ risk-ci: ## Prepare pinned runtimes and run baseline plus three-way model parity
 	$(MAKE) integration
 
 fmt: ## Check shared whitespace rules without rewriting unrelated code
-	../../.venv/bin/pre-commit run --files modules/flink-jobs/analytics.py modules/flink-jobs/processing.py modules/flink-jobs/fixtures.py modules/flink-jobs/job.py modules/flink-jobs/lakehouse.py modules/flink-jobs/runtime.py modules/flink-jobs/tests/test_analytics.py modules/flink-jobs/tests/test_lakehouse.py modules/flink-jobs/tests/lakehouse_execution.py
+	../../.venv/bin/pre-commit run --files modules/stream-processor/analytics.py modules/stream-processor/processing.py modules/stream-processor/fixtures.py modules/stream-processor/job.py modules/stream-processor/lakehouse.py modules/stream-processor/runtime.py modules/stream-processor/tests/test_analytics.py modules/stream-processor/tests/test_lakehouse.py modules/stream-processor/tests/lakehouse_execution.py
 
 clean: ## Remove compiled job caches only
 	$(PYTHON) -c 'import pathlib; [p.unlink() for p in pathlib.Path("__pycache__").glob("*.pyc")]'

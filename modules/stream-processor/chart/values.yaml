@@ -1,5 +1,5 @@
 image:
-  repository: rpp-local/flink-jobs
+  repository: rpp-local/stream-processor
   tag: development
   digest: ""
   pullPolicy: Never
@@ -14,9 +14,9 @@ streaming:
   existingSecret: streaming-storage
 analytics:
   enabled: false
-  url: http://clickhouse-analytics:8123
+  url: http://realtime-analytics:8123
   user: rpp_analytics
-  existingSecret: clickhouse-analytics
+  existingSecret: realtime-analytics
 # Opt-in second job (payment-lakehouse-v1) appending to Iceberg through Polaris; needs streaming.
 lakehouse:
   enabled: false

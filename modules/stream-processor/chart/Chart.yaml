@@ -1,5 +1,5 @@
 apiVersion: v2
-name: flink-jobs
+name: stream-processor
 description: Opt-in checkpointed PyFlink payment event-time processing
 type: application
 version: 0.1.0

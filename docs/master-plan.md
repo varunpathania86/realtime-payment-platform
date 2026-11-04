@@ -362,7 +362,7 @@ realtime-payment-platform/
 ├── packages/
 │   └── ai-core/                     # Shared prompts, schemas, retrieval, graphs
 ├── streaming/
-│   ├── flink-jobs/
+│   ├── stream-processor/
 │   ├── sql/
 │   └── tests/
 ├── contracts/
@@ -446,16 +446,16 @@ The initial catalog maps the capabilities above to these module boundaries:
 | `llm-enrichment-worker` | `apps/llm-enrichment-worker` | Asynchronous, non-authoritative LLM enrichment |
 | `web-portal` | `apps/web-portal` | React user interface |
 | `ai-core` | `packages/ai-core` | Shared AI prompts, schemas, retrieval, and graph code |
-| `flink-jobs` | `streaming/flink-jobs` | Stateful event-time processing and sinks |
+| `stream-processor` | `streaming/stream-processor` | Stateful event-time processing and sinks |
 | `event-contracts` | `contracts` | Avro events, OpenAPI, compatibility rules, and examples |
-| `clickhouse-analytics` | `analytics/clickhouse` | Real-time analytical serving |
+| `realtime-analytics` | `analytics/clickhouse` | Real-time analytical serving |
 | `lakehouse-catalog` | `analytics/iceberg` | Historical lakehouse table definitions and integration |
 | `lakehouse-query` | `analytics/trino` | SQL access over the lakehouse |
-| `superset-bi` | `analytics/superset` | BI dashboards and embedding integration |
+| `bi-dashboards` | `analytics/superset` | BI dashboards and embedding integration |
 | `payment-risk-model` | `ml` | Payment-risk training, evaluation, and deployable model artifacts |
 | `operations-knowledge` | `knowledge` | Versioned LLM retrieval sources and prepared context |
 
-The current module names and manifest types are documented in [module-development.md](module-development.md). New modules use capability names rather than product names. `flink-jobs`, `clickhouse-analytics` and `superset-bi` are planned to become `stream-processor`, `realtime-analytics` and `bi-dashboards` in a separate patch. Infrastructure and third-party platform services do not become modules merely because the solution deploys them; give them independent module identities only if they acquire a distinct product boundary and release lifecycle.
+The current module names and manifest types are documented in [module-development.md](module-development.md). Modules use capability names rather than product names (for example `stream-processor`, not `flink-jobs`); product names stay inside the module.
 
 ## 4.1 Possible future repository split
 
@@ -2565,6 +2565,7 @@ stage_status: Stage 8 Iceberg lakehouse implemented on feature/stage-8-iceberg-l
 last_completed_task: Stage 8 single-cluster acceptance on 4 CPU / 8 GiB passed bronze/curated queries, deduplication, time travel, read-only denial, schema and partition evolution, compaction/expiry maintenance, savepoint stop and restore of both Flink jobs, and stable Terraform plans
 next_task: Merge Stage 8, then start Stage 9 with Superset over Trino and ClickHouse embedded in the React application
 known_issues:
+  - ADR-027 renamed product-named modules to capability names; existing local clusters need make streaming-stop and restore paths before the next dev-update, and local ClickHouse tables start empty under the new release
   - Kafka storage formatting passed a random cluster id that could start with "-" as a separate argument; Terraform now uses --cluster-id=<id>
   - Polaris rejects Trino DROP TABLE with purge unless polaris.config.drop-with-purge.enabled is set; catalog setup converges it on existing catalogs
   - the Stage 8 single-cluster node used about 6.7 GiB of 8 GiB with streaming and lakehouse enabled; analytics together with the lakehouse requires 10 GiB
@@ -2581,6 +2582,7 @@ known_issues:
   - local Flink JobManager and MinIO are not HA; external sinks are at-least-once, and deduplication has a 24-hour processing-time TTL
   - Stage 5 scoped scanner exceptions retain official Flink UID/GID, Kubernetes health/namespace ownership and local Never images; exact paths expire 2027-01-01
 architecture_decisions:
+  - ADR-027 Capability-based module names; product names stay inside modules
   - ADR-026 Apache Polaris Iceberg REST catalog, Flink Iceberg writer and Trino lakehouse
   - ADR-025 Interview-focused roadmap order (Stages 10-13) and platform-hosted read-only MCP tools
   - ADR-024 Advisory prior-event risk features, immutable model artifacts and audit-preserving prediction revisions

@@ -13,10 +13,10 @@ class ProcessingTests(unittest.TestCase):
     def test_runtime_overlay_preserves_java17_defaults(self):
         base = {"env": {"java": {"opts": {"all": "--add-opens=java.base/java.util=ALL-UNNAMED"}}},
             "jobmanager": {"rpc": {"address": "localhost"}}}
-        merged = overlay(base, {"jobmanager.rpc.address": "flink-jobs", "blob.server.port": 6124})
+        merged = overlay(base, {"jobmanager.rpc.address": "stream-processor", "blob.server.port": 6124})
         self.assertIn("--add-opens", merged["env"]["java"]["opts"]["all"])
         self.assertIn("-Duser.home=/tmp", merged["env"]["java"]["opts"]["all"])
-        self.assertEqual(merged["jobmanager"]["rpc"]["address"], "flink-jobs")
+        self.assertEqual(merged["jobmanager"]["rpc"]["address"], "stream-processor")
         self.assertEqual(base["jobmanager"]["rpc"]["address"], "localhost")
         with self.assertRaisesRegex(ValueError, "scalar"):
             overlay(base, {"jobmanager.rpc.address.port": 1})

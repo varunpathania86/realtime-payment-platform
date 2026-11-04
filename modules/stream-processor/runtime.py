@@ -26,7 +26,7 @@ INACTIVE = ("FINISHED", "CANCELED", "FAILED")
 
 
 def overview():
-    with urllib.request.urlopen("http://flink-jobs:8081/jobs/overview", timeout=5) as response:
+    with urllib.request.urlopen("http://stream-processor:8081/jobs/overview", timeout=5) as response:
         return json.load(response)["jobs"]
 
 
@@ -44,7 +44,7 @@ def wait_for_checkpoint(previous_ids=(), name=JOB_NAME):
             raise RuntimeError(f"submitted {name} job is {job['state']}; inspect Flink exceptions before retry")
         if job["state"] == "RUNNING":
             with urllib.request.urlopen(
-                f"http://flink-jobs:8081/jobs/{job['jid']}/checkpoints", timeout=5
+                f"http://stream-processor:8081/jobs/{job['jid']}/checkpoints", timeout=5
             ) as response:
                 checkpoint = json.load(response)["latest"]["completed"]
             if checkpoint is not None:
@@ -118,7 +118,7 @@ def missing_jobs(jobs, expected):
 
 
 def submit_command(name, environ=os.environ):
-    command = ["/opt/flink/bin/flink", "run", "-d", "-m", "flink-jobs:8081"]
+    command = ["/opt/flink/bin/flink", "run", "-d", "-m", "stream-processor:8081"]
     restore = environ.get("RESTORE_PATH" if name == JOB_NAME else "LAKEHOUSE_RESTORE_PATH")
     if restore:
         command.extend(["--fromSavepoint", restore])

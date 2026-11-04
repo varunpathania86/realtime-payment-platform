@@ -12,9 +12,9 @@ For now, `type` is a human-readable primary classification. It is not a complete
 |---|---|---|
 | `api` | Backend application whose primary interface is an HTTP API. | `payment-api`, `ai-gateway` |
 | `web` | User-facing browser application. | `web-portal` |
-| `analytics` | A module whose primary purpose is analytical storage, query, or BI capability. | `clickhouse-analytics`, `lakehouse-catalog`, `lakehouse-query`, `superset-bi` |
+| `analytics` | A module whose primary purpose is analytical storage, query, or BI capability. | `realtime-analytics`, `lakehouse-catalog`, `lakehouse-query`, `bi-dashboards` |
 | `worker` | A background executable that performs work without serving the primary user-facing request path. It may consume messages or perform asynchronous tasks. | `event-generator`, `ai-orchestrator`, `llm-enrichment-worker` |
-| `stream-processing` | A specialized worker for continuous event streams, with processing concerns such as event time, state, windows, checkpoints, and recovery. | `flink-jobs` |
+| `stream-processing` | A specialized worker for continuous event streams, with processing concerns such as event time, state, windows, checkpoints, and recovery. | `stream-processor` |
 | `library` | Reusable code imported or otherwise consumed by other modules; not deployed as a standalone service. | `ai-core` |
 | `contracts` | Shared interface definitions used to communicate across module boundaries, such as Avro event schemas or OpenAPI specifications. | `event-contracts` |
 | `model` | The payment-risk machine-learning model, including its training/evaluation and inference artifacts. It is not the conversational LLM. | `payment-risk-model` |

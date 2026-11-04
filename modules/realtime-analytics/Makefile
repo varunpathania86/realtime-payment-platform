@@ -12,14 +12,14 @@ build: ## Validate the packaged ClickHouse chart
 	$(PYTHON) -m py_compile benchmark.py tests/runtime_check.py
 
 test: ## Run offline chart and analytics package tests
-	PYTHONPATH=$(ROOT) $(PYTHON) -m unittest discover -s $(ROOT)/tests/unit -p 'test_clickhouse_analytics.py'
+	PYTHONPATH=$(ROOT) $(PYTHON) -m unittest discover -s $(ROOT)/tests/unit -p 'test_realtime_analytics.py'
 
 lint: ## Validate the packaged ClickHouse chart
 	helm lint --strict chart
 	$(PYTHON) -m py_compile benchmark.py tests/runtime_check.py
 
 fmt: ## Check shared whitespace rules
-	cd $(ROOT) && .venv/bin/pre-commit run --files scripts/clickhouse-integration.sh modules/clickhouse-analytics/Makefile modules/clickhouse-analytics/.dockerignore modules/clickhouse-analytics/.trivyignore.yaml modules/clickhouse-analytics/Dockerfile modules/clickhouse-analytics/README.md modules/clickhouse-analytics/benchmark.py modules/clickhouse-analytics/tests/runtime_check.py modules/clickhouse-analytics/chart/Chart.yaml modules/clickhouse-analytics/chart/values.yaml modules/clickhouse-analytics/chart/files/schema.sql modules/clickhouse-analytics/chart/templates/config.yaml modules/clickhouse-analytics/chart/templates/schema-job.yaml modules/clickhouse-analytics/chart/templates/service.yaml modules/clickhouse-analytics/chart/templates/statefulset.yaml modules/clickhouse-analytics/chart/templates/storage.yaml
+	cd $(ROOT) && .venv/bin/pre-commit run --files scripts/clickhouse-integration.sh modules/realtime-analytics/Makefile modules/realtime-analytics/.dockerignore modules/realtime-analytics/.trivyignore.yaml modules/realtime-analytics/Dockerfile modules/realtime-analytics/README.md modules/realtime-analytics/benchmark.py modules/realtime-analytics/tests/runtime_check.py modules/realtime-analytics/chart/Chart.yaml modules/realtime-analytics/chart/values.yaml modules/realtime-analytics/chart/files/schema.sql modules/realtime-analytics/chart/templates/config.yaml modules/realtime-analytics/chart/templates/schema-job.yaml modules/realtime-analytics/chart/templates/service.yaml modules/realtime-analytics/chart/templates/statefulset.yaml modules/realtime-analytics/chart/templates/storage.yaml
 
 benchmark: ## Run a bounded local query-latency benchmark
 	$(PYTHON) benchmark.py

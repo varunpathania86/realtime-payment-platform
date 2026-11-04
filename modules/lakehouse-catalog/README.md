@@ -87,4 +87,4 @@ Tables use Iceberg format v2, zstd Parquet and hidden `day()` partitions on
 - [Chart guide](chart/README.md)
 - [Lakehouse runbook](../../docs/runbooks/lakehouse.md)
 - [Lakehouse query (Trino)](../lakehouse-query/README.md)
-- [Flink jobs](../flink-jobs/README.md)
+- [Stream processor (Flink)](../stream-processor/README.md)
