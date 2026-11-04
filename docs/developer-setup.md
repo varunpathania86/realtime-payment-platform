@@ -67,6 +67,96 @@ with its committed lockfile; its Makefile installs dependencies when needed.
 
 ## 2. One-time setup
 
+### Optional Stage 7 model training
+
+```bash
+RISK_MODEL=1 make setup
+RISK_MODEL=1 make doctor
+make -C modules/payment-risk-model build test lint
+make -C modules/payment-risk-model integration
+```
+
+Setup builds a pinned Python training container with the model's exact library
+requirements; no host ML packages or additional system Python installation
+are needed. The Python base image tag is pinned as `risk-python` in
+`.tool-versions`. The container includes libgomp for LightGBM; setup is
+idempotent through Docker's cache. Initial downloads need internet; subsequent
+training runs use `--network none`. Doctor checks the optional image only
+when `RISK_MODEL=1`.
+
+The [model guide](../modules/payment-risk-model/README.md) defines generated
+local artifacts, imbalanced-class metrics, explicit MinIO publication and
+savepoint-safe advisory scoring. `integration` prepares the Flink runtime too,
+and verifies original Python, Python ONNX and real Flink worker golden scores
+within `1e-5`. It also exercises late-history revisions and cleanup without
+starting Kubernetes. Affected-module CI runs this gate with `INTEGRATION=1`.
+Ordinary unit tests remain offline; do not start extra clusters for training.
+
+### Single-cluster risk validation
+
+The public `make dev-up` workflow still provisions three clusters; it does not
+silently shrink topology when memory is insufficient. On the maintainer's
+resource-constrained host, Stage 7 uses the existing internal single-cluster
+diagnostic path, as Stage 6 did. This is not three-cluster HA acceptance.
+
+Stop only **owned** unused profiles before starting; stopped nodes already
+consume no running RAM. Do not terminate Vmmem or delete unrelated profiles.
+Use a new, explicit profile and retain at least 2 GiB available host reserve.
+No ClickHouse or observability backends are needed for this scoring check.
+
+1. Prepare runtimes and run local correctness checks:
+
+    ```bash
+    STREAMING=1 RISK_MODEL=1 make setup
+    make ci
+    make -C modules/payment-risk-model integration
+    ```
+
+2. Create `.local/rpp-stage7-verify/events.tfvars.json` with:
+
+    ```json
+    {
+      "streaming_enabled": true,
+      "runtime_profile": "low-memory"
+    }
+    ```
+
+3. Start only this dedicated 4-CPU/6144-MiB profile:
+
+    ```bash
+    MINIKUBE_PROFILE=rpp-stage7-verify MINIKUBE_CPUS=4 MINIKUBE_MEMORY=6144 \
+      bash scripts/local-dev.sh up
+    make risk-publish MINIKUBE_PROFILE=rpp-stage7-verify
+    make streaming-stop MINIKUBE_PROFILE=rpp-stage7-verify
+    ```
+
+4. Retain the printed savepoint URI. Add `risk_enabled: true`,
+    `risk_package_key: "payment-risk/1.0.0/payment_risk.zip"` and
+    `risk_package_sha256` containing the **actual publication checksum** to
+    the same JSON file. These Terraform variable names differ from the
+    public multi-cluster topology's `risk` object; do not mix the two schemas.
+5. Export `STREAMING_RESTORE_PATH` to the exact returned URI, then:
+
+    ```bash
+    MINIKUBE_PROFILE=rpp-stage7-verify bash scripts/local-dev.sh update
+    make risk-verify MINIKUBE_PROFILE=rpp-stage7-verify
+    make smoke MINIKUBE_PROFILE=rpp-stage7-verify
+    ```
+
+    The source-content image update remains local; no publication workflow,
+    model server, PI clock or GHCR login is involved. Keep the generated
+    model directory unchanged for identical publication retries.
+6. Further dirty-source updates require another `make streaming-stop` and
+    the new URI. To reclaim memory without destroying evidence:
+
+    ```bash
+    minikube stop -p rpp-stage7-verify
+    ```
+
+This leaves profile-specific Terraform state, MinIO artifacts and savepoints
+on disk. Only remove the dedicated profile/data after explicitly choosing
+to discard them; do not use the three-cluster cleanup against other profiles.
+
 ### Optional Stage 5 streaming runtime
 
 `STREAMING=1 make setup` prepares the pinned Flink/PyFlink runtime image and

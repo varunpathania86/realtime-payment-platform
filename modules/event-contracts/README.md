@@ -18,6 +18,13 @@ Its Kafka transport is JSON with CreateTime equal to `event_time`, rather than
 the initiation topic's schema-ID Avro frame. The Avro schema/example and immutable
 baseline still define and validate the logical contract.
 
+Stage 7 adds optional `account_created_at` (RFC3339 UTC, not after the
+payment's event time) and `device_id` (synthetic UUID). Both are nullable with
+null defaults, so older producers remain valid. Missing context is unknown,
+not evidence of an established account or an unchanged device. These fields
+belong only to the synthetic processing dataset; initiation events and
+authorization behavior are unchanged.
+
 ## Layout
 
 ```text

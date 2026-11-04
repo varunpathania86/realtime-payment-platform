@@ -12,6 +12,8 @@ Checkpointed PyFlink processing of synthetic payment outcomes. Part of
   emission/cleanup timers and persistent MinIO checkpoints/savepoints.
 - Transformation/schema/dataset identities; Stage 6 adds the ClickHouse sink
   and durable per-record lineage.
+- Opt-in Stage 7 advisory ONNX inference, checkpointed account/currency history,
+  append-only prediction revisions and version-labelled model metrics.
 
 The processing dataset is separate from API initiation events. Synthetic
 `authorized`/`rejected` values are labels, not payment decisions.
@@ -29,6 +31,8 @@ hook and external storage/service relationships.
 ├── fixtures.py     # Deterministic disorder/late/duplicate/idle/skewed cases
 ├── job.py          # Real PyFlink keyed state and event-time timers
 ├── processing.py   # Pure event validation and aggregate calculations
+├── risk.py         # Prior-history risk predictions and late-history revisions
+├── model_registry.py # Verify explicit MinIO model-package identity
 ├── runtime.py      # Writable configuration, bucket/topic setup, submission
 └── tests/
 ```
@@ -63,6 +67,8 @@ This is a low-load starting budget, not capacity certification.
 | `build` | Compile Python sources |
 | `test` | Offline deterministic event/window tests |
 | `integration` | Exercise actual PyFlink operator APIs in the setup runtime |
+| `risk-integration` | Verify a trained package in a real bounded Flink worker |
+| `risk-ci` | Prepare runtimes, train and run three-way parity plus baseline integration |
 | `lint` | Validate Python syntax |
 | `fmt` | Check shared whitespace rules |
 | `clean` | Remove module bytecode caches |
@@ -82,6 +88,21 @@ BlobServer service port. The submission hook waits for a completed durable
 checkpoint, not just a successful detached submission, before reporting success.
 Submission ships both processing and analytics Python modules to distributed
 workers; merely including them in the image does not put them on worker import paths.
+Risk-enabled submission also distributes `risk.py` and the checksum-verified
+`payment_risk.zip`; workers load one ONNX session in operator `open()`.
+See the [model guide](../payment-risk-model/README.md) for registry publication,
+explicit pinning, savepoint-safe enablement, audit semantics and
+`make risk-verify`. Risk defaults to disabled and does not change ordinary local
+payment development or require model training/publication.
+
+The original SQL upsert sink had automatically generated writer/committer
+identities. Adding an independent branch changes Flink's graph traversal and
+those hashes. Before appending risk operators, the job captures its original
+baseline sink hashes and assigns them through Flink 1.20's
+`CustomSinkOperatorUidHashes` compatibility API. This preserves existing sink
+state; it does not use `--allowNonRestoredState`. Integration tests compare the
+legacy, bridged and risk-enabled stateful identities with analytics both off
+and on. Keep the optional branch after this bridge when extending the graph.
 
 The module's scoped, expiring scanner exceptions follow the existing module
 policy: Kubernetes owns health probes and namespace selection, development

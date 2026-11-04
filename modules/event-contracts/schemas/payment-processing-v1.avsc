@@ -14,6 +14,8 @@
     {"name": "currency", "type": "string"},
     {"name": "country", "type": "string"},
     {"name": "payment_method", "type": {"type": "enum", "name": "PaymentMethod", "symbols": ["card", "transfer", "wallet"]}},
-    {"name": "outcome", "type": {"type": "enum", "name": "SyntheticOutcome", "symbols": ["authorized", "rejected"]}}
+    {"name": "outcome", "type": {"type": "enum", "name": "SyntheticOutcome", "symbols": ["authorized", "rejected"]}},
+    {"name": "account_created_at", "type": ["null", "string"], "default": null, "doc": "Optional synthetic account creation time in RFC3339 UTC; never after event_time."},
+    {"name": "device_id", "type": ["null", "string"], "default": null, "doc": "Optional synthetic device UUID, not a real device fingerprint."}
   ]
 }

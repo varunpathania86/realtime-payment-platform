@@ -37,6 +37,18 @@ def decode(raw: str) -> dict:
     if event["outcome"] not in ("authorized", "rejected"):
         raise ValueError("unknown synthetic processing outcome")
     event["timestamp_ms"] = int(datetime.fromisoformat(event["event_time"].replace("Z", "+00:00")).timestamp() * 1000)
+    created = event.get("account_created_at")
+    if created is not None:
+        if not isinstance(created, str) or not re.fullmatch(
+            r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,6})?Z", created
+        ):
+            raise ValueError("account_created_at must be an RFC3339 UTC timestamp")
+        if datetime.fromisoformat(created.replace("Z", "+00:00")) > datetime.fromisoformat(
+            event["event_time"].replace("Z", "+00:00")
+        ):
+            raise ValueError("account_created_at must not follow event_time")
+    if event.get("device_id") is not None:
+        UUID(event["device_id"])
     return event
 
 

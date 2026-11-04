@@ -3,6 +3,9 @@
 import json
 import io
 import os
+from pathlib import Path
+import subprocess
+import sys
 from contextlib import redirect_stdout
 import unittest
 from unittest.mock import patch
@@ -100,6 +103,39 @@ class Context:
 
 
 class OperatorTests(unittest.TestCase):
+    def test_risk_enablement_preserves_all_legacy_stateful_operator_hashes(self):
+        script = str(Path(__file__).with_name("graph_identity.py"))
+        for analytics in ("false", "true"):
+            graphs = []
+            for enabled, arguments in (("false", ["--legacy"]), ("false", []), ("true", [])):
+                environment = {
+                    **os.environ, "RISK_ENABLED": enabled, "ANALYTICS_ENABLED": analytics,
+                    "KAFKA_BROKERS": "localhost:9092", "CHECKPOINT_URI": "file:///tmp/identity-check",
+                    "CLICKHOUSE_URL": "http://localhost:8123",
+                    "CLICKHOUSE_USER": "rpp_analytics", "CLICKHOUSE_PASSWORD": "test-password",
+                }
+                result = subprocess.run([sys.executable, script, *arguments],
+                    env=environment, text=True, capture_output=True, check=True, timeout=60)
+                graphs.append(json.loads(result.stdout))
+            with self.subTest(analytics=analytics):
+                self.assertEqual(graphs[0].keys(), graphs[1].keys())
+                self.assertTrue(graphs[0].keys() <= graphs[2].keys())
+                self.assertEqual(len(graphs[2]) - len(graphs[0]), 5)
+
+    def test_risk_submission_distributes_verified_package_and_operator(self):
+        with patch.dict(os.environ, {"RISK_ENABLED": "true"}), \
+                patch.object(runtime, "overview", return_value=[]), \
+                patch.object(runtime, "bootstrap"), \
+                patch.object(runtime, "wait_for_checkpoint"), \
+                patch("model_registry.download_package", return_value="/tmp/verified/payment_risk.zip"), \
+                patch.object(runtime.subprocess, "run") as run:
+            runtime.submit()
+        command = run.call_args.args[0]
+        self.assertEqual(command[command.index("--pyFiles") + 1].split(","), [
+            "/opt/job/processing.py", "/opt/job/analytics.py",
+            "/opt/job/risk.py", "/tmp/verified/payment_risk.zip",
+        ])
+
     def test_submit_distributes_all_imported_job_modules(self):
         with patch.object(runtime, "overview", return_value=[]), \
                 patch.object(runtime, "bootstrap"), \

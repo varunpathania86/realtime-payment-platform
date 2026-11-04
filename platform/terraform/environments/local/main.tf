@@ -96,6 +96,11 @@ resource "helm_release" "application" {
   values = [yamlencode({
     replicaCount   = lookup(var.application_replicas, each.key, 1)
     runtimeProfile = var.runtime_profile
+    risk = {
+      enabled       = var.risk_enabled
+      packageKey    = var.risk_package_key
+      packageSHA256 = var.risk_package_sha256
+    }
     streaming = {
       enabled     = var.streaming_enabled
       restorePath = var.streaming_restore_path

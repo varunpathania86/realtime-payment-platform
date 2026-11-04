@@ -73,6 +73,19 @@ class ProcessingTests(unittest.TestCase):
             with self.subTest(changes=changes), self.assertRaises(ValueError):
                 decode(json.dumps(event(1, **changes)))
 
+    def test_optional_risk_context_is_backward_compatible_and_validated(self):
+        self.assertNotIn("device_id", decode(json.dumps(event(1))))
+        enriched = event(1, account_created_at="2026-01-01T00:00:00Z",
+            device_id="d41d8cd9-8f00-4204-a980-0998ecf8427e")
+        self.assertEqual(decode(json.dumps(enriched))["device_id"], enriched["device_id"])
+        for changes in (
+            {"account_created_at": "2099-01-01T00:00:00Z"},
+            {"account_created_at": "2026-01-01"},
+            {"device_id": "unvalidated-device"},
+        ):
+            with self.subTest(changes=changes), self.assertRaises(ValueError):
+                decode(json.dumps(event(1, **changes)))
+
 
 if __name__ == "__main__":
     unittest.main()

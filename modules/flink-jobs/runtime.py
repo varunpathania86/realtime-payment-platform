@@ -82,7 +82,10 @@ def bootstrap():
     replicas = int(os.environ.get("KAFKA_REPLICATION_FACTOR", "1"))
     admin = KafkaAdminClient(**options)
     try:
-        for name in ("payment-processing-events-v1", "payment-window-results-v1", "payment-events-too-late"):
+        topics = ["payment-processing-events-v1", "payment-window-results-v1", "payment-events-too-late"]
+        if os.environ.get("RISK_ENABLED") == "true":
+            topics.extend(["payment-risk-predictions-v1", "payment-risk-too-late-v1"])
+        for name in topics:
             config = {"min.insync.replicas": str(min(2, replicas))}
             if name == "payment-window-results-v1":
                 config["cleanup.policy"] = "compact"
@@ -119,9 +122,14 @@ def submit():
     command = ["/opt/flink/bin/flink", "run", "-d", "-m", "flink-jobs:8081"]
     if os.environ.get("RESTORE_PATH"):
         command.extend(["--fromSavepoint", os.environ["RESTORE_PATH"]])
+    python_files = ["/opt/job/processing.py", "/opt/job/analytics.py"]
+    if os.environ.get("RISK_ENABLED") == "true":
+        from model_registry import download_package
+
+        python_files.extend(["/opt/job/risk.py", download_package()])
     command.extend([
         "--python", "/opt/job/job.py",
-        "--pyFiles", "/opt/job/processing.py,/opt/job/analytics.py",
+        "--pyFiles", ",".join(python_files),
     ])
     subprocess.run(command, check=True)
     wait_for_checkpoint({job["jid"] for job in jobs})

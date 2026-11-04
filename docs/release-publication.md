@@ -31,6 +31,11 @@ release reservations, or active PI. A failure here does not block local work.
 See the [developer guide](developer-setup.md#4-local-application-development).
 Application image builds receive toolchain pins from `.tool-versions` plus
 version/commit build arguments in both local and publication paths.
+Stage 7's model-training image uses the `risk-python` pin through
+`RISK_PYTHON_VERSION`. It has no application chart: generated ONNX artifacts
+are local experiment outputs until the model-registry publication step is
+implemented. Branch image publication requires the corresponding trusted
+publisher build-argument support on `main`, as described below.
 
 ## Diagnosis
 

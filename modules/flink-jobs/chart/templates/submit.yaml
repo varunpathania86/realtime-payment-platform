@@ -58,6 +58,9 @@ spec:
             - {name: KAFKA_REPLICATION_FACTOR, value: {{ .Values.events.replicationFactor | quote }}}
             - {name: KAFKA_TLS, value: {{ .Values.events.tls | quote }}}
             - {name: ANALYTICS_ENABLED, value: {{ .Values.analytics.enabled | quote }}}
+            - {name: RISK_ENABLED, value: {{ .Values.risk.enabled | quote }}}
+            - {name: RISK_PACKAGE_KEY, value: {{ .Values.risk.packageKey | quote }}}
+            - {name: RISK_PACKAGE_SHA256, value: {{ .Values.risk.packageSHA256 | quote }}}
             - name: KAFKA_PASSWORD
               valueFrom:
                 secretKeyRef: {name: {{ .Values.events.existingSecret }}, key: KAFKA_PASSWORD}

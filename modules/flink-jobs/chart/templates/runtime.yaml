@@ -7,6 +7,11 @@ Secrets and MinIO/Kafka services come from Terraform, not this template. See ../
 {{- $image := printf "%s:%s" .Values.image.repository .Values.image.tag }}
 {{- if .Values.image.digest }}{{ $image = printf "%s@%s" .Values.image.repository .Values.image.digest }}{{ end }}
 {{- define "flink-jobs.configuration" }}
+{{- if .Values.risk.enabled }}
+{{- if not .Values.streaming.enabled }}{{ fail "risk requires streaming.enabled" }}{{ end }}
+{{- if not (regexMatch "^payment-risk/[0-9]+\\.[0-9]+\\.[0-9]+/payment_risk\\.zip$" .Values.risk.packageKey) }}{{ fail "risk requires a versioned packageKey" }}{{ end }}
+{{- if not (regexMatch "^[a-f0-9]{64}$" .Values.risk.packageSHA256) }}{{ fail "risk requires packageSHA256" }}{{ end }}
+{{- end }}
 {{- if not (has .Values.runtimeProfile (list "standard" "low-memory")) }}
 {{- fail "runtimeProfile must be standard or low-memory" }}
 {{- end }}
@@ -103,9 +108,13 @@ spec:
             - {name: PYFLINK_CLIENT_EXECUTABLE, value: /opt/pyflink/bin/python}
             - {name: PYFLINK_PYTHON, value: /opt/pyflink/bin/python}
             - {name: CHECKPOINT_URI, value: {{ $.Values.streaming.checkpointURI | quote }}}
+            - {name: S3_ENDPOINT, value: {{ $.Values.streaming.endpoint | quote }}}
             - {name: KAFKA_BROKERS, value: {{ $.Values.events.brokers | quote }}}
             - {name: KAFKA_TLS, value: {{ $.Values.events.tls | quote }}}
             - {name: ANALYTICS_ENABLED, value: {{ $.Values.analytics.enabled | quote }}}
+            - {name: RISK_ENABLED, value: {{ $.Values.risk.enabled | quote }}}
+            - {name: RISK_PACKAGE_KEY, value: {{ $.Values.risk.packageKey | quote }}}
+            - {name: RISK_PACKAGE_SHA256, value: {{ $.Values.risk.packageSHA256 | quote }}}
             {{- if $.Values.analytics.enabled }}
             - {name: CLICKHOUSE_URL, value: {{ $.Values.analytics.url | quote }}}
             - {name: CLICKHOUSE_USER, value: {{ $.Values.analytics.user | quote }}}

@@ -10,6 +10,30 @@ from scripts.topology_config import validate
 
 
 class StreamingTests(unittest.TestCase):
+    def test_risk_requires_explicit_pinned_identity_and_streaming(self):
+        command = ["helm", "template", "flink-jobs", str(ROOT / "modules/flink-jobs/chart"),
+            "--set", "risk.enabled=true"]
+        for settings in (
+            [], ["--set", "streaming.enabled=true"],
+            ["--set", "streaming.enabled=true", "--set", "risk.packageKey=payment-risk/latest/payment_risk.zip",
+                "--set-string", "risk.packageSHA256=" + "a" * 64],
+        ):
+            result = subprocess.run([*command, *settings], text=True, capture_output=True, timeout=30)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("risk requires", result.stderr)
+        result = subprocess.run([*command, "--set", "streaming.enabled=true",
+            "--set", "risk.packageKey=payment-risk/1.0.0/payment_risk.zip",
+            "--set-string", "risk.packageSHA256=" + "a" * 64],
+            check=True, text=True, capture_output=True, timeout=30)
+        resources = list(yaml.safe_load_all(result.stdout))
+        for resource in resources:
+            if resource and resource["kind"] in ("Deployment", "Job"):
+                env = resource["spec"]["template"]["spec"]["containers"][0]["env"]
+                settings = {item["name"]: item.get("value") for item in env}
+                self.assertEqual(settings["RISK_ENABLED"], "true")
+                self.assertEqual(settings["RISK_PACKAGE_SHA256"], "a" * 64)
+                self.assertIn("S3_ENDPOINT", settings)
+
     def render(self, enabled):
         rendered = subprocess.run(
             ["helm", "template", "flink-jobs", str(ROOT / "modules/flink-jobs/chart"),

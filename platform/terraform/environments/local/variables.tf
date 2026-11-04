@@ -106,4 +106,24 @@ variable "runtime_profile" {
     condition     = contains(["standard", "low-memory"], var.runtime_profile)
     error_message = "runtime_profile must be standard or low-memory."
   }
+
+}
+
+variable "risk_enabled" {
+  type    = bool
+  default = false
+}
+
+variable "risk_package_key" {
+  type    = string
+  default = ""
+}
+
+variable "risk_package_sha256" {
+  type    = string
+  default = ""
+  validation {
+    condition     = var.risk_package_sha256 == "" || can(regex("^[a-f0-9]{64}$", var.risk_package_sha256))
+    error_message = "risk_package_sha256 must be an explicit SHA-256 or empty while risk is disabled."
+  }
 }

@@ -64,9 +64,15 @@ These rules apply to the whole monorepo. Details for AI tools live in `AGENTS.md
   - **Stable-version recording**: after successful production promotion, create a PR updating the stable catalog version; never push directly to protected `main`.
 - Self-hosted runners are used only for explicitly approved protected work, never for pull requests from forks.
 - Current implementation status: Stages 1-4 are merged; the first solution/module iteration baseline was released live. Stage 5 implements PyFlink event-time fundamentals and, by explicit user approval, automatic module/solution iteration, RC and stable artifact promotion with stable-catalog PRs. Deployment, GitOps and cleanup remain deferred. See Section 19 and [the publication runbook](release-publication.md).
-- Stage 6 is being implemented on its own branch/PR: opt-in persistent ClickHouse
+- Stage 6 merged in PR #9: opt-in persistent ClickHouse
   tables, checkpoint-aligned at-least-once Flink sinks, dataset lineage and a
-  bounded local query benchmark. Stage 7 remains sequenced after Stage 6.
+  bounded local query benchmark. Stage 7 implements optional account/device
+  context, event-time features, training/export, immutable MinIO publication,
+  checksum-pinned advisory Flink inference, model-version telemetry and
+  append-only late-history revisions. Real-worker golden parity is an affected
+  module CI gate. Live single-cluster publication, inference, telemetry,
+  late-history revision and dirty-source savepoint recovery passed;
+  three-cluster acceptance remains resource-deferred.
 - Local application development is independent of those workflows. Stage 0
   supplies tools and Minikube lifecycle; Stage 1 supplies local image builds,
   image loading, Terraform/Helm deployment, updates, and smoke checks. No GitHub
@@ -1184,6 +1190,13 @@ Version feature names, types, order, preprocessing, model version, and output sc
 
 Outputs must match within an explicit tolerance.
 
+The implemented Stage 7 gate uses `1e-5` absolute probability error for held-out
+and golden vectors. `make -C modules/payment-risk-model integration` prepares
+pinned runtimes through setup, reproduces training and runs golden vectors and
+late-history revision tests inside an actual bounded Flink worker.
+Affected model and Flink module CI invoke this gate with `INTEGRATION=1`.
+Ordinary unit tests remain offline and do not install ML dependencies.
+
 ### Model artifacts
 
 Store model artifacts in MinIO, not as large Git objects:
@@ -1193,7 +1206,19 @@ s3://model-registry/payment-risk/1.0.0/model.onnx
 s3://model-registry/payment-risk/1.0.0/metadata.json
 s3://model-registry/payment-risk/1.0.0/metrics.json
 s3://model-registry/payment-risk/1.0.0/model-card.md
+s3://model-registry/payment-risk/1.0.0/payment_risk.zip
 ```
+
+`make risk-publish MINIKUBE_PROFILE=<owned-profile>` verifies the generated
+manifest and conditionally writes immutable versioned artifacts using the
+selected local JobManager's existing MinIO credentials. Identical retries
+are accepted; different bytes under an existing version fail explicitly.
+Flink submission pins the Python ZIP key and SHA-256, bounds/validates its
+contents, and distributes the shared features, model and golden cases to
+workers. It never follows a `latest` alias or creates a session per event.
+Publication and advisory enablement are separate explicit actions; ordinary
+payment development needs neither. See the [model guide](../modules/payment-risk-model/README.md)
+and [single-cluster validation](developer-setup.md#single-cluster-risk-validation).
 
 Introduce MLflow only after multiple experiments make tracking valuable.
 
@@ -1214,6 +1239,17 @@ prediction timestamp
 ```
 
 If an accepted late event changes a feature vector, produce a revised prediction while preserving the original “decision at the time” for audit.
+
+The implementation keys history by account and currency, uses strictly preceding
+`(event_time, event_id)` order, and retains one hour of feature history plus
+two-minute lateness. Changed predictions append to a noncompacted Kafka topic
+with a new deterministic ID/revision and preserved `original_prediction_id`.
+Consumers deduplicate prediction IDs under at-least-once delivery.
+Checkpointed history/revision references are cleaned with event-time timers;
+event dedup uses a 24-hour processing-time TTL. Version-scoped counters expose
+prediction/revision counts, cumulative inference time and too-late events.
+This branch never changes payment decisions; failures restart the shared
+analytics job explicitly rather than silently skipping scoring.
 
 **Exit criteria:** Reproduce model training, export, validation, Flink inference, model-version telemetry, and a late-event prediction revision from documented commands.
 
@@ -2402,10 +2438,10 @@ runbooks. See the [low-memory pipeline report](../tests/benchmarks/pipeline/2026
 and [ClickHouse query report](../tests/benchmarks/pipeline/2026-11-03-clickhouse-query.md).
 
 ```yaml
-current_milestone: stage-6-clickhouse-analytics
-stage_status: Stage 6 draft PR 9; opt-in low-memory Flink profile deployed on an isolated single cluster; 50 events/s baseline p95 4.73 seconds failed the 2-second target; three-cluster run remains memory-blocked
-last_completed_task: Measured 285-second low-memory 50/100 events/s run; all 16000 facts drained, 30 checkpoints and no restarts; stress backlog grew, ClickHouse cgroup reached its existing 2-GiB cap; dirty-source savepoint restore passed
-next_task: Investigate ingestion/visibility bottlenecks without weakening latency targets or memory safeguards; full three-cluster acceptance still needs sufficient host resources; keep Stage 7 separate
+current_milestone: stage-7-predictive-risk-scoring
+stage_status: Stage 7 local exit requirements verified on one low-memory cluster; reproducible training, three-way golden parity, immutable MinIO artifacts, advisory Flink scoring, version telemetry and append-only late revisions; three-cluster acceptance resource-deferred
+last_completed_task: Training/export and make ci passed; both models match original Python on held-out/golden data within 1e-5; initial baseline recall at threshold 0.5 is zero and not presented as useful fraud detection
+next_task: Implement MinIO model publication and checksum-pinned loading, reusable ONNX sessions in Flink, model-version telemetry, original/revised prediction audit output and three-way golden/live low-memory acceptance; keep Stage 8 separate
 known_issues:
   - one cold ingress CRD installation encountered a transient etcd timeout; ordinary dev-update recovered with state and node budgets unchanged
   - a stale pending-install Traefik Helm revision interrupted the first scale-check attempt; removing only that release allowed Terraform to recreate ingress and the retry passed
@@ -2420,6 +2456,7 @@ known_issues:
   - local Flink JobManager and MinIO are not HA; external sinks are at-least-once, and deduplication has a 24-hour processing-time TTL
   - Stage 5 scoped scanner exceptions retain official Flink UID/GID, Kubernetes health/namespace ownership and local Never images; exact paths expire 2027-01-01
 architecture_decisions:
+  - ADR-024 Advisory prior-event risk features, immutable model artifacts and audit-preserving prediction revisions
   - ADR-021 Automatic release selection, frozen artifact promotion and reviewed stable-catalog PRs
   - ADR-022 PyFlink event-time and synthetic processing boundaries
   - ADR-020 Iteration baseline releases brought forward to Stage 4 without deployment or PI schedule changes
@@ -2433,6 +2470,12 @@ architecture_decisions:
   - ADR-014 Stage 1 artifact publication and separate security checks
   - ADR-015 PostgreSQL-backed synthetic payments and idempotency
 verification:
+  - 2026-11-04 Stage 7 make ci passed; pinned model/Flink integration passed original Python, Python ONNX and real-worker golden parity at 1e-5, prior-history revisions, dedup and event-time cleanup
+  - 2026-11-04 affected Flink module CI path passed with INTEGRATION=1; actual graph regressions preserve legacy stateful operator identities with analytics both off and on, without allowing non-restored state
+  - 2026-11-04 dedicated rpp-stage7-verify fresh profile (4 CPUs/6144 MiB, low-memory, no analytics backends) passed initial deployment, MinIO artifact publication and identical-content retry
+  - 2026-11-04 pre-risk savepoint restored after SQL writer/committer hash migration; subsequent dirty-source update restored a risk-bearing savepoint, and replay of a pre-savepoint event emitted neither a duplicate prediction nor too-late output
+  - 2026-11-04 make risk-verify passed with five advisory audit records, revision 2 preserving original identity, one too-late record, Python/runtime feature-score parity, duplicate suppression and all four model-version counters; ingress smoke passed
+  - 2026-11-04 live acceptance checkpoints progressed from 1 to 5 completed without additional failures; one startup trigger aborted while tasks were initializing and remains visible in initial/final failure counts; three-cluster and scoring-throughput acceptance remain unverified
   - 2026-11-03 final Stage 5 make ci passed with 195 shared tests plus module tests/builds and Terraform checks; explicit new-file hooks, STREAMING=1 make doctor and make security passed with documented scoped exceptions and existing parameterized-chart coverage limitations
   - 2026-11-03 pinned-runtime API/control tests passed (6), bounded actual Flink execution produced 24 logical windows and the complete Kafka/upsert job graph compiled with 11 nodes; tests cover vendor Java defaults, real shaded SCRAM class, checkpoint-gated submission and explicit consumer positions
   - 2026-11-03 isolated native Kafka/PyFlink fixtures produced exactly 26 EUR minute payments, 25 authorized and 2500 authorized minor units; first-minute late revision was 2, one fully expired event reached the side output and the unused third partition did not block watermarks

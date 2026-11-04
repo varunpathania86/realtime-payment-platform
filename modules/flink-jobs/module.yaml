@@ -6,3 +6,4 @@ owners:
   - varunpathania86
 dependencies:
   - event-contracts
+  - payment-risk-model
