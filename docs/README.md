@@ -30,6 +30,7 @@ All design documentation lives here, written in Markdown with Mermaid diagrams. 
 | [adr/ADR-021-automatic-release-promotion.md](adr/ADR-021-automatic-release-promotion.md) | Automatic module/solution iteration, RC and stable artifact promotion |
 | [adr/ADR-022-pyflink-event-time-semantics.md](adr/ADR-022-pyflink-event-time-semantics.md) | PyFlink, separate synthetic outcomes, revision identities and checkpoint boundaries |
 | [adr/ADR-023-clickhouse-analytics.md](adr/ADR-023-clickhouse-analytics.md) | Persistent ClickHouse tables, checkpoint-aligned batch sink, query keys, retention and benchmark |
+| [adr/ADR-024-advisory-event-time-risk-features.md](adr/ADR-024-advisory-event-time-risk-features.md) | Optional synthetic context, event-time history, advisory model contract and staged ONNX acceptance |
 | [runbooks/flink-recovery.md](runbooks/flink-recovery.md) | Synthetic fixtures, lateness, persistent checkpoints and savepoint/restore |
 | [runbooks/clickhouse-analytics.md](runbooks/clickhouse-analytics.md) | ClickHouse readiness, sink recovery, replacement queries and failure boundaries |
 | [../tests/benchmarks/](../tests/benchmarks/README.md) | Cross-module benchmark goals, targets, setup/cleanup, measured reports and raw JSON |

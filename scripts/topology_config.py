@@ -20,8 +20,10 @@ def positive_integer(value, name):
 
 
 def validate(data):
-    if not isinstance(data, dict) or set(data) - {"node", "clusters", "nodes", "observability", "streaming", "analytics", "runtime_profile"}:
-        raise ValueError("configuration accepts only node, nodes, clusters, observability, streaming, analytics and runtime_profile")
+    if not isinstance(data, dict) or set(data) - {
+        "node", "clusters", "nodes", "observability", "streaming", "analytics", "runtime_profile", "risk",
+    }:
+        raise ValueError("configuration accepts only node, nodes, clusters, observability, streaming, analytics, runtime_profile and risk")
     node = data.get("node", {})
     if not isinstance(node, dict) or set(node) - {"cpus", "memory_mib"}:
         raise ValueError("node accepts only cpus and memory_mib")
@@ -80,6 +82,19 @@ def validate(data):
         cluster_a = result.get("nodes", {}).get("a", result["node"])
         if cluster_a["cpus"] < 4 or cluster_a["memory_mib"] < 6144:
             raise ValueError("analytics requires cluster A to have at least 4 CPUs and 6144 MiB")
+    if "risk" in data:
+        risk = data["risk"]
+        if not isinstance(risk, dict) or set(risk) != {"package_key", "package_sha256"}:
+            raise ValueError("risk requires only package_key and package_sha256")
+        if not result.get("streaming"):
+            raise ValueError("risk requires streaming")
+        if not isinstance(risk["package_key"], str) or not re.fullmatch(
+            r"payment-risk/[0-9]+\.[0-9]+\.[0-9]+/payment_risk\.zip", risk["package_key"]
+        ):
+            raise ValueError("risk requires a versioned package_key")
+        if not isinstance(risk["package_sha256"], str) or not re.fullmatch(r"[a-f0-9]{64}", risk["package_sha256"]):
+            raise ValueError("risk requires an explicit package_sha256")
+        result["risk"] = risk
     return result
 
 

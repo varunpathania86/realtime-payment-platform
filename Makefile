@@ -6,7 +6,7 @@ export PATH := $(HOME)/.local/bin:$(PATH)
 .DEFAULT_GOAL := help
 .PHONY: security security-solution security-module security-plan publication-login quality-report quality-module-report release-baseline
 .PHONY: dev-metrics dev-observability db-switchover db-failover db-rejoin
-.PHONY: streaming-fixtures streaming-inspect streaming-load streaming-savepoint streaming-stop streaming-benchmark streaming-benchmark-preflight
+.PHONY: streaming-fixtures streaming-inspect streaming-load streaming-savepoint streaming-stop streaming-benchmark streaming-benchmark-preflight risk-publish risk-verify
 
 # Use a system pre-commit if present, otherwise the one installed by `make setup`.
 VENV       := .venv
@@ -33,6 +33,7 @@ setup: ## Set up the developer environment (see docs/developer-setup.md)
 	bash scripts/setup-multicluster.sh
 	bash scripts/setup-cnpg.sh
 	bash scripts/setup-streaming.sh
+	bash scripts/setup-risk.sh
 	@$(MAKE) --no-print-directory doctor
 
 tools: ## Install or update the pinned CLI tools from .tool-versions
@@ -109,6 +110,12 @@ dev-observability: ## Forward opt-in Grafana to http://127.0.0.1:3000 (foregroun
 
 streaming-fixtures: ## Send deterministic synthetic processing events to the selected cluster
 	$(VENV)/bin/python scripts/streaming-control.py fixtures
+
+risk-publish: ## Publish immutable trained model artifacts to the explicitly selected profile's MinIO
+	$(VENV)/bin/python -m scripts.risk_model --profile "$(MINIKUBE_PROFILE)" --directory "$(or $(MODEL_DIRECTORY),.local/models/payment-risk/1.0.0)"
+
+risk-verify: ## Verify advisory predictions, late-history revision and model telemetry on the selected profile
+	$(VENV)/bin/python -m scripts.risk_acceptance --profile "$(MINIKUBE_PROFILE)"
 
 streaming-inspect: ## Inspect current compacted window results and too-late output
 	$(VENV)/bin/python scripts/streaming-control.py inspect

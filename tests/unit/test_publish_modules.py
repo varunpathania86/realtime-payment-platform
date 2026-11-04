@@ -87,6 +87,7 @@ class PublicationTests(unittest.TestCase):
                 ("flink-kafka-connector", "FLINK_KAFKA_CONNECTOR_VERSION"),
                 ("flink-kafka-connector-sha256", "FLINK_KAFKA_CONNECTOR_SHA256"),
                 ("clickhouse", "CLICKHOUSE_VERSION"),
+                ("risk-python", "RISK_PYTHON_VERSION"),
             ):
                 self.assertIn(f"{argument}={pins[key]}", args)
 

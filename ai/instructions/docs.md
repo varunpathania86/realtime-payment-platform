@@ -4,6 +4,9 @@ Applies to: all Markdown files (`**/*.md`).
 
 - Start with a single H1; use ATX headings and fenced code blocks with a language.
 - Diagrams use Mermaid fenced blocks.
+- Pull request descriptions include a small Mermaid diagram showing the changed
+  data/control flow or component relationships. Preserve the repository template
+  and show optional paths accurately; do not imply unimplemented components.
 - Link to files with relative paths.
 - New documents must follow the matching file in `/templates`.
 - Keep `docs/master-plan.md` authoritative for scope, module boundaries, and release policy; keep `docs/module-development.md` synchronized with module types and manifest semantics.

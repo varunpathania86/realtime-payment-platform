@@ -11,6 +11,18 @@ from scripts.module_catalog import ROOT
 
 
 class TopologyConfigurationTests(unittest.TestCase):
+    def test_risk_requires_streaming_and_explicit_version_and_digest(self):
+        risk = {"package_key": "payment-risk/1.0.0/payment_risk.zip", "package_sha256": "a" * 64}
+        config = {"node": {"cpus": 4, "memory_mib": 6144}, "streaming": True, "risk": risk}
+        self.assertEqual(validate(config)["risk"], risk)
+        for invalid in (
+            {**config, "streaming": False}, {**config, "risk": {}},
+            {**config, "risk": {**risk, "package_sha256": ""}},
+            {**config, "risk": {**risk, "package_key": "payment-risk/latest/payment_risk.zip"}},
+        ):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                validate(invalid)
+
     def test_analytics_requires_streaming_and_a_sufficient_cluster_a_budget(self):
         config = json.loads((ROOT / "templates/analytics-topology.json").read_text())
         settings = validate(config)

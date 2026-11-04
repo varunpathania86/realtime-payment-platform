@@ -27,7 +27,7 @@ flowchart TB
 |---|---|---|
 | [runtime.yaml](templates/runtime.yaml) | ConfigMap, JobManager Service, two Deployments | JobManager/TaskManager and submission Job share configuration; Service selects JobManager only |
 | [submit.yaml](templates/submit.yaml) | One-off submission Job, only with `streaming.enabled` | Calls the JobManager via the Service; uses ConfigMap, Kafka/MinIO Secrets |
-| [values.yaml](values.yaml) | Default Helm inputs | Defines checkpoint/savepoint locations, resource budgets and optional analytics |
+| [values.yaml](values.yaml) | Default Helm inputs | Defines checkpoint/savepoint locations, resource budgets, optional analytics and pinned risk package |
 | [Chart.yaml](Chart.yaml) | Chart metadata | Helm rendering and packaging |
 
 ```mermaid
@@ -42,6 +42,8 @@ flowchart LR
     C -. "prepare writable runtime config" .-> JM
     C -. "prepare writable runtime config" .-> TM
     J --> S["JobManager Service:8081 / 6123 / 6124"]
+    M -- "optional versioned risk package" --> J
+    J -- "verified Python ZIP via blob service" --> TM
     S --> JM
     TM -- "register / coordinate" --> S
     JM -- "schedule operators" --> TM
@@ -122,6 +124,21 @@ there is no TaskManager Service in this chart.
 `analytics.enabled` wires optional ClickHouse writes; it does not install
 ClickHouse itself. Flink checkpoints do not make ClickHouse and Kafka writes
 one cross-system transaction.
+
+`risk.enabled` adds the advisory branch only when streaming is enabled.
+`risk.packageKey` must name `payment-risk/<semver>/payment_risk.zip`, and
+`risk.packageSHA256` must be its explicit lowercase SHA-256. Invalid/missing
+identity fails rendering; runtime verifies archive contents, checksum, contract
+and golden scores before processing. The hook downloads from MinIO and ships
+the verified ZIP through Flink's blob service to workers. The runtime
+JobManager also exposes the endpoint/key/digest for explicit local publication
+and acceptance tooling; credentials remain Secret references.
+
+The default is disabled; publication does not enable scoring automatically.
+Enablement and model-pin changes require stop-with-savepoint and explicit
+restore, just like a stateful image change. See the
+[model guide](../../payment-risk-model/README.md#publish-and-enable-advisory-scoring).
+No new inference Service or per-event MinIO access is introduced.
 
 ## Documentation
 

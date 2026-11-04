@@ -52,6 +52,22 @@ def validate_event(schema: avro.schema.Schema, event: dict) -> None:
         raise ValueError("currency must be a three-letter uppercase ISO 4217 code")
     if processing and not re.fullmatch(r"[A-Z]{2}", event["country"]):
         raise ValueError("country must be an uppercase two-letter code")
+    if processing:
+        event = {**event}
+        for key in ("account_created_at", "device_id"):
+            event.setdefault(key, None)
+        created = event["account_created_at"]
+        if created is not None:
+            if not isinstance(created, str) or not re.fullmatch(
+                r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z", created
+            ):
+                raise ValueError("account_created_at must be RFC3339 UTC ending in Z")
+            if datetime.fromisoformat(created.replace("Z", "+00:00")) > datetime.fromisoformat(
+                event["event_time"].replace("Z", "+00:00")
+            ):
+                raise ValueError("account_created_at must not follow event_time")
+        if event["device_id"] is not None:
+            UUID(event["device_id"])
     buffer = io.BytesIO()
     avro.io.DatumWriter(schema).write(event, avro.io.BinaryEncoder(buffer))
     buffer.seek(0)

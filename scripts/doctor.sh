@@ -109,6 +109,14 @@ if [ "${STREAMING:-0}" = 1 ]; then
   fi
 fi
 
+if [ "${RISK_MODEL:-0}" = 1 ]; then
+  if docker image inspect "rpp-tools/payment-risk:$(pinned_version risk-python)" >/dev/null 2>&1; then
+    ok "risk training runtime $(pinned_version risk-python)"
+  else
+    bad "risk training runtime missing (run: RISK_MODEL=1 make setup)"
+  fi
+fi
+
 case ":$PATH:" in
   *":$BIN_DIR:"*) ;;
   *) bad "$BIN_DIR is not on PATH (add it in ~/.bashrc)" ;;

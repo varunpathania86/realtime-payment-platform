@@ -108,6 +108,7 @@ PY
       --build-arg "FLINK_KAFKA_CONNECTOR_VERSION=$(pinned_version flink-kafka-connector)" \
       --build-arg "FLINK_KAFKA_CONNECTOR_SHA256=$(pinned_version flink-kafka-connector-sha256)" \
       --build-arg "CLICKHOUSE_VERSION=$(pinned_version clickhouse)" \
+      --build-arg "RISK_PYTHON_VERSION=$(pinned_version risk-python)" \
       --build-arg "VERSION=$tag" --build-arg "COMMIT=$commit" -t "$image" "$path"
     minikube -p "$PROFILE" image load "$image" --overwrite=false
   done < "$inventory"

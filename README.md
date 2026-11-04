@@ -69,6 +69,16 @@ coordinates process memory and container budgets without changing shared
 defaults; procedures, measured results and raw evidence live in the
 [benchmark reports](tests/benchmarks/README.md).
 
+Stage 6 is merged as PR #9. Stage 7 adds the
+[payment risk model](modules/payment-risk-model/README.md): backward-compatible
+synthetic account/device context, prior-event features, reproducible logistic
+regression and LightGBM comparison, immutable MinIO artifacts, checksum-pinned
+ONNX inference in Flink, model-version telemetry and audit-preserving
+late-history revisions. CI verifies three-way golden parity in a real Flink
+worker. The [local validation procedure](docs/developer-setup.md#single-cluster-risk-validation)
+uses one low-memory cluster; three-cluster acceptance remains resource-deferred.
+Scores are advisory and never make payment authorization decisions.
+
 ## Repository map
 
 | Path | Purpose |

@@ -196,7 +196,7 @@ def publish_chart(
         images = [
             container["image"]
             for document in yaml.safe_load_all(rendered)
-            if document and document.get("kind") == "Deployment"
+            if document and document.get("kind") in ("Deployment", "StatefulSet", "DaemonSet", "Job")
             for container in (
                 document["spec"]["template"]["spec"]["containers"]
                 + document["spec"]["template"]["spec"].get("initContainers", [])
@@ -261,6 +261,7 @@ def publish(source: Path, context: dict, output: Path) -> dict:
                 "--build-arg", f"FLINK_KAFKA_CONNECTOR_VERSION={pins['flink-kafka-connector']}",
                 "--build-arg", f"FLINK_KAFKA_CONNECTOR_SHA256={pins['flink-kafka-connector-sha256']}",
                 "--build-arg", f"CLICKHOUSE_VERSION={pins['clickhouse']}",
+                "--build-arg", f"RISK_PYTHON_VERSION={pins['risk-python']}",
                 "--build-arg", f"VERSION={version}",
                 "--build-arg", f"COMMIT={context['sourceCommit']}",
                 "--file", str(source / "modules" / context["module"] / "Dockerfile"),

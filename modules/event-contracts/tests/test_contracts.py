@@ -48,6 +48,22 @@ class PaymentContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "baseline"):
             validate_compatibility(self.schema, [])
 
+    def test_optional_synthetic_account_device_fields_preserve_old_events(self) -> None:
+        schema = avro.schema.parse((MODULE / "schemas/payment-processing-v1.avsc").read_text())
+        event = json.loads((MODULE / "examples/payment-processing-v1.json").read_text())
+        validate_event(schema, event)
+        enriched = {**event, "account_created_at": "2026-01-01T00:00:00Z",
+            "device_id": "d41d8cd9-8f00-4204-a980-0998ecf8427e"}
+        validate_event(schema, enriched)
+        validate_event(schema, {**event, "account_created_at": None, "device_id": None})
+        for changes in (
+            {"account_created_at": "2099-01-01T00:00:00Z"},
+            {"account_created_at": "2026-01-01"},
+            {"device_id": "real-device-fingerprint"},
+        ):
+            with self.subTest(changes=changes), self.assertRaises((ValueError, avro.errors.AvroTypeException)):
+                validate_event(schema, {**event, **changes})
+
     def test_rejects_invalid_events(self) -> None:
         for field, value in [
             ("amount_minor", 12.50), ("amount_minor", -1),

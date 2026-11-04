@@ -22,14 +22,15 @@ class StreamingControlTests(unittest.TestCase):
         self.assertEqual(run.call_args.kwargs["timeout"], 180)
         self.assertIn("isolated-a", run.call_args.args[0])
 
-    def invoke_guard(self, deployment, restore="", jobs=None):
+    def invoke_guard(self, deployment, restore="", jobs=None, settings=None):
         argv = ["streaming-control", "guard", "--profile", "isolated-a"]
         inventory = json.dumps({"local_images": {"flink-jobs": "rpp-local/flink-jobs:dev-new"}})
         with patch.object(sys, "argv", argv), \
             patch.dict(os.environ, {"STREAMING_RESTORE_PATH": restore}), \
             patch.object(CONTROL, "command", return_value=deployment), \
             patch.object(CONTROL, "rest", return_value={"jobs": jobs or []}), \
-            patch.object(Path, "read_text", return_value=inventory):
+            patch.object(Path, "exists", return_value=settings is not None), \
+            patch.object(Path, "read_text", side_effect=[inventory, json.dumps(settings)] if settings is not None else [inventory]):
             CONTROL.main()
 
     def deployment(self, image):
@@ -53,3 +54,15 @@ class StreamingControlTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "invalid explicit"):
                 CONTROL.main()
             command.assert_not_called()
+
+    def test_risk_configuration_change_needs_a_stopped_job_and_restore_even_with_same_image(self):
+        deployment = self.deployment("rpp-local/flink-jobs:dev-new")
+        settings = {"risk_enabled": True, "risk_package_key": "payment-risk/1.0.0/payment_risk.zip",
+            "risk_package_sha256": "a" * 64}
+        with self.assertRaisesRegex(ValueError, "risk configuration changed"):
+            self.invoke_guard(deployment, settings=settings)
+        with self.assertRaisesRegex(ValueError, "stop the existing"):
+            self.invoke_guard(deployment, "s3://flink-state/savepoints/approved",
+                [{"state": "RUNNING"}], settings=settings)
+        self.invoke_guard(deployment, "s3://flink-state/savepoints/approved",
+            [{"state": "CANCELED"}], settings=settings)

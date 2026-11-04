@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "feature_version": "payment-risk-features-v1",
+  "model_name": "payment-risk",
+  "model_version": "1.0.0",
+  "numeric": [
+    "payment_amount_minor",
+    "account_age_days",
+    "payments_last_10_minutes",
+    "rejections_last_10_minutes",
+    "amount_last_10_minutes",
+    "distinct_countries_last_hour",
+    "seconds_since_previous_payment",
+    "amount_deviation_from_account_average",
+    "device_changed",
+    "country_changed",
+    "account_age_missing",
+    "device_context_missing"
+  ],
+  "categorical": ["currency", "country", "payment_method"],
+  "numeric_dtype": "float32",
+  "categorical_dtype": "string",
+  "missing_numeric": "NaN; median imputation with explicit account/device missing-context features",
+  "missing_categorical": "unknown",
+  "history": "Strictly preceding (event_time, event_id), same account and currency; rolling 10 minutes and 1 hour; no current outcome or future events.",
+  "preprocessing": "ColumnTransformer: median imputation and StandardScaler; OneHotEncoder(handle_unknown=ignore).",
+  "output_schema": {
+    "risk_score": "float in [0,1]; synthetic suspicious-class probability",
+    "advisory_only": true,
+    "reason_codes": "descriptive feature flags, not causal model explanations"
+  },
+  "onnx_parity_absolute_tolerance": 0.00001
+}

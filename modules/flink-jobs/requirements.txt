@@ -2,3 +2,4 @@ apache-flink==${FLINK_PYTHON_VERSION}
 boto3==1.40.70
 kafka-python==2.2.15
 ruamel.yaml==0.19.1
+onnxruntime==1.20.1

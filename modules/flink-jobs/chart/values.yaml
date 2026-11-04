@@ -17,6 +17,11 @@ analytics:
   url: http://clickhouse-analytics:8123
   user: rpp_analytics
   existingSecret: clickhouse-analytics
+# Opt-in advisory branch; the submit hook verifies this immutable MinIO ZIP before distribution.
+risk:
+  enabled: false
+  packageKey: ""
+  packageSHA256: ""
 events:
   brokers: kafka.data.svc.cluster.local:9092
   existingSecret: payment-api-events

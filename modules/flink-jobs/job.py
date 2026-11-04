@@ -17,6 +17,7 @@ from pyflink.datastream.output_tag import OutputTag
 from analytics import ClickHouseMap, WINDOWS_TABLE, write_payment_fact
 from pyflink.datastream.state import MapStateDescriptor, StateTtlConfig
 from pyflink.table import DataTypes, Schema, StreamTableEnvironment
+from pyflink.java_gateway import get_gateway
 
 from processing import DEDUP_TTL_MS, LATENESS_MS, TRANSFORMATION, add, decode, dimension, empty_window, output, windows
 
@@ -117,6 +118,44 @@ def result_row(value):
     return Row(result["result_id"], value)
 
 
+def preserve_result_sink_identity(env):
+    """Bridge the pre-risk SQL sink's generated hashes without discarding its state."""
+    java_env = env._j_stream_execution_environment
+    transformations = java_env.getTransformations()
+    sink = transformations.get(transformations.size() - 1)
+    if sink.getClass().getSimpleName() != "SinkTransformation" or sink.getUid() is not None:
+        raise ValueError("expected the original unassigned SQL result sink before risk attachment")
+    graph = java_env.getStreamGraph(False)
+    jvm = get_gateway().jvm
+    hashes = jvm.org.apache.flink.streaming.api.graph.StreamGraphHasherV2() \
+        .traverseStreamGraphAndGenerateHashes(graph)
+    identities = {
+        node.getOperatorName(): bytes(value & 255 for value in hashes.get(node.getId())).hex()
+        for node in graph.getStreamNodes().toArray()
+    }
+    custom = jvm.org.apache.flink.streaming.api.datastream.CustomSinkOperatorUidHashes.builder() \
+        .setWriterUidHash(identities[sink.getName() + ": Writer"]) \
+        .setCommitterUidHash(identities[sink.getName() + ": Committer"]).build()
+    # Flink 1.20 accepts custom writer/committer hashes only in the sink constructor.
+    replacement = jvm.org.apache.flink.streaming.api.transformations.SinkTransformation(
+        sink.getInputStream(), sink.getSink(), sink.getOutputType(), sink.getName(),
+        sink.getParallelism(), sink.isParallelismConfigured(), custom)
+    replacement.setUid("payment-window-results-sink-v1")
+    if sink.getMaxParallelism() > 0:
+        replacement.setMaxParallelism(sink.getMaxParallelism())
+    replacement.setResources(sink.getMinResources(), sink.getPreferredResources())
+    replacement.setBufferTimeout(sink.getBufferTimeout())
+    if sink.getDescription() is not None:
+        replacement.setDescription(sink.getDescription())
+    if sink.getCoLocationGroupKey() is not None:
+        replacement.setCoLocationGroupKey(sink.getCoLocationGroupKey())
+    if sink.getSlotSharingGroup().isPresent():
+        replacement.setSlotSharingGroup(sink.getSlotSharingGroup().get())
+    if sink.getChainingStrategy() is not None:
+        replacement.setChainingStrategy(sink.getChainingStrategy())
+    transformations.set(transformations.size() - 1, replacement)
+
+
 def build():
     env = StreamExecutionEnvironment.get_execution_environment()
     env.set_parallelism(1)
@@ -166,6 +205,24 @@ def build():
     statement = table_env.create_statement_set()
     statement.add_insert_sql("INSERT INTO results SELECT result_id, payload FROM window_results")
     statement.attach_as_datastream()
+    preserve_result_sink_identity(env)
+    # Optional branches must not affect the baseline graph used by the state-identity bridge.
+    if os.environ.get("RISK_ENABLED") == "true":
+        from risk import RISK_TOO_LATE, RiskPayments, account_currency
+
+        predictions = stream.key_by(account_currency, key_type=Types.STRING()).process(
+            RiskPayments(), output_type=Types.STRING()).name("advisory-risk-predictions").uid("risk-predictions-v1")
+        for output, topic, uid in (
+            (predictions, "payment-risk-predictions-v1", "risk-audit-sink-v1"),
+            (predictions.get_side_output(RISK_TOO_LATE), "payment-risk-too-late-v1", "risk-late-sink-v1"),
+        ):
+            builder = KafkaSink.builder().set_bootstrap_servers(properties["bootstrap.servers"])
+            for key, value in properties.items():
+                builder.set_property(key, value)
+            sink = builder.set_delivery_guarantee(DeliveryGuarantee.AT_LEAST_ONCE) \
+                .set_record_serializer(KafkaRecordSerializationSchema.builder().set_topic(topic)
+                    .set_value_serialization_schema(SimpleStringSchema()).build()).build()
+            output.sink_to(sink).uid(uid)
     return env
 
 

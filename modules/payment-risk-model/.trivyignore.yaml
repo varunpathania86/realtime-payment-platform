@@ -1,0 +1,9 @@
+misconfigurations:
+  - id: DS-0026
+    paths: [Dockerfile]
+    expired_at: 2027-01-01
+    statement: >-
+      Finite training/export batch process, not a long-running inference service.
+      Container exit status and artifact/parity checks determine success; there
+      is no service endpoint to health-check. Revisit if this image gains a
+      persistent service or Kubernetes workload.
