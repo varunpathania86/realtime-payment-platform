@@ -6,7 +6,7 @@ export PATH := $(HOME)/.local/bin:$(PATH)
 .DEFAULT_GOAL := help
 .PHONY: security security-solution security-module security-plan publication-login quality-report quality-module-report release-baseline
 .PHONY: dev-metrics dev-observability db-switchover db-failover db-rejoin
-.PHONY: streaming-fixtures streaming-inspect streaming-load streaming-savepoint streaming-stop
+.PHONY: streaming-fixtures streaming-inspect streaming-load streaming-savepoint streaming-stop streaming-benchmark streaming-benchmark-preflight
 
 # Use a system pre-commit if present, otherwise the one installed by `make setup`.
 VENV       := .venv
@@ -115,6 +115,12 @@ streaming-inspect: ## Inspect current compacted window results and too-late outp
 
 streaming-load: ## Produce bounded synthetic load for TaskManager recovery verification
 	$(VENV)/bin/python scripts/streaming-control.py load
+
+streaming-benchmark-preflight: ## Check host memory before starting the three-cluster analytics benchmark
+	$(VENV)/bin/python -m scripts.streaming_benchmark --base "$(or $(DEV_PROFILE),rpp)" --preflight --config "$(or $(DEV_CONFIG),templates/analytics-benchmark-topology.json)"
+
+streaming-benchmark: ## Measure 50 events/s baseline and 100 events/s stress on three running clusters
+	$(VENV)/bin/python -m scripts.streaming_benchmark --base "$(or $(DEV_PROFILE),rpp)"
 
 streaming-savepoint: ## Create a persistent savepoint for the selected Flink job
 	$(VENV)/bin/python scripts/streaming-control.py savepoint

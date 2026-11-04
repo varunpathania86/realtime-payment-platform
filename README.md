@@ -59,6 +59,16 @@ Use `templates/analytics-topology.json` to select the feature in cluster A;
 default payment-only development remains unchanged. PostgreSQL continues as
 the transactional source of truth.
 
+The [bounded pipeline benchmark](modules/flink-jobs/README.md#bounded-pipeline-benchmark)
+provides a 50 events/s baseline and separate 100 events/s stress phase with
+fact-visibility latency and Kafka lag reporting. Run its memory preflight before
+starting the [compact three-cluster topology](templates/analytics-benchmark-topology.json);
+these are test targets, not established capacity claims.
+An [opt-in low-memory Flink profile](modules/flink-jobs/chart/README.md#opt-in-low-memory-runtime)
+coordinates process memory and container budgets without changing shared
+defaults; procedures, measured results and raw evidence live in the
+[benchmark reports](tests/benchmarks/README.md).
+
 ## Repository map
 
 | Path | Purpose |

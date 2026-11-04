@@ -94,7 +94,8 @@ resource "helm_release" "application" {
   depends_on      = [helm_release.ingress, helm_release.clickhouse_analytics, kubernetes_stateful_set_v1.postgres, kubernetes_secret_v1.payment_database, kubernetes_stateful_set_v1.kafka, kubernetes_deployment_v1.registry, kubernetes_secret_v1.payment_events, kubernetes_secret_v1.clickhouse_analytics, kubernetes_config_map_v1.event_schema, kubernetes_deployment_v1.minio]
 
   values = [yamlencode({
-    replicaCount = lookup(var.application_replicas, each.key, 1)
+    replicaCount   = lookup(var.application_replicas, each.key, 1)
+    runtimeProfile = var.runtime_profile
     streaming = {
       enabled     = var.streaming_enabled
       restorePath = var.streaming_restore_path

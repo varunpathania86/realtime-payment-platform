@@ -7,13 +7,13 @@ help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
 
 build: ## Compile job sources without requiring a running cluster
-	$(PYTHON) -m py_compile analytics.py configuration.py processing.py fixtures.py job.py runtime.py control.py
+	$(PYTHON) -m py_compile analytics.py benchmark.py configuration.py processing.py fixtures.py job.py runtime.py control.py
 
 test: ## Run deterministic processing tests offline
 	$(PYTHON) -m unittest discover -s tests -p 'test_*.py'
 
 lint: ## Validate Python syntax and module packaging
-	$(PYTHON) -m py_compile analytics.py configuration.py processing.py fixtures.py job.py runtime.py control.py
+	$(PYTHON) -m py_compile analytics.py benchmark.py configuration.py processing.py fixtures.py job.py runtime.py control.py
 
 integration: ## Check the actual PyFlink operator using the setup-built runtime
 	docker run --rm --entrypoint python -e PYTHONPATH=/opt/job -v "$(CURDIR):/opt/job:ro" \

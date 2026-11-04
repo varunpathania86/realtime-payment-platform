@@ -229,7 +229,7 @@ deploy() {
     jq --arg key "${profile: -1}" --slurpfile workloads "$STATE/workloads.pending.json" \
       '. * $workloads[0][$key]' "$STATE/events.pending.json" > "$REPO_ROOT/.local/$profile/events.tfvars.json"
     jq --arg key "${profile: -1}" --slurpfile config "$STATE/configuration.json" \
-      '. + {streaming_enabled: ($key == "a" and ($config[0].streaming // false)), analytics_enabled: ($key == "a" and ($config[0].analytics // false))}' \
+      '. + {streaming_enabled: ($key == "a" and ($config[0].streaming // false)), analytics_enabled: ($key == "a" and ($config[0].analytics // false)), runtime_profile: ($config[0].runtime_profile // "standard")}' \
       "$REPO_ROOT/.local/$profile/events.tfvars.json" > "$REPO_ROOT/.local/$profile/streaming.pending.json"
     mv "$REPO_ROOT/.local/$profile/streaming.pending.json" "$REPO_ROOT/.local/$profile/events.tfvars.json"
     MINIKUBE_PROFILE="$profile" scripts/local-dev.sh update

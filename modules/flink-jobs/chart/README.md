@@ -56,6 +56,30 @@ flowchart LR
 
 ## Prerequisites
 
+### Opt-in low-memory runtime
+
+`runtimeProfile: low-memory` selects coordinated Flink process and container
+budgets from `lowMemory` in [values.yaml](values.yaml). The ordinary
+`standard` profile remains unchanged:
+
+| Role | Standard process / container limit | Low-memory process / container limit |
+|---|---|---|
+| JobManager | 1024m / 1280Mi | 768m / 1024Mi |
+| TaskManager | 2048m / 2560Mi | 1280m / 2048Mi |
+
+Process budgets are not container limits: Python workers and other native
+allocations need headroom. The low-memory TaskManager request is 1280Mi;
+the JobManager request stays 768Mi. CPU budgets, checkpoint intervals and
+parallelism are unchanged. Invalid profile names fail Helm rendering.
+
+The topology input `runtime_profile` flows through the multi-cluster script
+into local Terraform and this chart's `runtimeProfile` value. Select
+[analytics-low-memory-topology.json](../../../templates/analytics-low-memory-topology.json)
+with `DEV_CONFIG` only after the benchmark memory preflight passes. This
+profile does not lower node minimums, ClickHouse limits or host safety reserves.
+It is a measured development option, not a certified throughput improvement;
+see the [measured limits](../../../tests/benchmarks/pipeline/2026-11-04-low-memory.md).
+
 Use the [streaming developer guide](../../../docs/developer-setup.md) and the
 [API chart glossary](../../payment-api/chart/README.md#configuration) for
 Kubernetes terms and Helm syntax.

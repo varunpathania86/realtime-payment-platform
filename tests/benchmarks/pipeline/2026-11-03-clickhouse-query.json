@@ -1,0 +1,40 @@
+{
+  "clickhouse_version": "25.8.16.34",
+  "configuration": {
+    "event_day_filter": "today() - 7 days",
+    "insert_batch_rows": 1000,
+    "query_output": "small grouped result (client round-trip includes HTTP response)",
+    "query_samples_after_warmup": 30
+  },
+  "data": {
+    "active_parts": 4,
+    "bytes_on_disk": 2922038,
+    "generated_rows": 100000,
+    "order_by": "(event_day, currency, country, payment_method, event_time, event_id)",
+    "partition_by": "toYYYYMM(event_day)",
+    "partitions": [
+      "202608",
+      "202609",
+      "202610",
+      "202611"
+    ],
+    "stored_rows": 100000
+  },
+  "host": {
+    "logical_cpus": 20,
+    "memory_limit_bytes": 1342177280,
+    "platform": "Linux-6.18.40.1-microsoft-standard-WSL2-x86_64-with-glibc2.35"
+  },
+  "latency_ms_client_round_trip": {
+    "mean": 6.235843766383671,
+    "p50": 5.526684995857067,
+    "p95": 6.646082998486236,
+    "p99": 24.154336999345105,
+    "samples": 30
+  },
+  "query": "7-day grouped payments by event day/currency/country/payment method",
+  "target": {
+    "met": true,
+    "p95_ms": 500
+  }
+}

@@ -31,8 +31,11 @@ All design documentation lives here, written in Markdown with Mermaid diagrams. 
 | [adr/ADR-022-pyflink-event-time-semantics.md](adr/ADR-022-pyflink-event-time-semantics.md) | PyFlink, separate synthetic outcomes, revision identities and checkpoint boundaries |
 | [adr/ADR-023-clickhouse-analytics.md](adr/ADR-023-clickhouse-analytics.md) | Persistent ClickHouse tables, checkpoint-aligned batch sink, query keys, retention and benchmark |
 | [runbooks/flink-recovery.md](runbooks/flink-recovery.md) | Synthetic fixtures, lateness, persistent checkpoints and savepoint/restore |
-| [runbooks/clickhouse-analytics.md](runbooks/clickhouse-analytics.md) | ClickHouse readiness, sink recovery, replacement queries and benchmark |
+| [runbooks/clickhouse-analytics.md](runbooks/clickhouse-analytics.md) | ClickHouse readiness, sink recovery, replacement queries and failure boundaries |
+| [../tests/benchmarks/](../tests/benchmarks/README.md) | Cross-module benchmark goals, targets, setup/cleanup, measured reports and raw JSON |
 | [adr/](adr/) | Architecture Decision Records |
 | [runbooks/](runbooks/) | Operational procedures |
 
-Later stages add `benchmarks/`, `incident-reports/`, `threat-model/`, and `interviews/` as described in the master plan.
+Cross-module benchmark evidence lives under `tests/benchmarks/`, separately
+from operational runbooks. Later stages add `incident-reports/`, `threat-model/`,
+and `interviews/` as described in the master plan.

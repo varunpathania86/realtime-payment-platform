@@ -94,6 +94,66 @@ rejections and deterministic result identity/revision. Runtime counters include
 processing-delay total/processed count, late, too-late and duplicate events.
 These are Flink operator metrics, not invented HTTP payment metrics.
 
+### Bounded pipeline benchmark
+
+The existing `make streaming-load` is a small recovery workload, not a capacity
+benchmark. Use the separate three-cluster benchmark for throughput, lag and fact
+visibility latency:
+
+```bash
+make streaming-benchmark-preflight DEV_PROFILE=rpp-stage6-perf
+make dev-up DEV_PROFILE=rpp-stage6-perf DEV_CONFIG=templates/analytics-benchmark-topology.json
+make streaming-benchmark DEV_PROFILE=rpp-stage6-perf
+```
+
+Do not continue to `dev-up` if preflight fails. The benchmark template budgets
+A at 4 CPUs/6144 MiB and B/C at 2 CPUs/3072 MiB each, without observability
+backends. A fresh start requires 14336 MiB **available** host memory, including
+a 2048-MiB safety reserve; installed RAM alone is not the check.
+
+The measured schedule lasts 285 seconds: 20-second warmup, 120 seconds at
+50 events/s, 10-second baseline drain, 90 seconds at 100 events/s, and a
+45-second final drain. Startup/build/deployment are separate. The launcher
+uses explicit owned contexts and bounds remote execution within its remaining
+380-second command budget. The 100 events/s phase is a stress measurement,
+not a requirement to keep lag flat.
+
+The JSON report includes actual producer rate, confirmed throughput including
+the visibility tail, p50/p95/p99 send-to-visible latency, backlog samples,
+checkpoint-committed Kafka lag, checkpoint progress, source revision/dirty
+status, deployed image references and container allocations. Baseline acceptance
+requires all 6000 facts, actual producer pacing within 1% of 50 events/s,
+p95 at most 2 seconds, backlog slope at most 1 event/s (sampling-noise
+tolerance), and terminal baseline backlog at most 100 events. Overall success
+also requires all warmup/stress facts after drain, checkpoint progress, no
+additional failed checkpoints and no job recovery during measurement.
+A failed target returns nonzero and preserves the report when available.
+Unconfirmed facts at the deadline indicate an undrained backlog, not proof of
+permanent data loss; the report keeps baseline and stress outcomes separate.
+
+Latency is a conservative upper bound from the producer send attempt to the
+first successful `FINAL` fact query, including the nominal one-second polling
+interval and query overhead. It is not broker-append latency, API latency or
+event-time window completion latency. Kafka lag uses checkpoint-committed
+offsets and naturally has a checkpoint sawtooth; the non-growing criterion
+uses this run's sent-minus-visible backlog instead. Each run uses a distinct
+account/event identity and current UTC timestamps; synthetic facts remain
+subject to the normal 90-day TTL. The short run does not certify long-term
+capacity or cross-cluster failover.
+
+For partitions without a committed offset yet, the report explicitly counts
+lag from the earliest retained offset and lists those partitions. This is
+expected on fresh topics; it does not pretend an absent commit means zero lag.
+
+An opt-in `runtime_profile: low-memory` topology setting reduces Flink process
+and container budgets together. See the [chart profile table](chart/README.md#opt-in-low-memory-runtime)
+and [actual test results](../../tests/benchmarks/pipeline/2026-11-04-low-memory.md).
+The measured single-cluster run drained all facts but failed the 2-second p95
+target; do not lower node minimums or claim capacity from reduced limits.
+
+See the [analytics runbook](../../docs/runbooks/clickhouse-analytics.md#three-cluster-resources-and-failure-boundaries)
+for resource ownership and separate-server failure boundaries.
+
 Kafka result records use a compacted key and JSON `{result_id, payload}`;
 `payload` contains the aggregate JSON. Read the latest value per key, not the
 raw append count. Too-late records wrap the original event, watermark and reason.

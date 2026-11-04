@@ -2396,12 +2396,16 @@ excluded_initially:
 # 19. Current implementation status
 
 Update this block after every session.
+Benchmark procedures, targets and measured evidence are indexed in
+[tests/benchmarks](../tests/benchmarks/README.md), separately from operational
+runbooks. See the [low-memory pipeline report](../tests/benchmarks/pipeline/2026-11-04-low-memory.md)
+and [ClickHouse query report](../tests/benchmarks/pipeline/2026-11-03-clickhouse-query.md).
 
 ```yaml
 current_milestone: stage-6-clickhouse-analytics
-stage_status: Stage 6 draft PR 9; make ci and integrations passed; reduced single-cluster flow, dirty-source checkpoint restore, clean recreation, ClickHouse persistence and 100000-row benchmark passed; full three-cluster acceptance remains pending
-last_completed_task: Fixed distributed analytics Python packaging; verified 28 unique facts, 26 EUR minute payments, revision 2, one too-late event and 13 successful checkpoints; warmed query p95 6.65 ms
-next_task: Complete full three-cluster analytics topology acceptance on a host with sufficient resources before marking PR 9 ready; keep Stage 7 separate
+stage_status: Stage 6 draft PR 9; opt-in low-memory Flink profile deployed on an isolated single cluster; 50 events/s baseline p95 4.73 seconds failed the 2-second target; three-cluster run remains memory-blocked
+last_completed_task: Measured 285-second low-memory 50/100 events/s run; all 16000 facts drained, 30 checkpoints and no restarts; stress backlog grew, ClickHouse cgroup reached its existing 2-GiB cap; dirty-source savepoint restore passed
+next_task: Investigate ingestion/visibility bottlenecks without weakening latency targets or memory safeguards; full three-cluster acceptance still needs sufficient host resources; keep Stage 7 separate
 known_issues:
   - one cold ingress CRD installation encountered a transient etcd timeout; ordinary dev-update recovered with state and node budgets unchanged
   - a stale pending-install Traefik Helm revision interrupted the first scale-check attempt; removing only that release allowed Terraform to recreate ingress and the retry passed

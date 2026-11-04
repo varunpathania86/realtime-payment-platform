@@ -2,7 +2,7 @@
 
 - **Severity:** Medium
 - **Owner:** varunpathania86
-- **Last reviewed:** 2026-11-03
+- **Last reviewed:** 2026-11-04
 
 ## Symptoms
 
@@ -59,9 +59,9 @@ run `make dev-down` or disable analytics if its local data must be retained.
     ```
 
     The query should return no duplicate logical event IDs.
-4. Run `make -C modules/clickhouse-analytics benchmark` through the documented
-    loopback port-forward. Retain the report with the hardware and configuration
-    if using its p95 as capacity evidence.
+4. If investigating performance, follow the
+    [benchmark procedures](../../tests/benchmarks/README.md). Historical query
+    and pipeline results live there, not in this operational runbook.
 
 ## Prevention and follow-up
 
@@ -69,29 +69,94 @@ Monitor ClickHouse disk use, active parts, insert errors and Flink checkpoint
 age. Detailed payment facts expire after 90 days. Window revisions have no TTL
 in this local stage. Export data before deleting a profile or its PVC.
 
-## Reduced-resource verification evidence
+## Three-cluster resources and failure boundaries
 
-On 2026-11-03, the owned `rpp-stage6-single` diagnostic profile used one
-4-CPU, 6144-MiB Minikube node instead of the full three-cluster topology.
-ClickHouse was limited to 2 CPUs and 2 GiB with an 8-GiB PVC. This is diagnostic
-evidence, not certification of the cross-cluster deployment or production capacity.
+The compact benchmark template allocates node caps, not per-container limits:
 
-- A dirty-source image rebuild restored the Flink job from a retained checkpoint.
-  The profile was then deleted and recreated from clean local state.
-- Timed synthetic fixtures on that clean deployment produced 28 distinct facts,
-  26 EUR minute-window payments, a maximum revision of 2 and one too-late Kafka
-  record. Flink was RUNNING with 13 completed checkpoints and none failed.
-- Deleting only the ClickHouse pod and waiting for StatefulSet readiness
-  preserved all 28 logical facts on the existing PVC.
-- The benchmark ran inside the JobManager pod against ClickHouse 25.8.16.34:
-  100,000 rows, 1,000-row insert batches, four monthly partitions
-  (`202608` through `202611`), four active parts and 2,922,038 bytes on disk.
-  Thirty warmed samples of the seven-day grouped query measured client HTTP
-  round-trip p50 **5.53 ms**, p95 **6.65 ms**, and p99 **24.15 ms**;
-  the p95 target of 500 ms passed.
+| Cluster | Node CPU / RAM | Workloads |
+|---|---|---|
+| A | 4 CPUs / 6144 MiB | Payment stack, Kafka broker/controller, CNPG writer initially, plus Flink JobManager/TaskManager, MinIO and ClickHouse |
+| B | 2 CPUs / 3072 MiB | Payment stack, Kafka broker/controller and CNPG remote standby initially |
+| C | 2 CPUs / 3072 MiB | Payment stack, Kafka broker/controller and CNPG remote standby initially |
 
-The benchmark report's 20 logical CPUs and 1,342,177,280-byte memory limit
-describe the client process's host-visible CPUs and JobManager cgroup, not
-ClickHouse's CPU/memory allocation. The WSL2 host had about 8.8 GiB available
-after verification. Earlier three-cluster attempts exhausted practical host
-resources; full three-cluster acceptance remains outstanding.
+This is a low-load test allocation, not measured capacity. There is one shared
+Kafka cluster across the three Kubernetes clusters. There are not three
+independently running analytics pipelines.
+
+Application container requests/limits come from module chart values:
+[Flink](../../modules/flink-jobs/chart/values.yaml),
+[ClickHouse](../../modules/clickhouse-analytics/chart/values.yaml),
+[payment API/workers](../../modules/payment-api/chart/values.yaml) and
+[portal](../../modules/web-portal/chart/values.yaml).
+Infrastructure budgets are in the
+[Kafka Terraform module](../../platform/terraform/modules/kafka-broker/main.tf),
+[CNPG chart](../../platform/terraform/modules/cnpg/chart/templates/cluster.yaml),
+and [local streaming resources](../../platform/terraform/environments/local/streaming.tf).
+Requests guide scheduling; limits constrain containers. Node caps do not
+automatically increase container allocations, and Kubernetes Services do not
+have application CPU/RAM limits.
+
+```mermaid
+flowchart LR
+    Client["Client / producer"]
+    subgraph A["Cluster A"]
+        KA["Kafka A"]
+        FA["Flink + MinIO"]
+        CH["ClickHouse + local PVC"]
+        PA["Payment API A"]
+    end
+    subgraph B["Cluster B"]
+        KB["Kafka B"]
+        PB["Payment API B"]
+    end
+    subgraph C["Cluster C"]
+        KC["Kafka C"]
+        PC["Payment API C"]
+    end
+    Client --> KA
+    Client --> KB
+    Client --> KC
+    KA <--> KB
+    KB <--> KC
+    KC <--> KA
+    KA --> FA
+    KB --> FA
+    KC --> FA
+    FA --> CH
+    Routing["External health-aware routing: not provided"] -.-> PA
+    Routing -.-> PB
+    Routing -.-> PC
+```
+
+| Failure | Current behavior | Boundary |
+|---|---|---|
+| Application pod exits | Its controller recreates it in the same Kubernetes cluster; a Service uses other ready endpoints in that cluster if present | A single replica has a recovery gap; no automatic move to another cluster |
+| Service has no ready endpoints or incorrect configuration | Calls fail until endpoints/configuration recover | A Service is a network abstraction, not a process Kubernetes can restart; it does not discover another cluster's Service |
+| One Kafka broker/cluster fails | Kafka clients can discover surviving brokers and leaders; replication factor 3 and minimum ISR 2 can tolerate one unavailable replica when the remaining replicas are in sync and controller quorum remains | Cross-server networking, TLS identity, advertised addresses and quorum must remain valid; two failures can prevent writes |
+| PostgreSQL standby cluster fails | The writer can continue with the other healthy synchronous standby | The configured required synchronous acknowledgement must still be satisfied |
+| PostgreSQL writer cluster fails | Use the existing explicit fencing and reviewed database failover workflow | No automatic writer promotion; never allow two unfenced writers |
+| Cluster B or C fails | A's analytics can continue if Kafka quorum/ISR and required database dependencies remain healthy | Payment traffic sent to the failed ingress does not automatically move elsewhere |
+| Cluster A fails | Flink, MinIO and ClickHouse become unavailable; surviving Kafka can retain input within configured retention and disk capacity | No Flink JobManager HA or ClickHouse replication in this stage; local PVCs do not move to B/C |
+| ClickHouse becomes unavailable | Synchronous inserts fail, Flink recovery/backpressure occurs and input backlog can grow | Kafka buffering is finite; this is not uninterrupted analytics availability |
+
+On separate servers, these are independent failure domains only if the servers,
+storage and networking are genuinely independent. The local adapter's shared
+Docker network and node addresses are **not** a ready-to-use multi-server
+deployment. Such deployment needs routable private addresses, authenticated/
+encrypted inter-server connectivity, reachable Kafka advertised endpoints and
+PostgreSQL replication endpoints. Client traffic also needs external,
+health-aware ingress routing; the repository does not currently implement that
+cross-server routing layer.
+
+Adding automatic cross-cluster application failover, Flink HA, replicated
+ClickHouse or independent checkpoint storage is a separate architecture change,
+not something enabled by setting a node resource budget. The bounded benchmark
+does not stop clusters or certify these failure scenarios.
+
+## Performance investigation references
+
+Use the [benchmark index](../../tests/benchmarks/README.md) for goals, targets,
+measured results, raw JSON and ordered setup/cleanup commands. Preserve node
+minimums and host safety reserves when investigating constrained environments.
+Do not delete data-bearing PVCs or relax delivery semantics to make a benchmark
+pass. A fast query over stored rows does not prove a healthy ingestion path.

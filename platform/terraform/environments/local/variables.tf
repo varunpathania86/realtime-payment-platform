@@ -98,3 +98,12 @@ variable "ingress_replicas" {
     error_message = "Ingress replicas must be a positive integer."
   }
 }
+variable "runtime_profile" {
+  description = "Opt-in Flink runtime/container memory profile; ordinary deployments retain standard budgets."
+  type        = string
+  default     = "standard"
+  validation {
+    condition     = contains(["standard", "low-memory"], var.runtime_profile)
+    error_message = "runtime_profile must be standard or low-memory."
+  }
+}

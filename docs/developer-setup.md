@@ -94,6 +94,29 @@ The [Flink guide](../modules/flink-jobs/README.md) and
 
 ### Optional Stage 6 ClickHouse analytics
 
+For the bounded 50 events/s baseline and 100 events/s stress test, follow the
+[pipeline benchmark guide](../modules/flink-jobs/README.md#bounded-pipeline-benchmark).
+Its compact topology uses A=4 CPUs/6144 MiB, B/C=2 CPUs/3072 MiB each. Run
+`make streaming-benchmark-preflight DEV_PROFILE=rpp-stage6-perf` first;
+it requires 14336 MiB available host memory before any nodes are started.
+Do not bypass a failed preflight on a resource-constrained shared machine.
+Cluster startup is outside the under-seven-minute measured benchmark.
+For coordinated Flink process/container tuning, the opt-in
+`templates/analytics-low-memory-topology.json` selects `runtime_profile:
+low-memory` while retaining the same node minimums. Preflight still applies:
+
+```bash
+make streaming-benchmark-preflight DEV_PROFILE=rpp-stage6-perf DEV_CONFIG=templates/analytics-low-memory-topology.json
+```
+
+Reducing Pod requests is not a reduction in actual application usage. The
+[low-memory measurement](../tests/benchmarks/pipeline/2026-11-04-low-memory.md)
+records a successful isolated deployment but a failed latency target; this is
+not proof that three clusters fit this laptop.
+For independent servers, see the
+[failure boundaries](runbooks/clickhouse-analytics.md#three-cluster-resources-and-failure-boundaries);
+the local Minikube Docker network is not a multi-server deployment adapter.
+
 Use `make dev-up DEV_CONFIG=templates/analytics-topology.json` to enable
 streaming and ClickHouse in cluster A. The example budgets A at 4 CPUs/8192 MiB
 and other clusters at 4 CPUs/6144 MiB; analytics requires at least 4 CPUs and

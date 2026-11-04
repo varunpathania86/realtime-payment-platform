@@ -20,8 +20,8 @@ def positive_integer(value, name):
 
 
 def validate(data):
-    if not isinstance(data, dict) or set(data) - {"node", "clusters", "nodes", "observability", "streaming", "analytics"}:
-        raise ValueError("configuration accepts only node, nodes, clusters, observability, streaming and analytics")
+    if not isinstance(data, dict) or set(data) - {"node", "clusters", "nodes", "observability", "streaming", "analytics", "runtime_profile"}:
+        raise ValueError("configuration accepts only node, nodes, clusters, observability, streaming, analytics and runtime_profile")
     node = data.get("node", {})
     if not isinstance(node, dict) or set(node) - {"cpus", "memory_mib"}:
         raise ValueError("node accepts only cpus and memory_mib")
@@ -56,6 +56,10 @@ def validate(data):
                 raise ValueError(f"application {module} is not a runnable catalog module")
             positive_integer(count, f"{cluster}.applications.{module}")
     result = {"node": {"cpus": cpus, "memory_mib": memory}, "clusters": clusters}
+    if "runtime_profile" in data:
+        if data["runtime_profile"] not in ("standard", "low-memory"):
+            raise ValueError("runtime_profile must be standard or low-memory")
+        result["runtime_profile"] = data["runtime_profile"]
     if "nodes" in data:
         nodes = data["nodes"]
         if not isinstance(nodes, dict) or set(nodes) - {"a", "b", "c"}:
