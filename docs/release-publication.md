@@ -33,11 +33,30 @@ Application image builds receive toolchain pins from `.tool-versions` plus
 version/commit build arguments in both local and publication paths.
 Stage 7's model-training image uses the `risk-python` pin through
 `RISK_PYTHON_VERSION`. It has no application chart: generated ONNX artifacts
-are local experiment outputs until the model-registry publication step is
-implemented. Branch image publication requires the corresponding trusted
+are local experiment outputs until explicitly published to MinIO with
+`make risk-publish`. Branch image publication requires the corresponding trusted
 publisher build-argument support on `main`, as described below.
 
 ## Diagnosis
+
+### Build-argument and chart-shape failures
+
+The PI start restriction is separate from build and chart validation errors.
+A Docker error such as `failed to parse stage name "python:"` means a required
+base-image build argument was not supplied, not that the PI has not started.
+Trusted tooling comes from `main`; a feature branch introducing a new runtime
+argument cannot supply its own credentialed publisher implementation.
+After the reviewed publisher update is merged, successful main CI uses it.
+Do not bypass this trust boundary or copy a second runtime version into a
+Dockerfile default just to make branch publication succeed.
+
+Chart digest validation covers regular and init containers in Deployments,
+StatefulSets, DaemonSets and hook Jobs. A StatefulSet-only chart must not fail
+because it has no Deployment, and hook images must not escape digest checks.
+Real Helm packaging regressions cover ClickHouse as well as application charts.
+The error `published chart must render the approved image by immutable digest`
+requires checking both the rendered resources and the trusted validator; do
+not assume it means the source chart omitted its image digest.
 
 ### Events and responsibilities
 

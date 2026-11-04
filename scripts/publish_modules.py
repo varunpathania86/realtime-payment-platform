@@ -196,7 +196,7 @@ def publish_chart(
         images = [
             container["image"]
             for document in yaml.safe_load_all(rendered)
-            if document and document.get("kind") == "Deployment"
+            if document and document.get("kind") in ("Deployment", "StatefulSet", "DaemonSet", "Job")
             for container in (
                 document["spec"]["template"]["spec"]["containers"]
                 + document["spec"]["template"]["spec"].get("initContainers", [])
