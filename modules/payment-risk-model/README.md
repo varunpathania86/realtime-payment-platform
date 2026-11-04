@@ -44,6 +44,11 @@ First-use image/package downloads need internet; training runs with Docker
 network access disabled after setup. No new host Python or Java installation
 is needed.
 
+The finite training container is not a service and has no Docker healthcheck.
+Its path-scoped, expiring Trivy `DS-0026` exception records that boundary;
+process exit status, artifact validation and parity tests determine success.
+Other scanner findings and execution errors still fail the scan.
+
 ## Quick start
 
 From the repository root:

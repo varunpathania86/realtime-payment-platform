@@ -29,6 +29,9 @@ This file is the single, tool-neutral source of project instructions, using the 
 
 - Create documents from `templates/` (SDD, LLD, ADR, runbook, project README).
 - Use Mermaid for diagrams. Put design docs in `docs/` or the sub-project's `docs/`.
+- Include a small Mermaid diagram in pull request descriptions to show the
+  changed data/control flow or component relationships. Keep it focused on the
+  actual change, distinguish optional paths, and preserve the PR template.
 - Keep module Helm charts beginner-friendly: comment each `chart/templates/`
   resource's purpose, callers/consumers, and dependencies, including conditional
   resources and hooks. Maintain a short `chart/README.md` with a template-to-resource

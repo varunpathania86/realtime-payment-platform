@@ -1,5 +1,7 @@
 ## What and why
 
+<!-- Include a small Mermaid diagram showing the changed flow or component relationships. -->
+
 ## Stage / issue
 
 ## Checklist

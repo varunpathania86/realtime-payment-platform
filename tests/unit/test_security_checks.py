@@ -55,6 +55,7 @@ class SecurityChecksTests(unittest.TestCase):
     def test_current_exceptions_are_narrow_and_root_user_rule_is_not_ignored(self):
         expected = {
             "event-contracts": {"DS-0026": ["Dockerfile"]},
+            "payment-risk-model": {"DS-0026": ["Dockerfile"]},
             "payment-api": {
                 "DS-0026": ["Dockerfile"], "KSV-0110": ["chart/templates/deployment.yaml"],
                 "KSV-0125": ["chart/templates/deployment.yaml"],
