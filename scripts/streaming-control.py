@@ -13,6 +13,9 @@ import time
 PAYMENT_JOB = "payment-event-time-v1"
 LAKEHOUSE_JOB = "payment-lakehouse-v1"
 INACTIVE = ("FINISHED", "CANCELED", "FAILED")
+RELEASE = "stream-processor"
+# ADR-027 renamed flink-jobs; still find it so its jobs are savepointed before Terraform replaces it.
+LEGACY_RELEASES = ("flink-jobs",)
 
 
 def command(profile, *args):
@@ -20,15 +23,24 @@ def command(profile, *args):
         check=True, text=True, capture_output=True, timeout=180).stdout
 
 
-def rest(profile, path, body=None):
+def current_release(profile):
+    """Return the deployed Flink release name and its JobManager Deployment, or (None, None)."""
+    for name in (RELEASE, *LEGACY_RELEASES):
+        deployment = command(profile, "get", "deployment", f"{name}-jobmanager", "--ignore-not-found", "-o", "json")
+        if deployment.strip():
+            return name, json.loads(deployment)
+    return None, None
+
+
+def rest(profile, path, body=None, release=RELEASE):
     program = (
         "import urllib.request; "
-        f"r=urllib.request.Request('http://stream-processor:8081{path}', "
+        f"r=urllib.request.Request('http://{release}:8081{path}', "
         f"data={None if body is None else json.dumps(body).encode()!r}, "
         "headers={'Content-Type':'application/json'}); "
         "print(urllib.request.urlopen(r,timeout=30).read().decode())"
     )
-    return json.loads(command(profile, "exec", "deployment/stream-processor-jobmanager", "--", "python", "-c", program))
+    return json.loads(command(profile, "exec", f"deployment/{release}-jobmanager", "--", "python", "-c", program))
 
 
 def desired_runtime(settings):
@@ -58,14 +70,14 @@ def restore_failure(current, settings, environ):
     return None
 
 
-def savepoint(profile, job, stop):
+def savepoint(profile, job, stop, release=RELEASE):
     endpoint = "stop" if stop else "savepoints"
     body = {"targetDirectory": "s3://flink-state/savepoints", "drain": False} if stop else {
         "target-directory": "s3://flink-state/savepoints", "cancel-job": False,
     }
-    request = rest(profile, f"/jobs/{job}/{endpoint}", body)
+    request = rest(profile, f"/jobs/{job}/{endpoint}", body, release)
     for _ in range(120):
-        result = rest(profile, f"/jobs/{job}/savepoints/{request['request-id']}")
+        result = rest(profile, f"/jobs/{job}/savepoints/{request['request-id']}", release=release)
         if result["status"]["id"] == "COMPLETED":
             operation = result["operation"]
             if "failure-cause" in operation:
@@ -88,39 +100,39 @@ def main():
     if not re.fullmatch(r"[a-z][a-z0-9-]{0,39}", args.profile):
         raise ValueError("invalid explicit Minikube profile")
     if args.action == "guard":
-        deployment = command(args.profile, "get", "deployment", "stream-processor-jobmanager",
-            "--ignore-not-found", "-o", "json")
-        if not deployment.strip():
+        release, deployment = current_release(args.profile)
+        if deployment is None:
             return
-        container = json.loads(deployment)["spec"]["template"]["spec"]["containers"][0]
+        container = deployment["spec"]["template"]["spec"]["containers"][0]
         image = container["image"]
         root = Path(__file__).resolve().parents[1]
         inventory = args.images or root / ".local" / args.profile / "images.tfvars.json"
-        expected = json.loads(inventory.read_text())["local_images"]["stream-processor"]
+        expected = json.loads(inventory.read_text())["local_images"][RELEASE]
         settings_path = root / ".local" / args.profile / "events.tfvars.json"
         settings = json.loads(settings_path.read_text()) if settings_path.exists() else {}
         current = {item["name"]: item.get("value", "") for item in container.get("env", [])}
-        if image == expected and not runtime_changed(current, settings):
+        if release == RELEASE and image == expected and not runtime_changed(current, settings):
             return
         failure = restore_failure(current, settings, os.environ)
         if failure:
             raise ValueError(failure)
-        jobs = rest(args.profile, "/jobs/overview")["jobs"]
+        jobs = rest(args.profile, "/jobs/overview", release=release)["jobs"]
         if any(job["state"] not in INACTIVE for job in jobs):
             raise ValueError("stop the existing Flink jobs with make streaming-stop before replacing them")
         return
     if args.action in ("fixtures", "inspect", "load"):
-        print(command(args.profile, "exec", "deployment/stream-processor-jobmanager", "--", "python",
+        print(command(args.profile, "exec", f"deployment/{RELEASE}-jobmanager", "--", "python",
             "/opt/job/control.py", args.action), end="")
         return
-    jobs = rest(args.profile, "/jobs/overview")["jobs"]
+    release = current_release(args.profile)[0] or RELEASE
+    jobs = rest(args.profile, "/jobs/overview", release=release)["jobs"]
     payment, lakehouse = running(jobs, PAYMENT_JOB), running(jobs, LAKEHOUSE_JOB)
     if len(payment) != 1 or len(lakehouse) > 1:
         raise ValueError("expected exactly one running payment event-time job and at most one lakehouse job")
     # Stop the lakehouse writer first so the payment job keeps producing until the writer has a savepoint.
-    lakehouse_location = savepoint(args.profile, lakehouse[0], args.action == "stop") if lakehouse else None
+    lakehouse_location = savepoint(args.profile, lakehouse[0], args.action == "stop", release) if lakehouse else None
     # The first line stays the bare payment savepoint URI for existing STREAMING_RESTORE_PATH usage.
-    print(savepoint(args.profile, payment[0], args.action == "stop"))
+    print(savepoint(args.profile, payment[0], args.action == "stop", release))
     if lakehouse_location:
         print(f"LAKEHOUSE_RESTORE_PATH={lakehouse_location}")
 

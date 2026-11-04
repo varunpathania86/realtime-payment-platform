@@ -53,7 +53,9 @@ flowchart LR
   stay unchanged. The renamed modules start new reservation lineages on the
   next main publication; stable catalog versions are unchanged.
 - Local clusters recreate the renamed Helm releases on the next `dev-update`.
-  The Flink guard requires `make streaming-stop` and a restore path first.
+  The Flink guard also recognizes the legacy `flink-jobs` release, so it
+  requires `make streaming-stop` (which savepoints that release) and restore
+  paths before Terraform replaces it.
   The ClickHouse release gets new persistent volume claims, so local
   ClickHouse tables start empty and refill from new events.
 - Historical ADR file names (for example ADR-023) are kept; their links are

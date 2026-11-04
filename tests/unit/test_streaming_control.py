@@ -48,6 +48,31 @@ class StreamingControlTests(unittest.TestCase):
             self.invoke_guard(changed, "s3://flink-state/savepoints/approved", [{"state": "RUNNING"}])
         self.invoke_guard(changed, "s3://flink-state/savepoints/approved", [{"state": "CANCELED"}])
 
+    def test_renamed_legacy_release_needs_restore_even_with_an_unchanged_runtime(self):
+        legacy = self.deployment("rpp-local/flink-jobs:dev-old")
+
+        def kubectl(profile, *args):
+            return legacy if args[2] == "flink-jobs-jobmanager" else ""
+
+        argv = ["streaming-control", "guard", "--profile", "isolated-a"]
+        inventory = json.dumps({"local_images": {"stream-processor": "rpp-local/stream-processor:dev-new"}})
+        for restore, jobs, error in (("", [], "STREAMING_RESTORE_PATH"),
+                ("s3://flink-state/savepoints/approved", [{"state": "RUNNING"}], "stop the existing"),
+                ("s3://flink-state/savepoints/approved", [{"state": "CANCELED"}], None)):
+            with patch.object(sys, "argv", argv), \
+                    patch.dict(os.environ, {"STREAMING_RESTORE_PATH": restore}), \
+                    patch.object(CONTROL, "command", side_effect=kubectl), \
+                    patch.object(CONTROL, "rest", return_value={"jobs": jobs}) as rest, \
+                    patch.object(Path, "exists", return_value=False), \
+                    patch.object(Path, "read_text", return_value=inventory):
+                if error:
+                    with self.assertRaisesRegex(ValueError, error):
+                        CONTROL.main()
+                else:
+                    CONTROL.main()
+                if restore:
+                    self.assertEqual(rest.call_args.kwargs["release"], "flink-jobs")
+
     def test_profile_is_validated_before_any_command(self):
         with patch.object(sys, "argv", ["streaming-control", "fixtures", "--profile", "../main"]), \
             patch.object(CONTROL, "command") as command:
@@ -89,12 +114,14 @@ class StreamingControlTests(unittest.TestCase):
         locations = {"lakehouse": "s3://flink-state/savepoints/l", "payment": "s3://flink-state/savepoints/p"}
         order = []
 
-        def savepoint(profile, job, stop):
+        def savepoint(profile, job, stop, release):
             self.assertTrue(stop)
+            self.assertEqual(release, "flink-jobs")
             order.append(job)
             return locations[job]
 
         with patch.object(sys, "argv", ["streaming-control", "stop", "--profile", "isolated-a"]), \
+                patch.object(CONTROL, "current_release", return_value=("flink-jobs", {})), \
                 patch.object(CONTROL, "rest", return_value=jobs), \
                 patch.object(CONTROL, "savepoint", side_effect=savepoint), \
                 patch("builtins.print") as printed:
