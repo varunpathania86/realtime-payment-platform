@@ -119,6 +119,7 @@ The completed platform will demonstrate:
 - RAG and CAG with PostgreSQL and pgvector
 - LangChain for ingestion and retrieval composition
 - LangGraph for controlled AI workflows
+- A platform-hosted Model Context Protocol (MCP) server exposing read-only, authorized tools to the assistant
 - CI/CD, security scanning, SBOM generation, performance testing, recovery tests, ADRs, and runbooks
 
 ## 1.2 Non-goals
@@ -201,6 +202,7 @@ Model conversion          sklearn-onnx / onnxmltools
 Production inference      ONNX Runtime
 Experiment tracking       MLflow, introduced only when justified
 LLM orchestration         LangChain + LangGraph
+Assistant tool protocol   MCP, platform-hosted read-only tools
 LLM serving               llama.cpp initially; vLLM with suitable GPU
 RAG store                 PostgreSQL + pgvector
 Lexical retrieval         PostgreSQL full-text search
@@ -510,7 +512,7 @@ flowchart TB
     LC --> MINIO
     LG --> CAG[CAG bundle and KV cache]
     LG --> LLM
-    LG --> TOOLS[Authorized read-only tools]
+    LG -->|MCP| TOOLS[MCP server: authorized read-only tools]
     TOOLS --> CH
     TOOLS --> TR
     TOOLS --> PROM[(Prometheus)]
@@ -1320,7 +1322,7 @@ Model version usage
 Security rules:
 
 - Never put Superset admin credentials or secret keys in React.
-- The Go backend validates the Keycloak token and issues only constrained dashboard access.
+- The Go backend authenticates the caller and issues only constrained dashboard access. Until Stage 11 it uses the local development identity from [ADR-025](adr/ADR-025-interview-roadmap-and-read-only-mcp.md); Stage 11 replaces it with Keycloak token validation.
 - Configure Content Security Policy and allowed origins explicitly.
 - Add row-level security only after implementing a concrete tenant boundary.
 
@@ -1328,54 +1330,51 @@ Security rules:
 
 ---
 
-## Stage 10: unified Keycloak identity and authorization
+## Stage 10: AI operations assistant with RAG, LangChain, LangGraph and MCP
 
-**Estimated effort:** 5-8 days  
-**Outcome:** One human identity plane and explicit machine identities.
+**Estimated effort:** 8-12 days  
+**Outcome:** A React operations assistant that answers cited questions from
+platform knowledge and live read-only data, without touching the payment path.
+
+This stage combines the first assistant slice of the former RAG, LLM-serving,
+LangChain/LangGraph and evaluation stages so an end-to-end assistant is
+demonstrable early ([ADR-025](adr/ADR-025-interview-roadmap-and-read-only-mcp.md)).
+CAG bundles, Go AI Gateway hardening, durable human-approval workflows,
+asynchronous Kafka enrichment and the full evaluation stage remain later.
 
 Implement:
 
-- OIDC Authorization Code with PKCE for React
-- Optional Backend-for-Frontend token pattern if needed
-- OIDC clients for React, Superset, Grafana, and Argo CD
-- Client Credentials only for appropriate machine clients
-- Short-lived access tokens
-- Signing-key rotation test
+- Batch ingestion of runbooks, ADRs, module READMEs, OpenAPI and event-contract
+  documents into PostgreSQL + pgvector, started by a `make` target
+- Exact vector search, PostgreSQL full-text search, metadata and permission
+  filters, and Reciprocal Rank Fusion
+- llama.cpp serving a small quantized instruction model on CPU
+- LangChain loaders, chunking, embeddings, retrievers and prompt templates
+- A LangGraph router choosing direct answer, RAG, live tools, or RAG + tools
+- A platform MCP server exposing read-only tools; the graph calls tools only
+  through MCP
+- Citation verification, unavailable-LLM fallback and audit records without
+  sensitive prompt text
+- A React assistant panel calling the AI orchestrator through ingress
+- A starter evaluation set run by a `make` target
+- A lean AI profile that disables Flink and analytics backends not needed by
+  the demo, with measured memory recorded
 
-Initial groups/roles:
+Kafka-driven ingestion (`KnowledgeDocumentChanged`/`KnowledgeVersionReady`),
+an optional reranker, HNSW indexes and a Qdrant comparison are deferred until
+measurement or a later stage needs them.
 
-```text
-platform-admin
-developer
-analyst
-viewer
-```
+### Identity before Keycloak
 
-Application permissions:
+Stage 11 introduces Keycloak. Until then the assistant uses the local
+development identity from ADR-025: configured synthetic users mapped to
+`knowledge:read`, `analytics:read`, `payments:read` and `ai:invoke`. Permission
+checks run in deterministic code before retrieval and inside every MCP tool.
+The model never grants or infers permissions.
 
-```text
-payments:read
-payments:write
-analytics:read
-knowledge:read
-ai:invoke
-ai:admin
-```
+### Retrieval foundation
 
-Map Keycloak groups to tool-specific roles. Do not rely only on broad job-title roles.
-
-Kafka initially uses TLS plus SASL/SCRAM. Add Kafka OIDC only if it creates a useful learning outcome and is cleanly supported by the selected deployment.
-
-**Exit criteria:** One user accesses React, Superset, and Grafana through Keycloak. A viewer cannot call write APIs. Expired and incorrectly scoped tokens fail closed.
-
----
-
-## Stage 11: RAG foundation with PostgreSQL and pgvector
-
-**Estimated effort:** 5-8 days  
-**Outcome:** Authorization-aware hybrid knowledge retrieval.
-
-### Database decision
+#### Database decision
 
 Use PostgreSQL with pgvector first.
 
@@ -1396,7 +1395,7 @@ catalog_db
 ai_knowledge_db
 ```
 
-### Retrieval progression
+#### Retrieval progression
 
 ```text
 1. Exact pgvector cosine search
@@ -1408,7 +1407,7 @@ ai_knowledge_db
 7. Optional Qdrant comparison after requirements exceed pgvector baseline
 ```
 
-### Knowledge sources
+#### Knowledge sources
 
 - Runbooks
 - ADRs
@@ -1422,7 +1421,7 @@ ai_knowledge_db
 - Model cards and evaluation reports
 - Synthetic support documents
 
-### Storage responsibilities
+#### Storage responsibilities
 
 ```text
 MinIO
@@ -1438,7 +1437,7 @@ PostgreSQL + pgvector
   provenance
 ```
 
-### Minimum chunk metadata
+#### Minimum chunk metadata
 
 ```text
 chunk_id
@@ -1464,7 +1463,7 @@ valid_to
 metadata JSONB
 ```
 
-### Document-specific chunking
+#### Document-specific chunking
 
 ```text
 Markdown       split by headings, then token budget
@@ -1475,32 +1474,20 @@ Incident       preserve timeline, cause, remediation
 Raw logs       do not ingest as ordinary one-line documents
 ```
 
-### Authorization rule
+#### Authorization rule
 
 Apply tenant, classification, document version, and permission filtering before or during retrieval. Never retrieve forbidden chunks and attempt to remove them after generation.
 
-### RAG ingestion flow
+#### Batch ingestion flow
 
 ```mermaid
 flowchart LR
-    SRC[Runbook ADR OpenAPI or incident] --> OBJ[(MinIO)]
-    OBJ --> EVT[KnowledgeDocumentChanged]
-    EVT --> K[Kafka]
-    K --> ING[Python ingestion worker]
-    ING --> PARSE[Parse clean and chunk]
-    PARSE --> EMB[Embedding service]
+    SRC[Runbook ADR README or OpenAPI] --> MAKE[make ingestion target]
+    MAKE --> OBJ[(MinIO originals)]
+    MAKE --> PARSE[LangChain parse clean and chunk]
+    PARSE --> EMB[Embedding model]
     EMB --> PG[(PostgreSQL + pgvector)]
-    PG --> READY[KnowledgeVersionReady]
 ```
-
-**Exit criteria:** A versioned evaluation set demonstrates exact, semantic, hybrid, and authorization-aware retrieval with citations and no cross-tenant leakage.
-
----
-
-## Stage 12: CAG and conversational LLM
-
-**Estimated effort:** 5-8 days  
-**Outcome:** React operations assistant using CAG, RAG, and authorized live tools.
 
 ### LLM serving
 
@@ -1521,7 +1508,171 @@ Suitable GPU environment
 
 A small instruction-tuned model from a permissively licensed family may be used. Record the exact model license, weights version, quantization, tokenizer, context length, and hardware profile.
 
-Never expose the model server directly to users. Put it behind the Go AI Gateway.
+Never expose the model server directly to users. In Stage 10 only the AI
+orchestrator calls it inside the cluster; Stage 12 puts the user-facing path
+behind the hardened Go AI Gateway.
+
+### MCP tool boundary
+
+The platform hosts its own MCP server. The LangGraph agent is an MCP client;
+it never connects to databases or observability backends directly.
+
+```text
+search_knowledge        authorized hybrid retrieval with citations
+get_payment             read one synthetic payment by ID
+payment_metrics         bounded ClickHouse operational aggregates
+payment_history         bounded Trino queries over curated Iceberg tables
+risk_model_summary      model version usage and score distribution
+```
+
+Rules:
+
+- Tools are read-only, allowlisted and parameterized; no model-written SQL.
+- Each tool checks the caller's permissions itself and applies timeouts, row
+  limits and field redaction.
+- Credentials are read-only and owned by the MCP server, never by the graph.
+- The MCP server is cluster-internal and not exposed through ingress.
+- Third-party MCP servers and write tools are out of scope.
+
+```mermaid
+flowchart LR
+    WEB[React assistant panel] --> ORCH[AI orchestrator]
+    ORCH --> GRAPH[LangGraph router]
+    GRAPH --> LLM[llama.cpp]
+    GRAPH -->|MCP| MCP[Platform MCP server]
+    MCP --> VDB[(PostgreSQL + pgvector)]
+    MCP --> API[Payment API read path]
+    MCP --> CH[(ClickHouse)]
+    MCP --> TR[Trino over Iceberg]
+```
+
+### LangChain responsibilities
+
+- Document loaders
+- Structure-aware chunking
+- Embedding-model integration
+- pgvector integration
+- Full-text/vector hybrid retrieval
+- Metadata propagation
+- Prompt templates
+- Structured output parsers
+- Optional rerankers
+- Model-provider adapters
+
+### LangGraph responsibilities in this stage
+
+- Intent classification and RAG/tool routing
+- Conditional branches with bounded retries and fallback
+- Tool planning restricted to the MCP allowlist
+- Citation validation and sensitive-output redaction
+- Audit-event recording
+
+### Operations-assistant graph nodes
+
+```text
+authenticate
+authorize
+classify_intent
+retrieve_documents
+check_retrieval_quality
+plan_tool_calls
+authorize_tool_calls
+execute_read_only_tools
+generate_response
+validate_structured_output
+verify_citations
+redact_sensitive_data
+record_audit_event
+```
+
+Stage 12 adds `select_cag_bundle`; Stage 13 adds `request_human_approval`.
+Do not store access tokens, database passwords, or raw secrets in graph state.
+
+### Explicit exclusion
+
+Do not use LangChain or LangGraph for:
+
+- Payment transactions
+- Outbox correctness
+- Kafka consumer correctness
+- Flink windows or event-time logic
+- ClickHouse ingestion
+- Iceberg maintenance
+- OAuth token validation
+- Core authorization decisions
+- Terraform or Kubernetes orchestration
+
+### Starter evaluation set
+
+```text
+10 document-specific RAG questions with expected citations
+5 live operational tool questions
+3 authorization-negative questions
+3 indirect prompt-injection questions
+```
+
+Report Recall@5, citation correctness, authorization leakage and end-to-end
+latency. The full metric set remains in Stage 15.
+
+**Exit criteria:** From the React portal, demonstrate one cited RAG answer, one
+answer from live MCP tools over ClickHouse or Trino, one authorization denial
+with no forbidden chunk retrieved, one rejected prompt-injection attempt, and
+one unavailable-LLM fallback; the starter evaluation report shows no
+authorization leakage.
+
+---
+
+## Stage 11: unified Keycloak identity and authorization
+
+**Estimated effort:** 5-8 days  
+**Outcome:** One human identity plane and explicit machine identities.
+
+Implement:
+
+- OIDC Authorization Code with PKCE for React
+- Optional Backend-for-Frontend token pattern if needed
+- OIDC clients for React, Superset, Grafana, and Argo CD
+- Client Credentials only for appropriate machine clients
+- Short-lived access tokens
+- Signing-key rotation test
+- Replace the local development identity in Superset guest-token issuance and
+  the AI assistant with Keycloak token validation
+
+Initial groups/roles:
+
+```text
+platform-admin
+developer
+analyst
+viewer
+```
+
+Application permissions:
+
+```text
+payments:read
+payments:write
+analytics:read
+knowledge:read
+ai:invoke
+ai:admin
+```
+
+Map Keycloak groups to tool-specific roles. Do not rely only on broad job-title roles.
+
+Kafka initially uses TLS plus SASL/SCRAM. Add Kafka OIDC only if it creates a useful learning outcome and is cleanly supported by the selected deployment.
+
+**Exit criteria:** One user accesses React, Superset, Grafana, and the AI assistant through Keycloak. A viewer cannot call write APIs. Expired and incorrectly scoped tokens fail closed.
+
+---
+
+## Stage 12: CAG and Go AI Gateway
+
+**Estimated effort:** 5-8 days  
+**Outcome:** Stable cached context and a hardened user-facing AI boundary for the Stage 10 assistant.
+
+Stage 10 already serves the model with llama.cpp. This stage adds CAG and
+moves the user-facing assistant path behind the Go AI Gateway.
 
 ### Go AI Gateway responsibilities
 
@@ -1629,27 +1780,22 @@ Rebuild CAG when any of the following change:
 
 Build a new immutable version, validate it, warm it, switch the active pointer, retain the previous version temporarily, and support rollback.
 
-**Exit criteria:** Demonstrate one CAG question, one cited RAG question, one live-tool question, one authorization denial, one unavailable-LLM fallback, and one cache-version rollback.
+**Exit criteria:** Through the Go AI Gateway, demonstrate one CAG question, one CAG + live-tool question, one rate-limit or prompt-limit rejection, and one cache-version rollback, with Stage 10 evaluation results not regressing.
 
 ---
 
-## Stage 13: LangChain and LangGraph AI orchestration
+## Stage 13: durable LangGraph workflows and human approval
 
 **Estimated effort:** 5-8 days  
-**Outcome:** Explicit, testable AI workflows without coupling core payments to AI frameworks.
+**Outcome:** Resumable, auditable assistant workflows built on the Stage 10 graph.
 
-### LangChain responsibilities
+Stage 10 introduces LangChain, LangGraph and MCP for the first assistant. This
+stage adds checkpointed graph state, resumption after failure, idempotent side
+effects and human approval, and compares direct, CAG, RAG and tool-assisted
+paths with one evaluation suite.
 
-- Document loaders
-- Structure-aware chunking
-- Embedding-model integration
-- pgvector integration
-- Full-text/vector hybrid retrieval
-- Metadata propagation
-- Prompt templates
-- Structured output parsers
-- Optional rerankers
-- Model-provider adapters
+Stage 10 defines the LangChain responsibilities, graph nodes and exclusions;
+they continue to apply.
 
 ### LangGraph responsibilities
 
@@ -1663,41 +1809,9 @@ Build a new immutable version, validate it, warm it, switch the active pointer, 
 - Resumable state
 - Asynchronous pipeline-LLM workflow
 
-### LangGraph operations-assistant nodes
-
-```text
-authenticate
-authorize
-classify_intent
-select_cag_bundle
-retrieve_documents
-check_retrieval_quality
-plan_tool_calls
-authorize_tool_calls
-execute_read_only_tools
-request_human_approval
-generate_response
-validate_structured_output
-verify_citations
-redact_sensitive_data
-record_audit_event
-```
-
-Do not store access tokens, database passwords, or raw secrets in graph state.
-
-### Explicit exclusion
-
-Do not use LangChain or LangGraph for:
-
-- Payment transactions
-- Outbox correctness
-- Kafka consumer correctness
-- Flink windows or event-time logic
-- ClickHouse ingestion
-- Iceberg maintenance
-- OAuth token validation
-- Core authorization decisions
-- Terraform or Kubernetes orchestration
+Add the `request_human_approval` node and persist graph checkpoints outside
+the model process. Do not store access tokens, database passwords, or raw
+secrets in graph state.
 
 **Exit criteria:** A graph can resume without repeating an already completed external side effect, authorization remains enforced outside model decisions, and the same evaluation suite compares direct, CAG, RAG, and tool-assisted paths.
 
@@ -2240,10 +2354,10 @@ v0.6  ClickHouse operational analytics
 v0.7  scikit-learn/ONNX payment-risk model
 v0.8  Iceberg + MinIO + Trino
 v0.9  Superset embedded in React
-v0.10 Keycloak SSO and authorization
-v0.11 pgvector hybrid RAG
-v0.12 CAG + local conversational LLM
-v0.13 LangChain + LangGraph orchestration
+v0.10 AI assistant: pgvector RAG + LangChain + LangGraph + MCP + local LLM
+v0.11 Keycloak SSO and authorization
+v0.12 CAG + Go AI Gateway
+v0.13 Durable LangGraph workflows and human approval
 v0.14 Asynchronous pipeline LLM enrichment
 v0.15 OpenBao + TLS + policies + SBOM
 v1.0  Argo CD + CI gates + SLOs + resilience report + cloud-dev plan
@@ -2261,7 +2375,7 @@ After v0.5
 After v0.8
   aggressively target Data Platform roles
 
-After v0.13
+After v0.10
   add AI Backend and AI-enabled Data Platform roles
 
 After v1.0
@@ -2313,6 +2427,7 @@ Loki
 Tempo
 LangChain
 LangGraph
+MCP
 llama.cpp/vLLM
 Qdrant comparison
 ```
@@ -2396,6 +2511,8 @@ When this document is supplied to an AI assistant:
 ```yaml
 requirements_status: frozen
 frozen_date: 2026-10-07
+amendments:
+  - 2026-11-04 ADR-025 interview-focused order for Stages 10-13 and read-only MCP tools
 primary_role_targets:
   - Senior Backend Engineer
   - Distributed Data Platform Engineer
@@ -2417,6 +2534,7 @@ pipeline_llm: asynchronous selective enrichment through Kafka
 rag: PostgreSQL + pgvector + PostgreSQL full-text search
 cag: versioned bundle + runtime KV cache
 ai_frameworks: LangChain + LangGraph
+ai_tool_protocol: MCP (platform-hosted, read-only tools; ADR-025)
 future_vector_experiment: Qdrant
 excluded_initially:
   - Java/Spring Boot
@@ -2438,10 +2556,10 @@ runbooks. See the [low-memory pipeline report](../tests/benchmarks/pipeline/2026
 and [ClickHouse query report](../tests/benchmarks/pipeline/2026-11-03-clickhouse-query.md).
 
 ```yaml
-current_milestone: stage-7-predictive-risk-scoring
-stage_status: Stage 7 local exit requirements verified on one low-memory cluster; reproducible training, three-way golden parity, immutable MinIO artifacts, advisory Flink scoring, version telemetry and append-only late revisions; three-cluster acceptance resource-deferred
-last_completed_task: Training/export and make ci passed; both models match original Python on held-out/golden data within 1e-5; initial baseline recall at threshold 0.5 is zero and not presented as useful fraud detection
-next_task: Implement MinIO model publication and checksum-pinned loading, reusable ONNX sessions in Flink, model-version telemetry, original/revised prediction audit output and three-way golden/live low-memory acceptance; keep Stage 8 separate
+current_milestone: stage-8-iceberg-lakehouse
+stage_status: Stage 7 merged as PR #10 with main build and publication passing; roadmap reordered by ADR-025 so Iceberg/Trino (8), Superset in React (9) and the AI assistant with RAG, LangChain, LangGraph and MCP (10) come next; Keycloak moves to Stage 11
+last_completed_task: Stage 7 advisory ONNX risk scoring merged; single-cluster live acceptance passed and main publication succeeded with the merged stateful-chart validator and risk build arguments
+next_task: Start Stage 8 with an Iceberg REST catalog on MinIO, a Flink Iceberg sink for curated payment facts, Trino queries, time travel, a backward-compatible field and documented maintenance, in a lean single-cluster profile
 known_issues:
   - one cold ingress CRD installation encountered a transient etcd timeout; ordinary dev-update recovered with state and node budgets unchanged
   - a stale pending-install Traefik Helm revision interrupted the first scale-check attempt; removing only that release allowed Terraform to recreate ingress and the retry passed
@@ -2456,6 +2574,7 @@ known_issues:
   - local Flink JobManager and MinIO are not HA; external sinks are at-least-once, and deduplication has a 24-hour processing-time TTL
   - Stage 5 scoped scanner exceptions retain official Flink UID/GID, Kubernetes health/namespace ownership and local Never images; exact paths expire 2027-01-01
 architecture_decisions:
+  - ADR-025 Interview-focused roadmap order (Stages 10-13) and platform-hosted read-only MCP tools
   - ADR-024 Advisory prior-event risk features, immutable model artifacts and audit-preserving prediction revisions
   - ADR-021 Automatic release selection, frozen artifact promotion and reviewed stable-catalog PRs
   - ADR-022 PyFlink event-time and synthetic processing boundaries

@@ -79,6 +79,14 @@ worker. The [local validation procedure](docs/developer-setup.md#single-cluster-
 uses one low-memory cluster; three-cluster acceptance remains resource-deferred.
 Scores are advisory and never make payment authorization decisions.
 
+Stage 7 is merged as PR #10. [ADR-025](docs/adr/ADR-025-interview-roadmap-and-read-only-mcp.md)
+reorders the next stages: Iceberg and Trino (Stage 8), Superset embedded in
+React (Stage 9), then one AI assistant stage combining pgvector RAG, LangChain,
+LangGraph, a local llama.cpp model and platform-hosted read-only MCP tools
+(Stage 10). Keycloak follows in Stage 11; until then Superset and the
+assistant use a clearly labelled local development identity. See the
+[roadmap](docs/master-plan.md#stage-10-ai-operations-assistant-with-rag-langchain-langgraph-and-mcp).
+
 ## Repository map
 
 | Path | Purpose |
