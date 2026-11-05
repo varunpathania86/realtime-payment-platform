@@ -14,8 +14,9 @@ build: ## Render the chart and validate the local deployment contract
 test: ## Check the model fetch script offline with file:// fixtures
 	bash tests/fetch_model_test.sh
 
-lint: build ## Lint the chart and shell scripts
-	cd "$(ROOT)" && .venv/bin/pre-commit run shellcheck --files modules/llm-serving/scripts/fetch-model.sh modules/llm-serving/tests/fetch_model_test.sh
+lint: build ## Lint the chart and syntax-check the shell scripts (ShellCheck runs in the shared pre-commit hooks)
+	bash -n scripts/fetch-model.sh
+	bash -n tests/fetch_model_test.sh
 
 fmt: ## Check repository formatting for this module
 	cd "$(ROOT)" && .venv/bin/pre-commit run --files $$(git ls-files --cached --others --exclude-standard modules/llm-serving)

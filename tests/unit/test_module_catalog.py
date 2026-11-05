@@ -222,6 +222,16 @@ class ModuleCatalogTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "no Makefile"):
                 run_module("unfinished", root)
 
+    def test_ci_module_targets_do_not_need_pre_commit(self) -> None:
+        # The CI module matrix installs only the catalog requirements, not pre-commit; hooks belong in fmt.
+        for makefile in sorted((ROOT / "modules").glob("*/Makefile")):
+            with self.subTest(module=makefile.parent.name):
+                plan = subprocess.run(
+                    ["make", "-s", "-n", "-C", str(makefile.parent), "build", "test", "lint"],
+                    check=True, capture_output=True, text=True, timeout=60,
+                )
+                self.assertNotIn("pre-commit", plan.stdout)
+
     def test_stable_version_only_change_is_detected_by_yaml_fields(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
