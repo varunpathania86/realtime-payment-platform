@@ -6,7 +6,7 @@ locals {
     if fileexists("${local.root}/modules/${name}/Dockerfile") && fileexists("${local.root}/modules/${name}/chart/Chart.yaml")
     && (try(yamldecode(file("${local.root}/modules/${name}/chart/values.yaml")).local.feature, "") == ""
       || contains(concat(var.streaming_enabled ? ["streaming"] : [], var.analytics_enabled ? ["analytics"] : [],
-        var.lakehouse_enabled ? ["lakehouse"] : [], var.bi_enabled ? ["bi"] : []),
+        var.lakehouse_enabled ? ["lakehouse"] : [], var.bi_enabled ? ["bi"] : [], var.ai_enabled ? ["ai"] : []),
     try(yamldecode(file("${local.root}/modules/${name}/chart/values.yaml")).local.feature, "")))
   }
 }
@@ -70,6 +70,7 @@ resource "helm_release" "realtime_analytics" {
       digest     = ""
     }
     biReader = { enabled = var.bi_enabled }
+    aiReader = { enabled = var.ai_enabled }
   })]
 
   lifecycle {
@@ -85,17 +86,18 @@ resource "helm_release" "realtime_analytics" {
 }
 
 resource "helm_release" "application" {
-  for_each        = { for name, chart in local.applications : name => chart if !contains(["realtime-analytics", "lakehouse-catalog", "bi-dashboards"], name) }
-  name            = each.key
-  namespace       = kubernetes_namespace_v1.foundation["apps"].metadata[0].name
-  chart           = each.value
-  timeout         = 600
+  for_each  = { for name, chart in local.applications : name => chart if !contains(["realtime-analytics", "lakehouse-catalog", "bi-dashboards"], name) }
+  name      = each.key
+  namespace = kubernetes_namespace_v1.foundation["apps"].metadata[0].name
+  chart     = each.value
+  # llm-serving downloads about 1.2 GB of verified model files on its first start.
+  timeout         = each.key == "llm-serving" ? 1800 : 600
   wait            = true
   atomic          = true
   cleanup_on_fail = true
-  depends_on      = [helm_release.ingress, helm_release.realtime_analytics, kubernetes_stateful_set_v1.postgres, kubernetes_secret_v1.payment_database, kubernetes_stateful_set_v1.kafka, kubernetes_deployment_v1.registry, kubernetes_secret_v1.payment_events, kubernetes_secret_v1.realtime_analytics, kubernetes_config_map_v1.event_schema, kubernetes_deployment_v1.minio, helm_release.lakehouse_catalog, kubernetes_secret_v1.lakehouse_writer, kubernetes_secret_v1.lakehouse_query, kubernetes_secret_v1.bi_dashboards, kubernetes_secret_v1.web_portal_identity]
+  depends_on      = [helm_release.ingress, helm_release.realtime_analytics, kubernetes_stateful_set_v1.postgres, kubernetes_secret_v1.payment_database, kubernetes_stateful_set_v1.kafka, kubernetes_deployment_v1.registry, kubernetes_secret_v1.payment_events, kubernetes_secret_v1.realtime_analytics, kubernetes_config_map_v1.event_schema, kubernetes_deployment_v1.minio, helm_release.lakehouse_catalog, kubernetes_secret_v1.lakehouse_writer, kubernetes_secret_v1.lakehouse_query, kubernetes_secret_v1.bi_dashboards, kubernetes_secret_v1.web_portal_identity, kubernetes_secret_v1.ai_identity, kubernetes_secret_v1.web_portal_assistant_signer, kubernetes_secret_v1.knowledge_database, kubernetes_job_v1.knowledge_database]
 
-  values = [yamlencode({
+  values = concat([yamlencode({
     replicaCount   = lookup(var.application_replicas, each.key, 1)
     runtimeProfile = var.runtime_profile
     risk = {
@@ -134,9 +136,15 @@ resource "helm_release" "application" {
       tls               = true
     }
     identity = {
-      enabled        = var.bi_enabled
+      enabled        = local.portal_identity_enabled
       existingSecret = "web-portal-identity"
       allowedOrigins = local.bi_origins
+    }
+    assistant = {
+      enabled         = var.ai_enabled
+      orchestratorUrl = "http://ai-orchestrator:8080"
+      signingSecret   = "web-portal-assistant-signer"
+      privateKeyKey   = "private-key.pem"
     }
     bi = {
       enabled           = var.bi_enabled
@@ -157,7 +165,10 @@ resource "helm_release" "application" {
       pullPolicy = "Never"
       digest     = ""
     }
-  })]
+    })],
+    # payment_history uses Trino only when the lakehouse is enabled; otherwise it reports unavailable.
+    each.key == "assistant-tools" ? [yamlencode({ trino = { url = var.lakehouse_enabled ? "http://lakehouse-query:8080" : "" } })] : [],
+  )
   lifecycle {
     precondition {
       condition     = alltrue([for name in keys(var.application_replicas) : contains(keys(local.applications), name)])

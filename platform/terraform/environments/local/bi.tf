@@ -25,8 +25,15 @@ locals {
   bi_dashboard_id = "bfa817e5-b670-5c83-842c-ef5d57da6f8a"
   bi_secrets = toset([
     "secret-key", "guest-token-secret", "database-password", "admin-password", "token-issuer-password",
-    "bi-reader-password", "portal-session-key", "ops-viewer", "payments-clerk",
+    "bi-reader-password",
   ])
+  portal_secrets = toset(["portal-session-key", "ops-viewer", "payments-clerk", "ops-engineer"])
+  # Synthetic users and their permissions; ai:* and knowledge:* matter only when the assistant is enabled.
+  portal_users = {
+    ops-viewer     = ["bi:view", "ai:invoke", "knowledge:read", "analytics:read"]
+    payments-clerk = ["ai:invoke", "payments:read"]
+    ops-engineer   = ["bi:view", "ai:invoke", "knowledge:read", "knowledge:restricted", "analytics:read", "payments:read"]
+  }
 }
 
 resource "random_password" "bi" {
@@ -47,18 +54,24 @@ resource "kubernetes_secret_v1" "bi_dashboards" {
   }
 }
 
+resource "random_password" "portal" {
+  for_each = local.portal_identity_enabled ? local.portal_secrets : toset([])
+  length   = 48
+  special  = false
+}
+
 # Local development identity (ADR-025): synthetic users read by the web-portal; Stage 11 replaces it.
 resource "kubernetes_secret_v1" "web_portal_identity" {
-  count = var.bi_enabled ? 1 : 0
+  count = local.portal_identity_enabled ? 1 : 0
   metadata {
     name      = "web-portal-identity"
     namespace = kubernetes_namespace_v1.foundation["apps"].metadata[0].name
   }
   data = {
-    session-key = random_password.bi["portal-session-key"].result
+    session-key = random_password.portal["portal-session-key"].result
     dev-users = jsonencode({
-      ops-viewer     = { password = random_password.bi["ops-viewer"].result, permissions = ["bi:view"] }
-      payments-clerk = { password = random_password.bi["payments-clerk"].result, permissions = [] }
+      for name, permissions in local.portal_users :
+      name => { password = random_password.portal[name].result, permissions = permissions }
     })
   }
 }

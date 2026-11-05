@@ -6,7 +6,7 @@ export PATH := $(HOME)/.local/bin:$(PATH)
 .DEFAULT_GOAL := help
 .PHONY: security security-solution security-module security-plan publication-login quality-report quality-module-report release-baseline
 .PHONY: dev-metrics dev-observability db-switchover db-failover db-rejoin
-.PHONY: streaming-fixtures streaming-inspect streaming-load streaming-savepoint streaming-stop streaming-benchmark streaming-benchmark-preflight risk-publish risk-verify lakehouse-query lakehouse-verify lakehouse-maintain bi-verify
+.PHONY: streaming-fixtures streaming-inspect streaming-load streaming-savepoint streaming-stop streaming-benchmark streaming-benchmark-preflight risk-publish risk-verify lakehouse-query lakehouse-verify lakehouse-maintain bi-verify knowledge-ingest ai-fixtures ai-eval
 
 # Use a system pre-commit if present, otherwise the one installed by `make setup`.
 VENV       := .venv
@@ -34,6 +34,7 @@ setup: ## Set up the developer environment (see docs/developer-setup.md)
 	bash scripts/setup-cnpg.sh
 	bash scripts/setup-streaming.sh
 	bash scripts/setup-risk.sh
+	bash scripts/ai-python.sh setup
 	@$(MAKE) --no-print-directory doctor
 
 tools: ## Install or update the pinned CLI tools from .tool-versions
@@ -119,6 +120,15 @@ risk-verify: ## Verify advisory predictions, late-history revision and model tel
 
 bi-verify: ## Verify embedded BI access boundaries (viewer, denied clerk, guest-token scope, CSP) on the selected profile
 	$(VENV)/bin/python -m scripts.bi_acceptance --profile "$(MINIKUBE_PROFILE)"
+
+knowledge-ingest: ## Bundle the operations knowledge corpus and run one ingestion job on the selected profile
+	$(VENV)/bin/python -m scripts.ai_platform ingest --profile "$(MINIKUBE_PROFILE)"
+
+ai-fixtures: ## Replace synthetic ClickHouse payment facts and advisory predictions for assistant tools
+	$(VENV)/bin/python -m scripts.ai_platform fixtures --profile "$(MINIKUBE_PROFILE)"
+
+ai-eval: ## Run the starter assistant evaluation through the portal; fails on authorization leaks
+	$(VENV)/bin/python -m scripts.ai_platform eval --profile "$(MINIKUBE_PROFILE)"
 
 # Raw value, single-quoted for the shell, so Iceberg names like "t$snapshots" and quotes survive.
 LAKEHOUSE_SQL = $(subst ','\'',$(value SQL))
