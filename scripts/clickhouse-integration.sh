@@ -6,6 +6,7 @@ cd "$REPO_ROOT"
 
 name="rpp-stage6-clickhouse-verify-$$"
 image="rpp-local/realtime-analytics:verify-$$"
+reader_password=$("$REPO_ROOT/.venv/bin/python" -c 'import secrets; print(secrets.token_hex(24))')
 password=$("$REPO_ROOT/.venv/bin/python" -c 'import secrets; print(secrets.token_hex(32))')
 container=""
 
@@ -37,6 +38,7 @@ container=$(docker run --detach --name "$name" --memory=2g --cpus=2 \
   --env "CLICKHOUSE_PASSWORD=$password" \
   --env CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1 \
   --mount "type=bind,source=$REPO_ROOT/modules/realtime-analytics/chart/files/schema.sql,target=/tmp/schema.sql,readonly" \
+  --mount "type=bind,source=$REPO_ROOT/modules/realtime-analytics/chart/files/bi-reader.sh,target=/tmp/bi-reader.sh,readonly" \
   "$image")
 port=$(docker port "$container" 8123/tcp | sed 's/.*://')
 ready=false
@@ -56,6 +58,10 @@ done
 }
 docker exec "$container" clickhouse-client --user rpp_analytics --password "$password" \
   --multiquery --queries-file /tmp/schema.sql
-CLICKHOUSE_PASSWORD="$password" "$REPO_ROOT/.venv/bin/python" \
+docker exec --env CLICKHOUSE_HOST=127.0.0.1 --env CLICKHOUSE_USER=rpp_analytics \
+  --env "CLICKHOUSE_PASSWORD=$password" --env BI_READER_USER=rpp_bi_reader \
+  --env BI_READER_DATABASE=analytics --env "BI_READER_PASSWORD=$reader_password" \
+  "$container" sh /tmp/bi-reader.sh
+CLICKHOUSE_PASSWORD="$password" BI_READER_PASSWORD="$reader_password" "$REPO_ROOT/.venv/bin/python" \
   modules/realtime-analytics/tests/runtime_check.py --url "http://127.0.0.1:$port"
-echo "ClickHouse schema, authenticated inserts, facts deduplication and aggregate revisions passed."
+echo "ClickHouse schema, inserts, deduplication, revisions and the SELECT-only BI reader passed."

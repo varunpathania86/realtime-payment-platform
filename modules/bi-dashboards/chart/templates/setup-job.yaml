@@ -1,0 +1,54 @@
+{{/*
+Helm hook that runs before every install/upgrade, before deployment.yaml rolls out, so the web pod
+always starts against a migrated metadata database. Runs `superset db upgrade`, `superset init`
+(creates built-in roles and permissions) and rpp_bi_bootstrap.py, which reconciles the admin and
+token-issuer users, the least-privilege guest role, the ClickHouse/Trino connections, datasets,
+charts, the dashboard and its embedding allow-list. Every step is idempotent. Reads the
+bi-dashboards Secret and the ClickHouse reader password from the realtime-analytics Secret.
+Needs the metadata database created by local Terraform. Successful hooks are deleted. See ../README.md.
+*/}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-setup
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 600
+  template:
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: setup
+          image: {{ include "bi-dashboards.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["sh", "-ec", "superset db upgrade && superset init && python /app/pythonpath/rpp_bi_bootstrap.py"]
+          env:
+            {{- include "bi-dashboards.configEnv" . | nindent 12 }}
+            - {name: SUPERSET_ADMIN_USER, value: {{ .Values.users.admin | quote }}}
+            - {name: SUPERSET_TOKEN_ISSUER_USER, value: {{ .Values.users.tokenIssuer | quote }}}
+            - {name: SUPERSET_CLICKHOUSE_URI, value: {{ .Values.clickhouse.uri | quote }}}
+            - {name: SUPERSET_TRINO_URI, value: {{ .Values.trino.uri | quote }}}
+            {{- include "bi-dashboards.secretEnv" (dict "name" "SUPERSET_ADMIN_PASSWORD" "secret" .Values.existingSecret "key" "admin-password") | nindent 12 }}
+            {{- include "bi-dashboards.secretEnv" (dict "name" "SUPERSET_TOKEN_ISSUER_PASSWORD" "secret" .Values.existingSecret "key" "token-issuer-password") | nindent 12 }}
+            {{- include "bi-dashboards.secretEnv" (dict "name" "SUPERSET_CLICKHOUSE_PASSWORD" "secret" .Values.clickhouse.existingSecret "key" .Values.clickhouse.passwordKey) | nindent 12 }}
+          resources:
+            {{- toYaml .Values.setupResources | nindent 12 }}
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+          volumeMounts:
+            - {name: home, mountPath: /app/superset_home}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - {name: home, emptyDir: {}}
+        - {name: tmp, emptyDir: {}}

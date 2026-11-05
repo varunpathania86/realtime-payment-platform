@@ -53,6 +53,29 @@ class ClickHouseAnalyticsTests(unittest.TestCase):
         self.assertIn("ReplacingMergeTree(revision)", schema)
         self.assertIn("TTL event_time + INTERVAL 90 DAY DELETE", schema)
 
+    def test_bi_reader_is_optional_and_reads_password_from_secret(self):
+        def schema_job(*extra):
+            rendered = subprocess.run(
+                ["helm", "template", "realtime-analytics", str(ROOT / "modules/realtime-analytics/chart"), *extra],
+                check=True, capture_output=True, text=True, timeout=30,
+            )
+            resources = [item for item in yaml.safe_load_all(rendered.stdout) if item]
+            return next(item for item in resources if item["kind"] == "Job")["spec"]["template"]["spec"]
+
+        disabled = schema_job()["containers"][0]
+        self.assertNotIn("bi-reader.sh", disabled["args"][0])
+        self.assertNotIn("BI_READER_PASSWORD", {item["name"] for item in disabled["env"]})
+        enabled = schema_job("--set", "biReader.enabled=true")["containers"][0]
+        self.assertIn("sh /schema/bi-reader.sh", enabled["args"][0])
+        password = next(item for item in enabled["env"] if item["name"] == "BI_READER_PASSWORD")
+        self.assertEqual(password["valueFrom"]["secretKeyRef"], {
+            "name": "realtime-analytics", "key": "bi-reader-password",
+        })
+        script = (ROOT / "modules/realtime-analytics/chart/files/bi-reader.sh").read_text()
+        self.assertIn("REVOKE ALL ON *.*", script)
+        self.assertIn("GRANT SELECT ON ${BI_READER_DATABASE}.*", script)
+        self.assertNotIn("--query", script)
+
     def test_chart_is_selected_only_for_the_analytics_feature(self):
         self.assertIn("realtime-analytics", local_modules(features={"analytics"}))
         self.assertNotIn("realtime-analytics", local_modules(features={"streaming"}))

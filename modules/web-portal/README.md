@@ -1,12 +1,21 @@
 # Web portal
 
-Accessible Stage 1 React platform-status page. Part of [realtime-payment-platform](../../README.md).
+Accessible React platform-status page and, from Stage 9, the embedded payment
+operations dashboard. Part of [realtime-payment-platform](../../README.md).
 
 ## Responsibilities
 
 Display explicit loading, success, and failure states for API health, readiness,
 and build metadata, with a retry action. Show the UI build version and commit so
-a local rebuild is visible. No payment operations or identity integration yet.
+a local rebuild is visible.
+
+When BI is enabled, the `/analytics` page signs in a synthetic local development
+user and embeds the [Superset dashboard](../bi-dashboards/README.md). The Go
+server is the backend-for-frontend: it keeps the session and requests a
+five-minute guest token scoped to one dashboard. React never receives Superset
+or database credentials. Keycloak replaces this local identity in Stage 11
+([ADR-025](../../docs/adr/ADR-025-interview-roadmap-and-read-only-mcp.md),
+[ADR-028](../../docs/adr/ADR-028-embedded-superset-bi.md)).
 
 ## Layout
 
@@ -19,7 +28,8 @@ traffic reaches the portal and API.
 ├── Makefile
 ├── README.md
 ├── main.go             # Standard-library static server
-├── main_test.go
+├── bi.go               # Local development sign-in and Superset guest tokens
+├── *_test.go
 ├── package.json
 ├── package-lock.json
 ├── src/                # React UI and typed status client
@@ -75,6 +85,13 @@ another member; lifecycle commands select the whole base using `DEV_PROFILE`.
 | `GO_VERSION` | None | Required image build argument from root `.tool-versions` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | Unset | Optional Collector HTTP(S) origin; enables server/browser telemetry |
 | `OTEL_CLUSTER_NAME` | Unset | Cluster resource identity |
+| `PORTAL_SESSION_KEY` | Unset | HMAC key for the session cookie (at least 32 characters); with `PORTAL_DEV_USERS` enables `/auth/*` |
+| `PORTAL_DEV_USERS` | Unset | JSON map of synthetic users: `{"name": {"password": "...", "permissions": ["bi:view"]}}` (passwords at least 12 characters) |
+| `PORTAL_ALLOWED_ORIGINS` | Unset | Space-separated browser origins accepted on POST requests |
+| `BI_SUPERSET_URL` | Unset | Cluster-internal Superset URL; enables `/bi/guest-token` (all `BI_*` then required) |
+| `BI_SUPERSET_PUBLIC_URL` | Unset | Superset URL the browser loads the iframe from |
+| `BI_DASHBOARD_ID` | Unset | Embedded dashboard UUID |
+| `BI_TOKEN_ISSUER_USER` / `BI_TOKEN_ISSUER_PASSWORD` | Unset | Superset account allowed only to grant guest tokens |
 
 ### Stage 4 telemetry
 
@@ -97,6 +114,18 @@ The browser fetches same-origin `/api/healthz`, `/api/readyz`, and `/api/version
 Ingress preserves `/api`; the payment API accepts that prefix. No cross-origin
 configuration or proxy is needed. Requests are uncached and time out after ten seconds.
 Retry re-fetches all three endpoints.
+
+### Stage 9 sign-in and embedded BI
+
+`POST /auth/login` (JSON, at most 4 KiB) checks the synthetic users and sets
+an 8-hour HMAC-signed `rpp_portal_session` cookie (HttpOnly, `SameSite=Strict`).
+`GET /auth/session` returns the user, its permissions and, for `bi:view`, the
+dashboard UUID and Superset URL. `POST /auth/logout` clears the cookie.
+`POST /bi/guest-token` returns 401 without a session, 403 without `bi:view`,
+404 when BI is not configured and 502 if Superset is unavailable. Every POST
+requires an allowed `Origin`. Permissions are re-read on every request, so
+removing a user from the Secret revokes access after a restart. The endpoints
+return 404 when sign-in is not configured.
 
 The non-root scratch image serves the SPA and `GET /healthz`, `GET /readyz` JSON
 probes on port 8080. Missing assets and misrouted API requests return `404`;

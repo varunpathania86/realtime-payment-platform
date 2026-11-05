@@ -108,6 +108,12 @@ if [[ "$(pinned_version polaris)" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] &&
 else
   bad "invalid lakehouse pins in .tool-versions (restore polaris, trino, iceberg and hadoop-client pins/checksums)"
 fi
+if [[ "$(pinned_version superset)" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] &&
+  [[ "$(pinned_version superset-image-digest)" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+  ok "Superset $(pinned_version superset) BI image pin (built by local deployment)"
+else
+  bad "invalid Superset pins in .tool-versions (restore superset and superset-image-digest)"
+fi
 flink_pin=$(pinned_version flink)
 if [ "${flink_pin%%-*}" != "$(pinned_version flink-python)" ]; then
   bad "Flink and PyFlink pins must match (restore .tool-versions and run STREAMING=1 make setup)"

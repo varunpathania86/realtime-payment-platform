@@ -34,9 +34,11 @@ All design documentation lives here, written in Markdown with Mermaid diagrams. 
 | [adr/ADR-025-interview-roadmap-and-read-only-mcp.md](adr/ADR-025-interview-roadmap-and-read-only-mcp.md) | Iceberg, Superset and AI assistant first; local identity until Keycloak; read-only MCP tools |
 | [adr/ADR-026-polaris-iceberg-lakehouse.md](adr/ADR-026-polaris-iceberg-lakehouse.md) | Polaris REST catalog on PostgreSQL, Flink bronze/curated Iceberg writer, Trino reader/maintainer catalogs |
 | [adr/ADR-027-capability-module-names.md](adr/ADR-027-capability-module-names.md) | Capability-based module names; product names stay inside modules |
+| [adr/ADR-028-embedded-superset-bi.md](adr/ADR-028-embedded-superset-bi.md) | Superset embedded through portal-issued guest tokens, guest-path hardening, Flink-written risk/late tables, no Redis/Celery |
 | [runbooks/flink-recovery.md](runbooks/flink-recovery.md) | Synthetic fixtures, lateness, persistent checkpoints and savepoint/restore |
 | [runbooks/realtime-analytics.md](runbooks/realtime-analytics.md) | ClickHouse readiness, sink recovery, replacement queries and failure boundaries |
 | [runbooks/lakehouse.md](runbooks/lakehouse.md) | Polaris/Trino diagnosis, Iceberg maintenance, evolution and savepoint-safe toggling |
+| [runbooks/bi-dashboards.md](runbooks/bi-dashboards.md) | Embedded Superset diagnosis, local credentials, chart changes and fixture re-capture |
 | [../tests/benchmarks/](../tests/benchmarks/README.md) | Cross-module benchmark goals, targets, setup/cleanup, measured reports and raw JSON |
 | [adr/](adr/) | Architecture Decision Records |
 | [runbooks/](runbooks/) | Operational procedures |

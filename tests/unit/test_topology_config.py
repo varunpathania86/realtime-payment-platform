@@ -56,6 +56,22 @@ class TopologyConfigurationTests(unittest.TestCase):
             with self.subTest(invalid=invalid), self.assertRaises(ValueError):
                 validate(invalid)
 
+    def test_bi_requires_analytics_and_extra_cluster_a_memory(self):
+        config = json.loads((ROOT / "templates/bi-topology.json").read_text())
+        settings = validate(config)
+        self.assertTrue(settings["bi"])
+        self.assertEqual(settings["nodes"]["a"], {"cpus": 4, "memory_mib": 12288})
+        without_lakehouse = {**config, "lakehouse": False, "nodes": {"a": {"cpus": 4, "memory_mib": 7168}}}
+        self.assertTrue(validate(without_lakehouse)["bi"])
+        for invalid in (
+            {**config, "analytics": False},
+            {**config, "bi": "yes"},
+            {**config, "nodes": {"a": {"cpus": 4, "memory_mib": 10240}}},
+            {**without_lakehouse, "nodes": {"a": {"cpus": 4, "memory_mib": 6144}}},
+        ):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                validate(invalid)
+
     def test_explicit_observability_and_per_node_budgets(self):
         config = json.loads((ROOT / "templates/observability-topology.json").read_text())
         settings = validate(config)

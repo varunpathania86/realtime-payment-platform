@@ -35,10 +35,12 @@ func TestStaticServer(t *testing.T) {
 		{"GET", "/missing.json", 404, "404", "text/plain"},
 		{"GET", "/api/healthz", 404, "404", "text/plain"},
 		{"GET", "/api", 404, "404", "text/plain"},
+		{"GET", "/auth/session", 404, "404", "text/plain"},
+		{"POST", "/bi/guest-token", 404, "404", "text/plain"},
 	} {
 		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
 			w := httptest.NewRecorder()
-			handler(files).ServeHTTP(w, httptest.NewRequest(tc.method, tc.path, nil))
+			handler(files, nil).ServeHTTP(w, httptest.NewRequest(tc.method, tc.path, nil))
 			if w.Code != tc.status || !strings.Contains(w.Body.String(), tc.body) || !strings.Contains(w.Header().Get("Content-Type"), tc.kind) {
 				t.Fatalf("got %d %v %q", w.Code, w.Header(), w.Body.String())
 			}
@@ -59,7 +61,7 @@ func TestMissingIndexAndTraversal(t *testing.T) {
 	files := fstest.MapFS{"secret.txt": {Data: []byte("not outside the static root")}}
 	for _, path := range []string{"/", "/dashboard", "/../../etc/passwd", "/assets/"} {
 		w := httptest.NewRecorder()
-		handler(files).ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		handler(files, nil).ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
 		if w.Code != http.StatusNotFound {
 			t.Fatalf("%s: got %d, want 404", path, w.Code)
 		}
@@ -67,7 +69,7 @@ func TestMissingIndexAndTraversal(t *testing.T) {
 }
 
 func TestServerBounds(t *testing.T) {
-	s := newServer(":8080", fstest.MapFS{})
+	s := newServer(":8080", fstest.MapFS{}, nil)
 	if s.ReadHeaderTimeout <= 0 || s.ReadTimeout <= 0 || s.WriteTimeout <= 0 || s.IdleTimeout <= 0 || s.MaxHeaderBytes <= 0 {
 		t.Fatal("all server limits must be bounded")
 	}

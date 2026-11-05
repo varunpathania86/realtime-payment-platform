@@ -49,3 +49,6 @@ iceberg-aws-bundle-sha256 dd7e49ffa4ac9b215bed846581991259e3aec9bb2fa08d6cec029c
 hadoop-client 3.4.2
 hadoop-client-api-sha256 607c0299f4df33013bd0a0f37c8cf255c635bbaddd247b8fec68c210cc17d19f
 hadoop-client-runtime-sha256 18d071c7f72f8a946677b398a57af9c7afa2dd41a81023c310f99373fec200b3
+# Stage 9 BI image base (not a host CLI); the digest pins the multi-arch index.
+superset 6.1.0
+superset-image-digest sha256:16b50bbef6648912a79e3293d418fefa743ce555d36c5af6b85d859119ed7f88

@@ -1,0 +1,12 @@
+{{/*
+Internal Service for the Superset pod in deployment.yaml. The web-portal server calls it to request
+guest tokens; ingress.yaml routes browser iframe traffic to it. See ../README.md.
+*/}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}
+spec:
+  selector: {app.kubernetes.io/name: {{ .Release.Name }}}
+  ports:
+    - {name: http, port: 8088, targetPort: http}

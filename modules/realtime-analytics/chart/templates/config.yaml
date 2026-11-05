@@ -1,6 +1,6 @@
 {{/*
-Stores files/schema.sql as a non-secret Kubernetes ConfigMap.
-schema-job.yaml mounts it at /schema and applies the SQL; a ConfigMap does not execute SQL itself.
+Stores files/schema.sql and files/bi-reader.sh as a non-secret Kubernetes ConfigMap.
+schema-job.yaml mounts it at /schema, applies the SQL and, when biReader.enabled, runs the reader script; a ConfigMap does not execute SQL itself.
 Credentials are kept in a separate Terraform-created Secret. See ../README.md.
 */}}
 apiVersion: v1
@@ -10,3 +10,5 @@ metadata:
 data:
   schema.sql: |
 {{ .Files.Get "files/schema.sql" | indent 4 }}
+  bi-reader.sh: |
+{{ .Files.Get "files/bi-reader.sh" | indent 4 }}

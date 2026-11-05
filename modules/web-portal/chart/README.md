@@ -1,6 +1,7 @@
 # Web portal Helm chart
 
-Deploys the React portal's Go static server. Part of
+Deploys the React portal's Go server: static UI, plus the optional local
+development sign-in and Superset guest-token endpoints (Stage 9). Part of
 [realtime-payment-platform](../../../README.md).
 
 ## Responsibilities
@@ -26,10 +27,11 @@ flowchart TB
 
 | File | Creates | Used by / uses |
 |---|---|---|
-| [deployment.yaml](templates/deployment.yaml) | Deployment and its portal pods | Service selects pods; uses image/resources and optional telemetry values |
+| [deployment.yaml](templates/deployment.yaml) | Deployment and its portal pods | Service selects pods; uses image/resources, optional telemetry, and optional identity/BI values whose credentials come from Secrets |
 | [service.yaml](templates/service.yaml) | Internal Service on port 80 | Ingress routes here; forwards to ready portal pods on named `http` port 8080 |
 | [ingress.yaml](templates/ingress.yaml) | `/` Ingress rule | Traefik reads it and forwards to the portal Service |
-| [values.yaml](values.yaml) | Default Helm inputs | Terraform overrides local image, replicas and telemetry |
+| [values.yaml](values.yaml) | Default Helm inputs | Terraform overrides local image, replicas, telemetry, identity and BI |
+| [values.schema.json](values.schema.json) | Input validation | Helm rejects identity without origins and BI without URLs or a dashboard UUID |
 | [Chart.yaml](Chart.yaml) | Chart metadata | Helm rendering and packaging |
 
 ```mermaid
@@ -44,12 +46,16 @@ flowchart LR
     D -. "maintains" .-> P
     B -- "/api status requests via Traefik" --> A["Payment API Ingress / Service / pods"]
     P -. "optional telemetry export" .-> O["OpenTelemetry Collector"]
+    P -. "optional guest tokens (BI)" .-> SS["bi-dashboards Service:8088"]
+    K[("Secrets: web-portal-identity, bi-dashboards")] -. "env at start" .-> P
 ```
 
 The browser downloads the UI from the portal, then requests `/api/healthz`,
 `/api/readyz` and `/api/version` through the more-specific payment API route.
 The static server does not proxy API requests. The two charts share Traefik
-but deploy separate Services and pods.
+but deploy separate Services and pods. With BI enabled, `/auth/*` and
+`/bi/guest-token` are served by the portal itself; the browser loads the
+dashboard iframe directly from Superset's own Ingress (`bi.localhost`).
 
 ## Prerequisites
 
@@ -76,7 +82,18 @@ loads them into the selected Minikube cluster. Optional `telemetry` values
 enable Collector export. Readiness controls routing and liveness restarts an
 unhealthy process; both use the pod's HTTP port directly.
 
+`identity.enabled` turns on the non-production local development sign-in
+([ADR-025](../../../docs/adr/ADR-025-interview-roadmap-and-read-only-mcp.md)).
+Its Secret (`identity.existingSecret`) holds `session-key` and `dev-users`;
+`identity.allowedOrigins` lists the browser origins accepted on POST requests.
+`bi.enabled` additionally lets users with `bi:view` obtain Superset guest
+tokens for `bi.dashboardId`; the issuer password comes from
+`bi.existingSecret`/`bi.issuerPasswordKey`. Changed Secrets are read at pod
+start, so restart the Deployment after rotating them. See the
+[BI runbook](../../../docs/runbooks/bi-dashboards.md).
+
 ## Documentation
 
 - [Module guide](../README.md)
 - [API chart and shared terminology](../../payment-api/chart/README.md)
+- [Local platform walkthrough](../../../docs/architecture/local-platform-guide.md)

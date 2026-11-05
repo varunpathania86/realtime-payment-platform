@@ -1,0 +1,43 @@
+image:
+  repository: rpp-local/bi-dashboards
+  tag: development
+  digest: ""
+  pullPolicy: Never
+local:
+  feature: bi
+# Superset keeps no shared cache or Celery workers here; more replicas would need Redis.
+replicaCount: 1
+# Keys: secret-key, guest-token-secret, database-password, admin-password, token-issuer-password.
+existingSecret: bi-dashboards
+metadataDatabase:
+  host: payments-postgres.data.svc.cluster.local
+  port: 5432
+  name: superset
+  user: superset
+users:
+  admin: admin
+  tokenIssuer: rpp_guest_token_issuer
+clickhouse:
+  # SELECT-only user created by the realtime-analytics chart when biReader.enabled is true.
+  uri: clickhousedb://rpp_bi_reader@realtime-analytics:8123/analytics
+  existingSecret: realtime-analytics
+  passwordKey: bi-reader-password
+trino:
+  # Empty omits the Iceberg history chart; Trino has no authentication until Stage 11.
+  uri: ""
+embed:
+  # Browser origins allowed to frame dashboards (CSP frame-ancestors and the embedded allow-list).
+  origins:
+    - http://localhost:8080
+ingress:
+  host: bi.localhost
+server:
+  workers: 1
+  threads: 8
+  timeout: 60
+resources:
+  requests: {cpu: 100m, memory: 384Mi}
+  limits: {cpu: "1", memory: 768Mi}
+setupResources:
+  requests: {cpu: 100m, memory: 256Mi}
+  limits: {cpu: "1", memory: 768Mi}

@@ -117,10 +117,16 @@ class OperatorTests(unittest.TestCase):
                 result = subprocess.run([sys.executable, script, *arguments],
                     env=environment, text=True, capture_output=True, check=True, timeout=60)
                 graphs.append(json.loads(result.stdout))
+            branches = {"clickhouse-late-events-v1"} if analytics == "true" else set()
+            risk_branches = {"clickhouse-risk-predictions-v1", "clickhouse-risk-late-events-v1"} \
+                if analytics == "true" else set()
             with self.subTest(analytics=analytics):
-                self.assertEqual(graphs[0].keys(), graphs[1].keys())
-                self.assertTrue(graphs[0].keys() <= graphs[2].keys())
-                self.assertEqual(len(graphs[2]) - len(graphs[0]), 5)
+                self.assertTrue(graphs[0].keys() <= graphs[1].keys() <= graphs[2].keys())
+                added = {graphs[1][key]["uid"] for key in graphs[1].keys() - graphs[0].keys()}
+                self.assertEqual(added, branches)
+                risk_added = {graphs[2][key]["uid"] for key in graphs[2].keys() - graphs[1].keys()}
+                self.assertEqual(len(risk_added - risk_branches), 5)
+                self.assertTrue(risk_branches <= risk_added)
 
     def test_risk_submission_distributes_verified_package_and_operator(self):
         with patch.dict(os.environ, {"RISK_ENABLED": "true"}), \

@@ -14,7 +14,7 @@ from pyflink.datastream.connectors.kafka import (
 from pyflink.datastream.functions import KeyedProcessFunction
 from pyflink.datastream.output_tag import OutputTag
 
-from analytics import ClickHouseMap, WINDOWS_TABLE, write_payment_fact
+from analytics import ClickHouseMap, LATE_TABLE, RISK_TABLE, WINDOWS_TABLE, write_payment_fact
 from pyflink.datastream.state import MapStateDescriptor, StateTtlConfig
 from pyflink.table import DataTypes, Schema, StreamTableEnvironment
 from pyflink.java_gateway import get_gateway
@@ -207,6 +207,10 @@ def build():
     statement.attach_as_datastream()
     preserve_result_sink_identity(env)
     # Optional branches must not affect the baseline graph used by the state-identity bridge.
+    analytics_enabled = os.environ.get("ANALYTICS_ENABLED") == "true"
+    if analytics_enabled:
+        # Stateless side branches: Kafka sinks keep their uids and savepoints restore unchanged.
+        clickhouse_branch(windowed, LATE_TABLE, "clickhouse-late-events", TOO_LATE)
     if os.environ.get("RISK_ENABLED") == "true":
         from risk import RISK_TOO_LATE, RiskPayments, account_currency
 
@@ -223,7 +227,17 @@ def build():
                 .set_record_serializer(KafkaRecordSerializationSchema.builder().set_topic(topic)
                     .set_value_serialization_schema(SimpleStringSchema()).build()).build()
             output.sink_to(sink).uid(uid)
+        if analytics_enabled:
+            clickhouse_branch(predictions, RISK_TABLE, "clickhouse-risk-predictions")
+            clickhouse_branch(predictions, LATE_TABLE, "clickhouse-risk-late-events", RISK_TOO_LATE)
     return env
+
+
+def clickhouse_branch(stream, table, name, side_output=None):
+    # Resolving a side output here keeps it out of the graph when the branch is skipped.
+    if side_output is not None:
+        stream = stream.get_side_output(side_output)
+    return stream.map(ClickHouseMap(table), output_type=Types.STRING()).name(name).uid(f"{name}-v1")
 
 
 def run():

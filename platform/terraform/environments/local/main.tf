@@ -6,7 +6,7 @@ locals {
     if fileexists("${local.root}/modules/${name}/Dockerfile") && fileexists("${local.root}/modules/${name}/chart/Chart.yaml")
     && (try(yamldecode(file("${local.root}/modules/${name}/chart/values.yaml")).local.feature, "") == ""
       || contains(concat(var.streaming_enabled ? ["streaming"] : [], var.analytics_enabled ? ["analytics"] : [],
-        var.lakehouse_enabled ? ["lakehouse"] : []),
+        var.lakehouse_enabled ? ["lakehouse"] : [], var.bi_enabled ? ["bi"] : []),
     try(yamldecode(file("${local.root}/modules/${name}/chart/values.yaml")).local.feature, "")))
   }
 }
@@ -69,6 +69,7 @@ resource "helm_release" "realtime_analytics" {
       pullPolicy = "Never"
       digest     = ""
     }
+    biReader = { enabled = var.bi_enabled }
   })]
 
   lifecycle {
@@ -84,7 +85,7 @@ resource "helm_release" "realtime_analytics" {
 }
 
 resource "helm_release" "application" {
-  for_each        = { for name, chart in local.applications : name => chart if !contains(["realtime-analytics", "lakehouse-catalog"], name) }
+  for_each        = { for name, chart in local.applications : name => chart if !contains(["realtime-analytics", "lakehouse-catalog", "bi-dashboards"], name) }
   name            = each.key
   namespace       = kubernetes_namespace_v1.foundation["apps"].metadata[0].name
   chart           = each.value
@@ -92,7 +93,7 @@ resource "helm_release" "application" {
   wait            = true
   atomic          = true
   cleanup_on_fail = true
-  depends_on      = [helm_release.ingress, helm_release.realtime_analytics, kubernetes_stateful_set_v1.postgres, kubernetes_secret_v1.payment_database, kubernetes_stateful_set_v1.kafka, kubernetes_deployment_v1.registry, kubernetes_secret_v1.payment_events, kubernetes_secret_v1.realtime_analytics, kubernetes_config_map_v1.event_schema, kubernetes_deployment_v1.minio, helm_release.lakehouse_catalog, kubernetes_secret_v1.lakehouse_writer, kubernetes_secret_v1.lakehouse_query]
+  depends_on      = [helm_release.ingress, helm_release.realtime_analytics, kubernetes_stateful_set_v1.postgres, kubernetes_secret_v1.payment_database, kubernetes_stateful_set_v1.kafka, kubernetes_deployment_v1.registry, kubernetes_secret_v1.payment_events, kubernetes_secret_v1.realtime_analytics, kubernetes_config_map_v1.event_schema, kubernetes_deployment_v1.minio, helm_release.lakehouse_catalog, kubernetes_secret_v1.lakehouse_writer, kubernetes_secret_v1.lakehouse_query, kubernetes_secret_v1.bi_dashboards, kubernetes_secret_v1.web_portal_identity]
 
   values = [yamlencode({
     replicaCount   = lookup(var.application_replicas, each.key, 1)
@@ -131,6 +132,20 @@ resource "helm_release" "application" {
       existingSecret    = kubernetes_secret_v1.payment_events.metadata[0].name
       schemaConfigMap   = kubernetes_config_map_v1.event_schema.metadata[0].name
       tls               = true
+    }
+    identity = {
+      enabled        = var.bi_enabled
+      existingSecret = "web-portal-identity"
+      allowedOrigins = local.bi_origins
+    }
+    bi = {
+      enabled           = var.bi_enabled
+      supersetUrl       = "http://bi-dashboards:8088"
+      publicUrl         = local.bi_public_url
+      dashboardId       = local.bi_dashboard_id
+      tokenIssuer       = "rpp_guest_token_issuer"
+      existingSecret    = "bi-dashboards"
+      issuerPasswordKey = "token-issuer-password"
     }
     database = {
       tls      = var.external_database != null
