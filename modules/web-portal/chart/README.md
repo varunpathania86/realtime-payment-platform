@@ -1,7 +1,8 @@
 # Web portal Helm chart
 
 Deploys the React portal's Go server: static UI, plus the optional local
-development sign-in and Superset guest-token endpoints (Stage 9). Part of
+development sign-in and Superset guest-token endpoints (Stage 9) and the
+operations assistant BFF route (Stage 10). Part of
 [realtime-payment-platform](../../../README.md).
 
 ## Responsibilities
@@ -27,11 +28,11 @@ flowchart TB
 
 | File | Creates | Used by / uses |
 |---|---|---|
-| [deployment.yaml](templates/deployment.yaml) | Deployment and its portal pods | Service selects pods; uses image/resources, optional telemetry, and optional identity/BI values whose credentials come from Secrets |
+| [deployment.yaml](templates/deployment.yaml) | Deployment and its portal pods | Service selects pods; uses image/resources, optional telemetry, and optional identity/BI/assistant values whose credentials come from Secrets |
 | [service.yaml](templates/service.yaml) | Internal Service on port 80 | Ingress routes here; forwards to ready portal pods on named `http` port 8080 |
 | [ingress.yaml](templates/ingress.yaml) | `/` Ingress rule | Traefik reads it and forwards to the portal Service |
-| [values.yaml](values.yaml) | Default Helm inputs | Terraform overrides local image, replicas, telemetry, identity and BI |
-| [values.schema.json](values.schema.json) | Input validation | Helm rejects identity without origins and BI without URLs or a dashboard UUID |
+| [values.yaml](values.yaml) | Default Helm inputs | Terraform overrides local image, replicas, telemetry, identity, BI and assistant |
+| [values.schema.json](values.schema.json) | Input validation | Helm rejects identity without origins, BI without URLs or a dashboard UUID, and an assistant without an orchestrator URL |
 | [Chart.yaml](Chart.yaml) | Chart metadata | Helm rendering and packaging |
 
 ```mermaid
@@ -47,7 +48,9 @@ flowchart LR
     B -- "/api status requests via Traefik" --> A["Payment API Ingress / Service / pods"]
     P -. "optional telemetry export" .-> O["OpenTelemetry Collector"]
     P -. "optional guest tokens (BI)" .-> SS["bi-dashboards Service:8088"]
+    P -. "optional signed questions (assistant)" .-> AO["ai-orchestrator Service:8080"]
     K[("Secrets: web-portal-identity, bi-dashboards")] -. "env at start" .-> P
+    KS[("Secret: web-portal-assistant-signer")] -. "read-only key file" .-> P
 ```
 
 The browser downloads the UI from the portal, then requests `/api/healthz`,
@@ -56,6 +59,9 @@ The static server does not proxy API requests. The two charts share Traefik
 but deploy separate Services and pods. With BI enabled, `/auth/*` and
 `/bi/guest-token` are served by the portal itself; the browser loads the
 dashboard iframe directly from Superset's own Ingress (`bi.localhost`).
+With the assistant enabled, `/assistant/ask` is also served by the portal,
+which calls the internal `ai-orchestrator` Service; the orchestrator has no
+Ingress.
 
 ## Prerequisites
 
@@ -91,6 +97,15 @@ tokens for `bi.dashboardId`; the issuer password comes from
 `bi.existingSecret`/`bi.issuerPasswordKey`. Changed Secrets are read at pod
 start, so restart the Deployment after rotating them. See the
 [BI runbook](../../../docs/runbooks/bi-dashboards.md).
+
+`assistant.enabled` (with identity) sets `AI_ORCHESTRATOR_URL` from
+`assistant.orchestratorUrl` and mounts the Ed25519 private key from
+`assistant.signingSecret`/`assistant.privateKeyKey` read-only at
+`/assistant-identity`. The file has mode `0440`, and the pod's `fsGroup`
+lets the non-root user read it. Only this chart mounts the private key;
+the orchestrator and tools charts mount the public key from `ai-identity`
+([ADR-030](../../../docs/adr/ADR-030-assistant-identity-assertions.md),
+[assistant runbook](../../../docs/runbooks/ai-assistant.md)).
 
 ## Documentation
 

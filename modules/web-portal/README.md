@@ -1,7 +1,7 @@
 # Web portal
 
 Accessible React platform-status page and, from Stage 9, the embedded payment
-operations dashboard. Part of [realtime-payment-platform](../../README.md).
+operations dashboard and (Stage 10) the operations assistant. Part of [realtime-payment-platform](../../README.md).
 
 ## Responsibilities
 
@@ -17,6 +17,15 @@ or database credentials. Keycloak replaces this local identity in Stage 11
 ([ADR-025](../../docs/adr/ADR-025-interview-roadmap-and-read-only-mcp.md),
 [ADR-028](../../docs/adr/ADR-028-embedded-superset-bi.md)).
 
+When the assistant is enabled, signed-in users with `ai:invoke` also see the
+operations assistant on `/analytics`. The Go server is its only caller: for
+each question it signs two 120-second Ed25519 assertions, one for
+[ai-orchestrator](../ai-orchestrator/README.md) and one the orchestrator relays
+to [assistant-tools](../assistant-tools/README.md), and forwards only the user's
+assistant permissions
+([ADR-030](../../docs/adr/ADR-030-assistant-identity-assertions.md)). React never
+sees the assertions or the signing key.
+
 ## Layout
 
 See the [Helm chart guide](chart/README.md) for template purposes and how browser
@@ -29,6 +38,7 @@ traffic reaches the portal and API.
 ├── README.md
 ├── main.go             # Standard-library static server
 ├── bi.go               # Local development sign-in and Superset guest tokens
+├── assistant.go        # Assistant BFF: assertion signing and orchestrator proxy
 ├── *_test.go
 ├── package.json
 ├── package-lock.json
@@ -92,6 +102,8 @@ another member; lifecycle commands select the whole base using `DEV_PROFILE`.
 | `BI_SUPERSET_PUBLIC_URL` | Unset | Superset URL the browser loads the iframe from |
 | `BI_DASHBOARD_ID` | Unset | Embedded dashboard UUID |
 | `BI_TOKEN_ISSUER_USER` / `BI_TOKEN_ISSUER_PASSWORD` | Unset | Superset account allowed only to grant guest tokens |
+| `AI_ORCHESTRATOR_URL` | Unset | Cluster-internal orchestrator URL; with the key file enables `/assistant/ask` (both required) |
+| `AI_ASSERTION_PRIVATE_KEY_FILE` | Unset | PKCS#8 PEM Ed25519 private key that signs assistant assertions |
 
 ### Stage 4 telemetry
 
@@ -126,6 +138,21 @@ dashboard UUID and Superset URL. `POST /auth/logout` clears the cookie.
 requires an allowed `Origin`. Permissions are re-read on every request, so
 removing a user from the Secret revokes access after a restart. The endpoints
 return 404 when sign-in is not configured.
+
+### Stage 10 operations assistant
+
+`POST /assistant/ask` takes `{"question": "..."}` (1–1000 characters, JSON body
+at most 4 KiB) and returns the orchestrator's response unchanged: `status`,
+`answer`, `citations`, `tools`, `request_id` and `latency_ms`. It returns 401
+without a session, 403 without `ai:invoke`, 404 when the assistant is not
+configured, 429 when two questions are already in flight, 502 if the
+orchestrator fails and 504 after 210 seconds. The route extends the server's
+10-second write deadline because local CPU inference is slow. The portal logs
+the request ID, user, upstream status and duration, never the question or the
+answer. `GET /auth/session` reports `"assistant": true` only when the route is
+configured and the user has `ai:invoke`. React renders the answer, citations
+and tool statuses as text. See the
+[assistant runbook](../../docs/runbooks/ai-assistant.md).
 
 The non-root scratch image serves the SPA and `GET /healthz`, `GET /readyz` JSON
 probes on port 8080. Missing assets and misrouted API requests return `404`;

@@ -8,7 +8,8 @@ import { fetchGuestToken, loadSession, signIn, signOut } from "../src/identity.j
 
 const viewer = {
   username: "ops-viewer",
-  permissions: ["bi:view"],
+  permissions: ["bi:view", "ai:invoke"],
+  assistant: true,
   bi: { dashboardId: "bfa817e5-b670-5c83-842c-ef5d57da6f8a", supersetDomain: "http://bi.localhost:8080" },
 };
 
@@ -62,7 +63,7 @@ test("renders sign-in, dashboard and no-access states without secrets", () => {
   assert.match(dashboard, /class="dashboard"/);
   assert.doesNotMatch(dashboard, /does not have access/);
 
-  const clerk = render({ kind: "signed-in", session: { username: "payments-clerk", permissions: [] } });
+  const clerk = render({ kind: "signed-in", session: { username: "payments-clerk", permissions: [], assistant: false } });
   assert.match(clerk, /does not have access to analytics dashboards/);
   assert.doesNotMatch(clerk, /class="dashboard"/);
   assert.match(render({ kind: "loading" }), /Checking your session/);

@@ -1,4 +1,4 @@
-import type { FormEvent, RefObject } from "react";
+import type { FormEvent, ReactNode, RefObject } from "react";
 import type { PortalSession } from "./identity.js";
 
 export type AnalyticsState =
@@ -10,11 +10,12 @@ interface Props {
   state: AnalyticsState;
   busy: boolean;
   mountRef?: RefObject<HTMLDivElement | null>;
+  assistant?: ReactNode;
   onSignIn: (username: string, password: string) => void;
   onSignOut: () => void;
 }
 
-export function AnalyticsView({ state, busy, mountRef, onSignIn, onSignOut }: Props) {
+export function AnalyticsView({ state, busy, mountRef, assistant, onSignIn, onSignOut }: Props) {
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -26,8 +27,8 @@ export function AnalyticsView({ state, busy, mountRef, onSignIn, onSignOut }: Pr
         <p className="eyebrow">Realtime payment platform</p>
         <h1>Payment operations</h1>
         <p>
-          Embedded Superset dashboard · Synthetic data only · Local development identity, not for
-          production
+          Embedded Superset dashboard and operations assistant · Synthetic data only · Local development
+          identity, not for production
         </p>
       </header>
       {state.kind === "loading" && <p role="status">Checking your session…</p>}
@@ -62,6 +63,7 @@ export function AnalyticsView({ state, busy, mountRef, onSignIn, onSignOut }: Pr
           )}
         </section>
       )}
+      {state.kind === "signed-in" && state.session.assistant && assistant}
     </main>
   );
 }

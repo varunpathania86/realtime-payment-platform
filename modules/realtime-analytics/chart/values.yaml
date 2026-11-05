@@ -13,6 +13,11 @@ biReader:
   enabled: false
   user: rpp_bi_reader
   passwordKey: bi-reader-password
+# Optional SELECT-only user for the Stage 10 assistant-tools MCP server; same script, separate password.
+aiReader:
+  enabled: false
+  user: rpp_ai_reader
+  passwordKey: ai-reader-password
 storage: 8Gi
 resources:
   requests: {cpu: 500m, memory: 768Mi}

@@ -19,6 +19,13 @@ bi:
   tokenIssuer: rpp_guest_token_issuer
   existingSecret: bi-dashboards
   issuerPasswordKey: token-issuer-password
+# Operations assistant (Stage 10, ADR-030); requires identity. The portal signs short-lived Ed25519
+# assertions with the private key in signingSecret and calls ai-orchestrator server-side.
+assistant:
+  enabled: false
+  orchestratorUrl: http://ai-orchestrator:8080
+  signingSecret: web-portal-assistant-signer
+  privateKeyKey: private-key.pem
 image:
   repository: rpp-local/web-portal
   tag: dev

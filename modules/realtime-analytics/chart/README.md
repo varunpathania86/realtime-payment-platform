@@ -63,7 +63,9 @@ flowchart LR
 
 Use [developer setup](../../../docs/developer-setup.md) and the
 [API chart glossary](../../payment-api/chart/README.md#configuration) for
-Kubernetes terms and Helm syntax. Analytics requires streaming.
+Kubernetes terms and Helm syntax. Analytics requires streaming, except in the
+lean AI profile (`templates/ai-topology.json`), where ClickHouse holds only
+synthetic fixtures for the assistant's tools.
 
 ## Quick start
 
@@ -98,6 +100,13 @@ SQL. A ConfigMap alone never creates tables. Successful hooks are deleted;
 failed Jobs remain for diagnosis until the next run. The schema checksum in
 the pod template causes a rollout when SQL changes. That is not a general
 database migration system; changes to existing tables need explicit planning.
+
+Optional readers: when `biReader.enabled` or `aiReader.enabled` is true, the
+hook Job also runs [bi-reader.sh](files/bi-reader.sh) to create or rotate a
+`readonly = 2`, `SELECT`-only user (`rpp_bi_reader` for dashboards,
+`rpp_ai_reader` for the Stage 10 assistant-tools MCP server). Each reader reads
+its own password key (`bi-reader-password`, `ai-reader-password`) from the
+external Secret. Local Terraform enables them with the `bi` and `ai` features.
 
 ## Documentation
 
