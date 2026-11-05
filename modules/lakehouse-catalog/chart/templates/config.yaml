@@ -1,0 +1,20 @@
+{{/*
+Polaris server configuration mounted by deployment.yaml at /deployments/config/application.properties.
+Metadata persists in PostgreSQL (relational-jdbc); tokens are signed with a symmetric key from the
+existingSecret so they stay valid across pod restarts. No secrets are stored here. See ../README.md.
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-config
+data:
+  application.properties: |
+    polaris.persistence.type=relational-jdbc
+    polaris.realm-context.realms={{ .Values.realm }}
+    polaris.authentication.token-broker.type=symmetric-key
+    # setup-job.yaml resets principal credentials to Terraform-managed values.
+    polaris.features."ENABLE_CREDENTIAL_RESET"=true
+    polaris.features."SUPPORTED_CATALOG_STORAGE_TYPES"=["S3"]
+    quarkus.otel.sdk.disabled=true
+    # Logs go to stdout; the root filesystem is read-only.
+    quarkus.log.file.enabled=false

@@ -12,9 +12,9 @@ For now, `type` is a human-readable primary classification. It is not a complete
 |---|---|---|
 | `api` | Backend application whose primary interface is an HTTP API. | `payment-api`, `ai-gateway` |
 | `web` | User-facing browser application. | `web-portal` |
-| `analytics` | A module whose primary purpose is analytical storage, query, or BI capability. | `clickhouse-analytics`, `iceberg-lakehouse`, `trino-analytics`, `superset-bi` |
+| `analytics` | A module whose primary purpose is analytical storage, query, or BI capability. | `realtime-analytics`, `lakehouse-catalog`, `lakehouse-query`, `bi-dashboards` |
 | `worker` | A background executable that performs work without serving the primary user-facing request path. It may consume messages or perform asynchronous tasks. | `event-generator`, `ai-orchestrator`, `llm-enrichment-worker` |
-| `stream-processing` | A specialized worker for continuous event streams, with processing concerns such as event time, state, windows, checkpoints, and recovery. | `flink-jobs` |
+| `stream-processing` | A specialized worker for continuous event streams, with processing concerns such as event time, state, windows, checkpoints, and recovery. | `stream-processor` |
 | `library` | Reusable code imported or otherwise consumed by other modules; not deployed as a standalone service. | `ai-core` |
 | `contracts` | Shared interface definitions used to communicate across module boundaries, such as Avro event schemas or OpenAPI specifications. | `event-contracts` |
 | `model` | The payment-risk machine-learning model, including its training/evaluation and inference artifacts. It is not the conversational LLM. | `payment-risk-model` |
@@ -99,7 +99,7 @@ boundary for a future repository split; no split is introduced now.
 
 ## Adding a module
 
-1. Add its kebab-case name to `solution.yaml`.
+1. Add its kebab-case name to `solution.yaml`. Name it after the capability it provides (for example `lakehouse-query`), not the product that implements it (`trino-analytics`); product names belong inside the module (Dockerfile, chart, README, ADRs), so a product can be replaced without renaming images, charts and release tags.
 2. Create `modules/<name>/module.yaml` with matching `name`, stable production `version`, owners, dependencies, and the best-fit primary `type`.
 3. Add only dependencies that represent actual consumption.
 4. Add runtime packaging (for example, Dockerfile or Helm chart) only when appropriate to the module.

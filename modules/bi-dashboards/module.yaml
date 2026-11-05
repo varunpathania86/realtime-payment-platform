@@ -1,0 +1,9 @@
+schemaVersion: 1
+name: bi-dashboards
+type: analytics
+version: 0.0.0
+owners:
+  - varunpathania86
+dependencies:
+  - realtime-analytics
+  - lakehouse-query

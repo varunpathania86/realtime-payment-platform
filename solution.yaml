@@ -20,12 +20,12 @@ modules:
   - llm-enrichment-worker
   - web-portal
   - ai-core
-  - flink-jobs
+  - stream-processor
   - event-contracts
-  - clickhouse-analytics
-  - iceberg-lakehouse
-  - trino-analytics
-  - superset-bi
+  - realtime-analytics
+  - lakehouse-catalog
+  - lakehouse-query
+  - bi-dashboards
   - payment-risk-model
   - operations-knowledge
 

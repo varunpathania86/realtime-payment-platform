@@ -49,12 +49,12 @@ The recorded benchmark command **passed**, using credentials already mounted
 inside the JobManager without printing them:
 
 ```bash
-kubectl --context rpp-stage6-single -n apps exec -i deployment/flink-jobs-jobmanager \
-  -- python - < modules/clickhouse-analytics/benchmark.py
+kubectl --context rpp-stage6-single -n apps exec -i deployment/stream-processor-jobmanager \
+  -- python - < modules/realtime-analytics/benchmark.py
 ```
 
-The public equivalent is `make -C modules/clickhouse-analytics benchmark`,
-after following the [module's loopback forwarding and credential setup](../../../modules/clickhouse-analytics/README.md).
+The public equivalent is `make -C modules/realtime-analytics benchmark`,
+after following the [module's loopback forwarding and credential setup](../../../modules/realtime-analytics/README.md).
 That host-client path was not the path measured here.
 
 After verification the diagnostic profile was stopped, preserving its data:

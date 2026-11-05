@@ -67,7 +67,7 @@ print("Verified versioned model registry artifacts")
     source = f"ARTIFACTS = {artifacts!r}\nPREFIX = {'payment-risk/' + version + '/'!r}\n" + program
     subprocess.run(
         ["kubectl", "--context", args.profile, "--request-timeout=30s", "-n", "apps",
-            "exec", "-i", "deployment/flink-jobs-jobmanager", "--", "python", "-"],
+            "exec", "-i", "deployment/stream-processor-jobmanager", "--", "python", "-"],
         input=source, text=True, check=True, timeout=120,
     )
     print(json.dumps({

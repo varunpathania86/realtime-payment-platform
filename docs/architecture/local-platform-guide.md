@@ -70,7 +70,7 @@ flowchart TB
     Reuse --> OTel["observability/: telemetry chart"]
     Platform --> Runtime["runtime/minio/: supporting runtime image"]
     Root --> Products["modules/: independently versioned products"]
-    Products --> Charts["payment-api, web-portal, flink-jobs, clickhouse-analytics"]
+    Products --> Charts["payment-api, web-portal, stream-processor, realtime-analytics"]
     Charts --> Chart["chart/: module-owned Kubernetes packaging"]
     Root --> State[".local/: generated, git-ignored runtime state"]
 ```

@@ -119,5 +119,5 @@ Helm syntax is evaluated before Kubernetes sees the YAML:
 
 - [Module guide](../README.md)
 - [Portal chart](../../web-portal/chart/README.md)
-- [Flink chart](../../flink-jobs/chart/README.md)
-- [ClickHouse chart](../../clickhouse-analytics/chart/README.md)
+- [Flink chart](../../stream-processor/chart/README.md)
+- [ClickHouse chart](../../realtime-analytics/chart/README.md)

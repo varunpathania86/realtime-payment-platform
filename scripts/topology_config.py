@@ -21,9 +21,12 @@ def positive_integer(value, name):
 
 def validate(data):
     if not isinstance(data, dict) or set(data) - {
-        "node", "clusters", "nodes", "observability", "streaming", "analytics", "runtime_profile", "risk",
+        "node", "clusters", "nodes", "observability", "streaming", "analytics", "lakehouse", "runtime_profile", "risk",
     }:
-        raise ValueError("configuration accepts only node, nodes, clusters, observability, streaming, analytics, runtime_profile and risk")
+        raise ValueError(
+            "configuration accepts only node, nodes, clusters, observability, streaming, analytics, lakehouse, "
+            "runtime_profile and risk"
+        )
     node = data.get("node", {})
     if not isinstance(node, dict) or set(node) - {"cpus", "memory_mib"}:
         raise ValueError("node accepts only cpus and memory_mib")
@@ -71,7 +74,7 @@ def validate(data):
             if not isinstance(value, dict):
                 raise ValueError(f"nodes.{key} must be a node budget object")
             result["nodes"][key] = validate({"node": {**result["node"], **value}})["node"]
-    for feature in ("observability", "streaming", "analytics"):
+    for feature in ("observability", "streaming", "analytics", "lakehouse"):
         if feature in data:
             if not isinstance(data[feature], bool):
                 raise ValueError(f"{feature} must be a boolean")
@@ -82,6 +85,14 @@ def validate(data):
         cluster_a = result.get("nodes", {}).get("a", result["node"])
         if cluster_a["cpus"] < 4 or cluster_a["memory_mib"] < 6144:
             raise ValueError("analytics requires cluster A to have at least 4 CPUs and 6144 MiB")
+    if result.get("lakehouse", False):
+        if not result.get("streaming", False):
+            raise ValueError("lakehouse requires streaming to be enabled")
+        cluster_a = result.get("nodes", {}).get("a", result["node"])
+        # Polaris, Trino and the second Flink slot add about 2.5 GiB of limits on cluster A.
+        minimum = 10240 if result.get("analytics", False) else 8192
+        if cluster_a["cpus"] < 4 or cluster_a["memory_mib"] < minimum:
+            raise ValueError(f"lakehouse requires cluster A to have at least 4 CPUs and {minimum} MiB")
     if "risk" in data:
         risk = data["risk"]
         if not isinstance(risk, dict) or set(risk) != {"package_key", "package_sha256"}:

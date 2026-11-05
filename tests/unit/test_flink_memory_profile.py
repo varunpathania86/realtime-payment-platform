@@ -9,7 +9,7 @@ from scripts.topology_config import validate
 class FlinkMemoryProfileTests(unittest.TestCase):
     def render(self, profile):
         result = subprocess.run(
-            ["helm", "template", "flink-jobs", "modules/flink-jobs/chart",
+            ["helm", "template", "stream-processor", "modules/stream-processor/chart",
                 "--set", "streaming.enabled=true", "--set", f"runtimeProfile={profile}"],
             check=True, capture_output=True, text=True,
         )
@@ -28,7 +28,7 @@ class FlinkMemoryProfileTests(unittest.TestCase):
         self.assertIn("taskmanager.memory.process.size: 1280m", configuration)
         deployments = {doc["metadata"]["name"]: doc for doc in documents if doc["kind"] == "Deployment"}
         for role, limit in (("jobmanager", "1024Mi"), ("taskmanager", "2048Mi")):
-            container = deployments[f"flink-jobs-{role}"]["spec"]["template"]["spec"]["containers"][0]
+            container = deployments[f"stream-processor-{role}"]["spec"]["template"]["spec"]["containers"][0]
             self.assertEqual(container["resources"]["limits"]["memory"], limit)
 
     def test_invalid_profile_fails_instead_of_defaulting(self):

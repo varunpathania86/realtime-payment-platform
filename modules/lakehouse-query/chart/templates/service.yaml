@@ -1,0 +1,14 @@
+{{/*
+Stable internal HTTP address for the Trino pod in deployment.yaml. Developers reach it through
+an explicit loopback port-forward (make lakehouse-query); Superset will use it in Stage 9.
+No Ingress is created. See ../README.md.
+*/}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}
+spec:
+  selector:
+    app.kubernetes.io/name: {{ .Release.Name }}
+  ports:
+    - {name: http, port: 8080, targetPort: http}

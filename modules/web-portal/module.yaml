@@ -8,4 +8,4 @@ dependencies:
   - ai-gateway
   - event-contracts
   - payment-api
-  - superset-bi
+  - bi-dashboards

@@ -1,8 +1,0 @@
-schemaVersion: 1
-name: trino-analytics
-type: analytics
-version: 0.0.0
-owners:
-  - varunpathania86
-dependencies:
-  - iceberg-lakehouse

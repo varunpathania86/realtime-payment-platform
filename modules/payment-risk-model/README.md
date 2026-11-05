@@ -270,4 +270,4 @@ threshold 0.5; successful parity is not proof of useful predictive quality.
 - [Stage 7 scope](../../docs/master-plan.md#stage-7-first-predictive-ml-model-inside-flink)
 - [Feature decision](../../docs/adr/ADR-024-advisory-event-time-risk-features.md)
 - [Processing contract](../event-contracts/schemas/payment-processing-v1.avsc)
-- [Existing Flink processing](../flink-jobs/README.md)
+- [Existing Flink processing](../stream-processor/README.md)

@@ -1,0 +1,6 @@
+apiVersion: v2
+name: lakehouse-catalog
+description: Apache Polaris Iceberg REST catalog with idempotent lakehouse setup for Stage 8
+type: application
+version: 0.1.0
+appVersion: "1.8.0"

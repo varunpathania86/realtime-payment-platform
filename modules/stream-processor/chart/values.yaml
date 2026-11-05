@@ -1,0 +1,74 @@
+image:
+  repository: rpp-local/stream-processor
+  tag: development
+  digest: ""
+  pullPolicy: Never
+local:
+  feature: streaming
+streaming:
+  enabled: false
+  restorePath: ""
+  checkpointURI: s3://flink-state/checkpoints/payment-event-time-v1
+  savepointURI: s3://flink-state/savepoints
+  endpoint: http://minio.data.svc.cluster.local:9000
+  existingSecret: streaming-storage
+analytics:
+  enabled: false
+  url: http://realtime-analytics:8123
+  user: rpp_analytics
+  existingSecret: realtime-analytics
+# Opt-in second job (payment-lakehouse-v1) appending to Iceberg through Polaris; needs streaming.
+lakehouse:
+  enabled: false
+  restorePath: ""
+  catalogURI: http://lakehouse-catalog:8181/api/catalog
+  warehouse: lakehouse
+  namespace: payments
+  checkpointURI: s3://flink-state/checkpoints/payment-lakehouse-v1
+  # Keys client-id and client-secret of the least-privilege Polaris writer principal.
+  existingSecret: lakehouse-writer
+  # The writer adds one TaskManager slot. Managed memory is split evenly per slot, so it is set to
+  # twice the one-slot default to keep the payment job's Python worker budget unchanged.
+  taskmanager:
+    standard:
+      processMemory: 2560m
+      managedMemory: 1270m
+      resources:
+        requests: {cpu: 250m, memory: 2048Mi}
+        limits: {cpu: "2", memory: 3072Mi}
+    low-memory:
+      processMemory: 1792m
+      managedMemory: 666m
+      resources:
+        requests: {cpu: 250m, memory: 1792Mi}
+        limits: {cpu: "2", memory: 2560Mi}
+# Opt-in advisory branch; the submit hook verifies this immutable MinIO ZIP before distribution.
+risk:
+  enabled: false
+  packageKey: ""
+  packageSHA256: ""
+events:
+  brokers: kafka.data.svc.cluster.local:9092
+  existingSecret: payment-api-events
+  tls: false
+  replicationFactor: 1
+jobmanager:
+  resources:
+    requests: {cpu: 100m, memory: 768Mi}
+    limits: {cpu: "1", memory: 1280Mi}
+taskmanager:
+  resources:
+    requests: {cpu: 250m, memory: 1536Mi}
+    limits: {cpu: "2", memory: 2560Mi}
+runtimeProfile: standard
+lowMemory:
+  jobmanager:
+    processMemory: 768m
+    resources:
+      requests: {cpu: 100m, memory: 768Mi}
+      limits: {cpu: "1", memory: 1024Mi}
+  taskmanager:
+    processMemory: 1280m
+    resources:
+      requests: {cpu: 250m, memory: 1280Mi}
+      limits: {cpu: "2", memory: 2048Mi}

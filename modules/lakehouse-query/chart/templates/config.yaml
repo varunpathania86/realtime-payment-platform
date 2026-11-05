@@ -1,0 +1,62 @@
+{{/*
+Trino configuration mounted at /etc/trino by deployment.yaml (replacing the image defaults, so the
+sample tpch/memory catalogs and the 2 GB filesystem cache are not loaded).
+Two Iceberg REST catalogs point at the lakehouse-catalog Polaris service:
+  lakehouse        read-only engine security plus the Polaris reader principal (queries, dashboards)
+  lakehouse_admin  Polaris maintainer principal (schema evolution and table maintenance)
+Credentials are ${ENV:...} references filled from Secrets, never stored here. See ../README.md.
+*/}}
+{{- define "lakehouse-query.catalog" -}}
+connector.name=iceberg
+iceberg.catalog.type=rest
+iceberg.rest-catalog.uri={{ .root.Values.lakehouse.catalogURI }}
+iceberg.rest-catalog.warehouse={{ .root.Values.lakehouse.warehouse }}
+iceberg.rest-catalog.security=OAUTH2
+iceberg.rest-catalog.oauth2.server-uri={{ trimSuffix "/" .root.Values.lakehouse.catalogURI }}/v1/oauth/tokens
+iceberg.rest-catalog.oauth2.credential=${ENV:{{ .credential }}}
+iceberg.rest-catalog.oauth2.scope=PRINCIPAL_ROLE:ALL
+iceberg.rest-catalog.vended-credentials-enabled=false
+fs.native-s3.enabled=true
+s3.endpoint={{ .root.Values.storage.endpoint }}
+s3.region={{ .root.Values.storage.region }}
+s3.path-style-access=true
+s3.aws-access-key=${ENV:AWS_ACCESS_KEY_ID}
+s3.aws-secret-key=${ENV:AWS_SECRET_ACCESS_KEY}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-config
+data:
+  config.properties: |
+    coordinator=true
+    node-scheduler.include-coordinator=true
+    http-server.http.port=8080
+    discovery.uri=http://localhost:8080
+    query.max-memory={{ .Values.query.maxMemory }}
+    query.max-memory-per-node={{ .Values.query.maxMemoryPerNode }}
+  node.properties: |
+    node.environment=local
+    node.data-dir=/data/trino
+    node.id=${ENV:HOSTNAME}
+  jvm.config: |
+    -server
+    -agentpath:/usr/lib/trino/bin/libjvmkill.so
+    -XX:InitialRAMPercentage={{ .Values.jvm.maxRAMPercentage }}
+    -XX:MaxRAMPercentage={{ .Values.jvm.maxRAMPercentage }}
+    -XX:G1HeapRegionSize=32M
+    -XX:+ExplicitGCInvokesConcurrent
+    -XX:+ExitOnOutOfMemoryError
+    -XX:-OmitStackTraceInFastThrow
+    -XX:ReservedCodeCacheSize=256M
+    -XX:PerMethodRecompilationCutoff=10000
+    -XX:PerBytecodeRecompilationCutoff=10000
+    -Djdk.attach.allowAttachSelf=true
+    -Djdk.nio.maxCachedBufferSize=2000000
+  log.properties: |
+    io.trino=INFO
+  lakehouse.properties: |
+    {{- include "lakehouse-query.catalog" (dict "root" . "credential" "LAKEHOUSE_READER_CREDENTIAL") | nindent 4 }}
+    iceberg.security=read_only
+  lakehouse_admin.properties: |
+    {{- include "lakehouse-query.catalog" (dict "root" . "credential" "LAKEHOUSE_MAINTAINER_CREDENTIAL") | nindent 4 }}

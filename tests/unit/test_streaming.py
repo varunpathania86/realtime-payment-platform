@@ -11,7 +11,7 @@ from scripts.topology_config import validate
 
 class StreamingTests(unittest.TestCase):
     def test_risk_requires_explicit_pinned_identity_and_streaming(self):
-        command = ["helm", "template", "flink-jobs", str(ROOT / "modules/flink-jobs/chart"),
+        command = ["helm", "template", "stream-processor", str(ROOT / "modules/stream-processor/chart"),
             "--set", "risk.enabled=true"]
         for settings in (
             [], ["--set", "streaming.enabled=true"],
@@ -36,11 +36,32 @@ class StreamingTests(unittest.TestCase):
 
     def render(self, enabled):
         rendered = subprocess.run(
-            ["helm", "template", "flink-jobs", str(ROOT / "modules/flink-jobs/chart"),
+            ["helm", "template", "stream-processor", str(ROOT / "modules/stream-processor/chart"),
                 "--namespace", "apps", "--set", f"streaming.enabled={str(enabled).lower()}"],
             check=True, capture_output=True, text=True, timeout=30,
         )
         return list(yaml.safe_load_all(rendered.stdout))
+
+    def test_lakehouse_requires_streaming_and_wires_two_slots_and_writer_secret(self):
+        command = ["helm", "template", "stream-processor", str(ROOT / "modules/stream-processor/chart"),
+            "--namespace", "apps", "--set", "lakehouse.enabled=true"]
+        result = subprocess.run(command, text=True, capture_output=True, timeout=30)
+        self.assertNotEqual(result.returncode, 0)
+        resources = list(yaml.safe_load_all(subprocess.run([*command, "--set", "streaming.enabled=true"],
+            check=True, text=True, capture_output=True, timeout=30).stdout))
+        validate_chart(resources)
+        for resource in resources:
+            if resource and resource["kind"] == "Deployment":
+                env = {item["name"]: item.get("value") for item in
+                    resource["spec"]["template"]["spec"]["containers"][0]["env"]}
+                self.assertEqual(env["LAKEHOUSE_ENABLED"], "true")
+        config = next(item for item in resources if item and item["kind"] == "ConfigMap")
+        self.assertIn("taskmanager.numberOfTaskSlots: 2", "\n".join(config["data"].values()))
+        submit = next(item for item in resources if item and item["kind"] == "Job")
+        env = {item["name"]: item for item in submit["spec"]["template"]["spec"]["containers"][0]["env"]}
+        self.assertEqual(env["LAKEHOUSE_CLIENT_SECRET"]["valueFrom"]["secretKeyRef"],
+            {"name": "lakehouse-writer", "key": "client-secret"})
+        self.assertEqual(submit["spec"]["activeDeadlineSeconds"], 480)
 
     def test_default_is_dormant_and_opt_in_has_one_cluster(self):
         dormant = self.render(False)
@@ -80,7 +101,7 @@ class StreamingTests(unittest.TestCase):
             validate({"streaming": "true"})
 
     def test_feature_discovery_keeps_normal_builds_independent(self):
-        self.assertIn("flink-jobs", local_modules())
-        self.assertNotIn("flink-jobs", local_modules(features=set()))
-        self.assertIn("flink-jobs", local_modules(features={"streaming"}))
+        self.assertIn("stream-processor", local_modules())
+        self.assertNotIn("stream-processor", local_modules(features=set()))
+        self.assertIn("stream-processor", local_modules(features={"streaming"}))
         self.assertIn("payment-api", local_modules(features=set()))

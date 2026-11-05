@@ -5,7 +5,7 @@ set -euo pipefail
 cd "$REPO_ROOT"
 
 name="rpp-stage6-clickhouse-verify-$$"
-image="rpp-local/clickhouse-analytics:verify-$$"
+image="rpp-local/realtime-analytics:verify-$$"
 password=$("$REPO_ROOT/.venv/bin/python" -c 'import secrets; print(secrets.token_hex(32))')
 container=""
 
@@ -24,7 +24,7 @@ docker build \
   --build-arg "CLICKHOUSE_VERSION=$(pinned_version clickhouse)" \
   --build-arg VERSION=verification \
   --build-arg "COMMIT=$(git rev-parse HEAD)" \
-  --tag "$image" modules/clickhouse-analytics
+  --tag "$image" modules/realtime-analytics
 container=$(docker run --detach --name "$name" --memory=2g --cpus=2 \
   --read-only \
   --tmpfs /var/lib/clickhouse \
@@ -36,7 +36,7 @@ container=$(docker run --detach --name "$name" --memory=2g --cpus=2 \
   --env CLICKHOUSE_USER=rpp_analytics \
   --env "CLICKHOUSE_PASSWORD=$password" \
   --env CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1 \
-  --mount "type=bind,source=$REPO_ROOT/modules/clickhouse-analytics/chart/files/schema.sql,target=/tmp/schema.sql,readonly" \
+  --mount "type=bind,source=$REPO_ROOT/modules/realtime-analytics/chart/files/schema.sql,target=/tmp/schema.sql,readonly" \
   "$image")
 port=$(docker port "$container" 8123/tcp | sed 's/.*://')
 ready=false
@@ -57,5 +57,5 @@ done
 docker exec "$container" clickhouse-client --user rpp_analytics --password "$password" \
   --multiquery --queries-file /tmp/schema.sql
 CLICKHOUSE_PASSWORD="$password" "$REPO_ROOT/.venv/bin/python" \
-  modules/clickhouse-analytics/tests/runtime_check.py --url "http://127.0.0.1:$port"
+  modules/realtime-analytics/tests/runtime_check.py --url "http://127.0.0.1:$port"
 echo "ClickHouse schema, authenticated inserts, facts deduplication and aggregate revisions passed."

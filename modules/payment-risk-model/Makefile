@@ -34,7 +34,7 @@ train: ## Train, compare and export synthetic models in the setup-built containe
 integration: ## Reproduce training and three-way golden parity including the real Flink worker
 	cd "$(ROOT)" && STREAMING=1 RISK_MODEL=1 $(MAKE) setup
 	$(MAKE) train
-	$(MAKE) -C ../flink-jobs risk-integration MODEL_DIRECTORY="$(OUTPUT)"
+	$(MAKE) -C ../stream-processor risk-integration MODEL_DIRECTORY="$(OUTPUT)"
 
 clean: ## Remove only Python bytecode in this module
 	$(PYTHON) -c 'from pathlib import Path; [p.unlink() for p in Path(".").glob("**/__pycache__/*.pyc")]'

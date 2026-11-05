@@ -13,6 +13,7 @@ This file is the single, tool-neutral source of project instructions, using the 
 
 - Independently versioned product modules live under `modules/<module-name>/`; `solution.yaml` catalogs them, and every module has `module.yaml` whose `name` matches its folder.
 - The module manifest may precede implementation files. Add a README, Makefile, Dockerfile, Helm chart, or language-specific structure only when the module's implementation needs it.
+- Name modules after their capability (`lakehouse-query`), not a vendor or product brand (`trino-analytics`); keep product names inside the module. See `docs/module-development.md`.
 - Module `type` is descriptive (such as API, worker, stream processing, library, contract, model, or knowledge), not a workflow switch. Its meaning is documented in `docs/module-development.md`.
 - Shared solution infrastructure, cross-module tests, docs, scripts, and workflows remain outside module directories. See `docs/master-plan.md` Section 4 and `docs/module-development.md`.
 - `docs/` holds SDD, LLD, ADR, runbooks; `templates/` holds the templates for them.
