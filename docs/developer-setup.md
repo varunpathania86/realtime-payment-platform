@@ -305,6 +305,41 @@ passwords; the [BI runbook](runbooks/bi-dashboards.md) shows how to read
 them. The browser origins allowed to embed Superset come from `LOCAL_PORT`
 during `dev-up`/`dev-update`, so browse with the same port.
 
+### Optional Stage 10 AI operations assistant
+
+The [assistant](runbooks/ai-assistant.md) uses container images only. Its
+Python runtime (`ai-python`), the llama.cpp server (`llama-cpp` plus
+`llama-cpp-image-digest`) and pgvector (`pgvector`) are pinned in
+`.tool-versions`, and `make doctor` checks the pins. The AI module checks
+(`make -C modules/<ai-module> test`) run in a pinned local container built
+once with `AI=1 make setup`. You don't need a host Python AI stack, a GPU or
+any hosted model API.
+
+`make dev-up DEV_CONFIG=templates/ai-topology.json` starts the lean profile:
+analytics and the assistant without streaming, so cluster A needs about
+10 GiB. The assistant requires analytics. The first start downloads the
+pinned GGUF models (about 1.2 GB) into a persistent volume, so it needs
+internet access once.
+
+To verify on one dedicated profile:
+
+```bash
+PROFILE=rpp-stage10-verify
+mkdir -p ".local/$PROFILE"
+printf '{"streaming_enabled": false, "analytics_enabled": true, "ai_enabled": true}\n' \
+  > ".local/$PROFILE/events.tfvars.json"
+MINIKUBE_PROFILE="$PROFILE" MINIKUBE_CPUS=4 MINIKUBE_MEMORY=10240 bash scripts/local-dev.sh up
+make knowledge-ingest MINIKUBE_PROFILE="$PROFILE"   # index the operations corpus
+make ai-fixtures MINIKUBE_PROFILE="$PROFILE"        # deterministic synthetic analytics rows
+make ai-eval MINIKUBE_PROFILE="$PROFILE"            # writes .local/$PROFILE/ai-eval/report.md
+make dev-access MINIKUBE_PROFILE="$PROFILE"         # http://localhost:8080/analytics
+minikube stop -p "$PROFILE"
+```
+
+`ai-eval` fails on leaked secrets or a broken authorization or injection
+case. Answer quality is reported, not enforced, because a small local model
+varies.
+
 ### Clone and initialize
 
 ```bash

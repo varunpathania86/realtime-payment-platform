@@ -2568,11 +2568,15 @@ runbooks. See the [low-memory pipeline report](../tests/benchmarks/pipeline/2026
 and [ClickHouse query report](../tests/benchmarks/pipeline/2026-11-03-clickhouse-query.md).
 
 ```yaml
-current_milestone: stage-9-superset-bi
-stage_status: Stage 9 Superset BI implemented on feature/stage-9-superset-bi; Superset 6.1.0 embedded in the React portal through portal-issued guest tokens over ClickHouse and Trino passed single-cluster live acceptance; awaiting PR review
-last_completed_task: Stage 9 single-cluster acceptance on 4 CPU / 11 GiB (streaming, analytics, lakehouse, risk and BI) passed make bi-verify (26 checks), a browser run with 10/10 embedded charts as ops-viewer and denial for payments-clerk, risk-verify with predictions in ClickHouse, savepoint-safe risk enablement and a stable Terraform plan
-next_task: Merge Stage 9, then start Stage 10 with the AI operations assistant (pgvector RAG, LangChain, LangGraph, llama.cpp and read-only MCP tools)
+current_milestone: stage-10-ai-assistant
+stage_status: Stage 10 AI operations assistant implemented on feature/stage-10-ai-assistant; pgvector hybrid RAG, a LangGraph orchestrator, read-only MCP tools and local llama.cpp models passed single-cluster live acceptance on the lean AI profile; awaiting PR review
+last_completed_task: Stage 10 lean-profile acceptance on 4 CPU / 10 GiB (analytics and AI, no streaming) indexed 57 documents (424 chunks), loaded synthetic fixtures and passed make ai-eval 21/21 with Recall@5 0.9, citation correctness 1.0 and zero authorization leaks; model-down fallback and a stable Terraform re-plan verified
+next_task: Merge Stage 10, then start Stage 11 with Keycloak replacing the local development identity
 known_issues:
+  - the Stage 10 lean profile used about 5.4 GiB of 10 GiB during evaluation; the chat model used about 1.25 GiB, ClickHouse about 0.7 GiB and the three AI services under 0.35 GiB together
+  - CPU-only Qwen2.5-1.5B answers took p50 21 s and p95 103 s in the evaluation; the portal allows two concurrent questions and a 210-second timeout
+  - first knowledge ingestion embedded 424 chunks in about 6 minutes on CPU; later runs skip unchanged content
+  - branch publication uses main's tooling, so Stage 10 dependency build contexts (ADR-031) publish only after merge
   - Superset 6.1.0 registers /static/service-worker.js, which the pinned image does not ship; the browser logs a harmless 404 and the optional service worker is skipped
   - the Stage 9 single-cluster node used about 7.5 GiB of 11 GiB with streaming, analytics, lakehouse, risk and BI; Superset used about 280 MiB idle
   - embedded Superset loads off-screen charts lazily; charts below the iframe fold query only when scrolled into view
@@ -2593,6 +2597,9 @@ known_issues:
   - local Flink JobManager and MinIO are not HA; external sinks are at-least-once, and deduplication has a 24-hour processing-time TTL
   - Stage 5 scoped scanner exceptions retain official Flink UID/GID, Kubernetes health/namespace ownership and local Never images; exact paths expire 2027-01-01
 architecture_decisions:
+  - ADR-031 Catalog-declared library dependencies passed to image builds as named build contexts
+  - ADR-030 Portal-signed Ed25519 per-audience assistant identity assertions until Keycloak
+  - ADR-029 LangGraph operations assistant over pgvector RAG, read-only MCP tools and local llama.cpp models
   - ADR-028 Embedded Superset through portal-issued guest tokens, guest-path hardening and Flink-written risk/late tables
   - ADR-027 Capability-based module names; product names stay inside modules
   - ADR-026 Apache Polaris Iceberg REST catalog, Flink Iceberg writer and Trino lakehouse
@@ -2611,6 +2618,10 @@ architecture_decisions:
   - ADR-014 Stage 1 artifact publication and separate security checks
   - ADR-015 PostgreSQL-backed synthetic payments and idempotency
 verification:
+  - 2026-11-05 Stage 10 make ci, make security and pre-commit passed; ai-core pgvector integration verified hybrid and text-only retrieval
+  - 2026-11-05 dedicated rpp-stage10-verify profile (4 CPUs/10240 MiB, analytics and AI without streaming) deployed with smoke passing; make knowledge-ingest, make ai-fixtures and make ai-eval passed 21/21 with zero leaks
+  - 2026-11-05 live acceptance found shared portal identity values overriding the AI charts' verifier Secret; the charts now use assertionVerifier and a regression test renders them with the shared values
+  - 2026-11-05 with llm-serving scaled to zero, knowledge and metrics questions returned cited fallback answers in about 0.1 s; Terraform re-plan reported no changes
   - 2026-11-04 Stage 7 make ci passed; pinned model/Flink integration passed original Python, Python ONNX and real-worker golden parity at 1e-5, prior-history revisions, dedup and event-time cleanup
   - 2026-11-04 affected Flink module CI path passed with INTEGRATION=1; actual graph regressions preserve legacy stateful operator identities with analytics both off and on, without allowing non-restored state
   - 2026-11-04 dedicated rpp-stage7-verify fresh profile (4 CPUs/6144 MiB, low-memory, no analytics backends) passed initial deployment, MinIO artifact publication and identical-content retry
