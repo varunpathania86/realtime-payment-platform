@@ -830,6 +830,25 @@
       "integrated": true,
       "iteration": 1,
       "module": "realtime-analytics",
+      "publication": {
+        "approvedImpact": "patch",
+        "branch": "main",
+        "chart": {
+          "digest": "sha256:63b8cba10a0f85165e0541553fca0c333553d73d31fa79bf9120fdda69665d35",
+          "repository": "ghcr.io/varunpathania86/charts/realtime-analytics",
+          "version": "0.0.1-it1-rv.1"
+        },
+        "digest": "sha256:e27a9aa9995f44fe02b8be78376a84996c933b7b2e9da248b257facb3604428a",
+        "module": "realtime-analytics",
+        "provenance": "ghcr.io/varunpathania86/realtime-analytics@sha256:e27a9aa9995f44fe02b8be78376a84996c933b7b2e9da248b257facb3604428a",
+        "repository": "ghcr.io/varunpathania86/realtime-analytics",
+        "sbom": "ghcr.io/varunpathania86/realtime-analytics@sha256:e27a9aa9995f44fe02b8be78376a84996c933b7b2e9da248b257facb3604428a",
+        "schemaVersion": 1,
+        "sourceCommit": "816b8db42ef610f6747423da3b2b7f6cfdd44916",
+        "testRun": "https://github.com/varunpathania86/realtime-payment-platform/actions/runs/41987058779",
+        "version": "0.0.1-it1-rv.1",
+        "workflowRun": "https://github.com/varunpathania86/realtime-payment-platform/actions/runs/41987597411"
+      },
       "registry": "ghcr.io/varunpathania86",
       "releaseLine": "main",
       "reservedVersion": "0.0.1-it1-rv.1",
