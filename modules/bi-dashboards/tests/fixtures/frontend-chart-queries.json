@@ -1,0 +1,290 @@
+{
+  "amount-by-currency": {
+    "queries": [
+      {
+        "columns": [
+          "currency"
+        ],
+        "metrics": [
+          {
+            "expressionType": "SQL",
+            "hasCustomLabel": true,
+            "label": "Amount",
+            "optionName": "metric_amount",
+            "sqlExpression": "sum(amount)"
+          }
+        ],
+        "orderby": [
+          [
+            {
+              "expressionType": "SQL",
+              "hasCustomLabel": true,
+              "label": "Amount",
+              "optionName": "metric_amount",
+              "sqlExpression": "sum(amount)"
+            },
+            false
+          ]
+        ]
+      }
+    ],
+    "viz_type": "pie"
+  },
+  "authorization-rate": {
+    "queries": [
+      {
+        "columns": [],
+        "metrics": [
+          {
+            "expressionType": "SQL",
+            "hasCustomLabel": true,
+            "label": "Authorization rate",
+            "optionName": "metric_authorization_rate",
+            "sqlExpression": "countIf(outcome = 'authorized') / greatest(count(), 1)"
+          }
+        ],
+        "orderby": null
+      }
+    ],
+    "viz_type": "big_number_total"
+  },
+  "lakehouse-daily-amount": {
+    "queries": [
+      {
+        "columns": [
+          {
+            "columnType": "BASE_AXIS",
+            "expressionType": "SQL",
+            "isColumnReference": true,
+            "label": "event_time",
+            "sqlExpression": "event_time",
+            "timeGrain": "P1D"
+          },
+          "currency"
+        ],
+        "groupby": null,
+        "metrics": [
+          {
+            "expressionType": "SQL",
+            "hasCustomLabel": true,
+            "label": "Amount",
+            "optionName": "metric_amount",
+            "sqlExpression": "sum(amount)"
+          }
+        ],
+        "orderby": [
+          [
+            {
+              "expressionType": "SQL",
+              "hasCustomLabel": true,
+              "label": "Amount",
+              "optionName": "metric_amount",
+              "sqlExpression": "sum(amount)"
+            },
+            false
+          ]
+        ]
+      }
+    ],
+    "viz_type": "echarts_timeseries_bar"
+  },
+  "late-event-total": {
+    "queries": [
+      {
+        "columns": [],
+        "metrics": [
+          {
+            "expressionType": "SQL",
+            "hasCustomLabel": true,
+            "label": "Late events",
+            "optionName": "metric_late_events",
+            "sqlExpression": "count()"
+          }
+        ],
+        "orderby": null
+      }
+    ],
+    "viz_type": "big_number_total"
+  },
+  "late-events-by-reason": {
+    "queries": [
+      {
+        "columns": [
+          {
+            "columnType": "BASE_AXIS",
+            "expressionType": "SQL",
+            "isColumnReference": true,
+            "label": "event_time",
+            "sqlExpression": "event_time",
+            "timeGrain": "PT1H"
+          },
+          "reason"
+        ],
+        "metrics": [
+          {
+            "expressionType": "SQL",
+            "hasCustomLabel": true,
+            "label": "Late events",
+            "optionName": "metric_late_events",
+            "sqlExpression": "count()"
+          }
+        ],
+        "orderby": [
+          [
+            {
+              "expressionType": "SQL",
+              "hasCustomLabel": true,
+              "label": "Late events",
+              "optionName": "metric_late_events",
+              "sqlExpression": "count()"
+            },
+            false
+          ]
+        ]
+      }
+    ],
+    "viz_type": "echarts_timeseries_bar"
+  },
+  "manual-review-volume": {
+    "queries": [
+      {
+        "columns": [],
+        "metrics": [
+          {
+            "expressionType": "SQL",
+            "hasCustomLabel": true,
+            "label": "Manual-review volume",
+            "optionName": "metric_manual-review_volume",
+            "sqlExpression": "countIf(manual_review)"
+          }
+        ],
+        "orderby": null
+      }
+    ],
+    "viz_type": "big_number_total"
+  },
+  "model-version-usage": {
+    "queries": [
+      {
+        "columns": [
+          "model_version"
+        ],
+        "metrics": [
+          {
+            "expressionType": "SQL",
+            "hasCustomLabel": true,
+            "label": "Predictions",
+            "optionName": "metric_predictions",
+            "sqlExpression": "count()"
+          }
+        ],
+        "orderby": [
+          [
+            {
+              "expressionType": "SQL",
+              "hasCustomLabel": true,
+              "label": "Predictions",
+              "optionName": "metric_predictions",
+              "sqlExpression": "count()"
+            },
+            false
+          ]
+        ]
+      }
+    ],
+    "viz_type": "pie"
+  },
+  "processing-delay": {
+    "queries": [
+      {
+        "columns": [
+          {
+            "columnType": "BASE_AXIS",
+            "expressionType": "SQL",
+            "isColumnReference": true,
+            "label": "event_time",
+            "sqlExpression": "event_time",
+            "timeGrain": "PT1M"
+          }
+        ],
+        "metrics": [
+          {
+            "expressionType": "SQL",
+            "hasCustomLabel": true,
+            "label": "p95 delay ms",
+            "optionName": "metric_p95_delay_ms",
+            "sqlExpression": "quantile(0.95)(processing_delay_ms)"
+          }
+        ],
+        "orderby": [
+          [
+            {
+              "expressionType": "SQL",
+              "hasCustomLabel": true,
+              "label": "p95 delay ms",
+              "optionName": "metric_p95_delay_ms",
+              "sqlExpression": "quantile(0.95)(processing_delay_ms)"
+            },
+            false
+          ]
+        ]
+      }
+    ],
+    "viz_type": "echarts_timeseries_line"
+  },
+  "rejected-payments": {
+    "queries": [
+      {
+        "columns": [],
+        "metrics": [
+          {
+            "expressionType": "SQL",
+            "hasCustomLabel": true,
+            "label": "Rejected payments",
+            "optionName": "metric_rejected_payments",
+            "sqlExpression": "countIf(outcome = 'rejected')"
+          }
+        ],
+        "orderby": null
+      }
+    ],
+    "viz_type": "big_number_total"
+  },
+  "risk-score-distribution": {
+    "queries": [
+      {
+        "columns": [
+          {
+            "columnType": "BASE_AXIS",
+            "expressionType": "SQL",
+            "isColumnReference": true,
+            "label": "score_bucket",
+            "sqlExpression": "score_bucket"
+          }
+        ],
+        "metrics": [
+          {
+            "expressionType": "SQL",
+            "hasCustomLabel": true,
+            "label": "Predictions",
+            "optionName": "metric_predictions",
+            "sqlExpression": "count()"
+          }
+        ],
+        "orderby": [
+          [
+            {
+              "expressionType": "SQL",
+              "hasCustomLabel": true,
+              "label": "Predictions",
+              "optionName": "metric_predictions",
+              "sqlExpression": "count()"
+            },
+            false
+          ]
+        ]
+      }
+    ],
+    "viz_type": "echarts_timeseries_bar"
+  }
+}

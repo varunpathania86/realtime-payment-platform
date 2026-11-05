@@ -26,6 +26,7 @@ export TF_VAR_kube_context="$PROFILE"
 export TF_VAR_kube_config_path="${KUBECONFIG:-$HOME/.kube/config}"
 export TF_VAR_streaming_restore_path="${STREAMING_RESTORE_PATH:-}"
 export TF_VAR_lakehouse_restore_path="${LAKEHOUSE_RESTORE_PATH:-}"
+export TF_VAR_access_port="$LOCAL_PORT"
 PYTHON="$REPO_ROOT/.venv/bin/python"
 
 modules() {
@@ -41,6 +42,10 @@ modules() {
   if [ -f "$STATE_DIR/events.tfvars.json" ] &&
     jq -e '.lakehouse_enabled == true' "$STATE_DIR/events.tfvars.json" >/dev/null; then
     arguments+=(--feature lakehouse)
+  fi
+  if [ -f "$STATE_DIR/events.tfvars.json" ] &&
+    jq -e '.bi_enabled == true' "$STATE_DIR/events.tfvars.json" >/dev/null; then
+    arguments+=(--feature bi)
   fi
   "$PYTHON" scripts/module_catalog.py local-modules "${arguments[@]}"
 }
@@ -122,6 +127,8 @@ PY
       --build-arg "HADOOP_CLIENT_VERSION=$(pinned_version hadoop-client)" \
       --build-arg "HADOOP_CLIENT_API_SHA256=$(pinned_version hadoop-client-api-sha256)" \
       --build-arg "HADOOP_CLIENT_RUNTIME_SHA256=$(pinned_version hadoop-client-runtime-sha256)" \
+      --build-arg "SUPERSET_VERSION=$(pinned_version superset)" \
+      --build-arg "SUPERSET_DIGEST=$(pinned_version superset-image-digest)" \
       --build-arg "VERSION=$tag" --build-arg "COMMIT=$commit" -t "$image" "$path"
     minikube -p "$PROFILE" image load "$image" --overwrite=false
   done < "$inventory"

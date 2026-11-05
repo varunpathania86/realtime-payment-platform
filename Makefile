@@ -6,7 +6,7 @@ export PATH := $(HOME)/.local/bin:$(PATH)
 .DEFAULT_GOAL := help
 .PHONY: security security-solution security-module security-plan publication-login quality-report quality-module-report release-baseline
 .PHONY: dev-metrics dev-observability db-switchover db-failover db-rejoin
-.PHONY: streaming-fixtures streaming-inspect streaming-load streaming-savepoint streaming-stop streaming-benchmark streaming-benchmark-preflight risk-publish risk-verify lakehouse-query lakehouse-verify lakehouse-maintain
+.PHONY: streaming-fixtures streaming-inspect streaming-load streaming-savepoint streaming-stop streaming-benchmark streaming-benchmark-preflight risk-publish risk-verify lakehouse-query lakehouse-verify lakehouse-maintain bi-verify
 
 # Use a system pre-commit if present, otherwise the one installed by `make setup`.
 VENV       := .venv
@@ -116,6 +116,9 @@ risk-publish: ## Publish immutable trained model artifacts to the explicitly sel
 
 risk-verify: ## Verify advisory predictions, late-history revision and model telemetry on the selected profile
 	$(VENV)/bin/python -m scripts.risk_acceptance --profile "$(MINIKUBE_PROFILE)"
+
+bi-verify: ## Verify embedded BI access boundaries (viewer, denied clerk, guest-token scope, CSP) on the selected profile
+	$(VENV)/bin/python -m scripts.bi_acceptance --profile "$(MINIKUBE_PROFILE)"
 
 # Raw value, single-quoted for the shell, so Iceberg names like "t$snapshots" and quotes survive.
 LAKEHOUSE_SQL = $(subst ','\'',$(value SQL))

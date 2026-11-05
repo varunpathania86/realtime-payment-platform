@@ -3,6 +3,22 @@ telemetry:
   enabled: false
   endpoint: ""
   cluster: ""
+# Local development identity (ADR-025, non-production): synthetic users in a Secret.
+# Keys: session-key (HMAC cookie key, >=32 chars) and dev-users (JSON users with permissions).
+identity:
+  enabled: false
+  existingSecret: web-portal-identity
+  # Browser origins accepted on POST requests (CSRF defence for the session cookie).
+  allowedOrigins: []
+# Embedded Superset dashboards; requires identity. The portal requests guest tokens server-side.
+bi:
+  enabled: false
+  supersetUrl: http://bi-dashboards:8088
+  publicUrl: ""
+  dashboardId: ""
+  tokenIssuer: rpp_guest_token_issuer
+  existingSecret: bi-dashboards
+  issuerPasswordKey: token-issuer-password
 image:
   repository: rpp-local/web-portal
   tag: dev

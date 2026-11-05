@@ -115,6 +115,58 @@ class ClickHouseMapTests(unittest.TestCase):
         self.assertEqual(row["window_start_ms"], 1000)
         self.assertEqual(row["analytics_dataset"], "clickhouse:analytics.payment_window_aggregates")
 
+    def test_late_event_rows_identify_the_rejecting_job(self):
+        event = {
+            "timestamp_ms": 5000, "event_id": "e1", "payment_id": "p1", "account_id": "a1",
+            "amount_minor": 700, "currency": "EUR", "country": "DE",
+            "payment_method": "card", "outcome": "rejected", "schema_version": 1,
+        }
+        windows = analytics.late_event(json.dumps({
+            "event": event, "reason": "all-windows-expired", "watermark_ms": 900000,
+            "transformation_id": "payment-windows-v1",
+        }))
+        risk = analytics.late_event(json.dumps({
+            "event": event, "reason": "risk-feature-lateness-expired", "watermark_ms": 950000,
+        }))
+        self.assertEqual(windows["job_name"], "payment-windows")
+        self.assertEqual(windows["source_dataset"], "kafka:payment-events-too-late")
+        self.assertEqual(risk["job_name"], "advisory-risk-features")
+        self.assertEqual(risk["watermark_ms"], 950000)
+        self.assertEqual(risk["output_dataset"], "clickhouse:analytics.payment_late_events")
+        self.assertNotIn("account_id", risk)
+        with self.assertRaises(KeyError):
+            analytics.late_event(json.dumps({"event": event, "reason": "unknown", "watermark_ms": 1}))
+
+    def test_risk_prediction_rows_keep_model_lineage_and_advisory_flag(self):
+        row = analytics.risk_prediction(json.dumps({
+            "schema_version": 1, "prediction_id": "b" * 64, "original_prediction_id": "c" * 64,
+            "event_id": "e1", "payment_id": "p1", "account_id": "a1",
+            "feature_timestamp": "2027-01-15T08:00:00Z", "feature_version": "risk-features-v1",
+            "feature_hash": "d" * 64, "window_version": "account-currency-prior-history-v1",
+            "window_revision": 2, "window_start_ms": 1000, "window_end_ms": 3601000,
+            "model_name": "payment-risk", "model_version": "1.0.0", "model_sha256": "e" * 64,
+            "risk_score": 0.73, "reason_codes": ["velocity"], "advisory_only": True,
+            "prediction_timestamp": "2027-01-15T08:00:01.250000Z",
+        }))
+        self.assertEqual(row["event_time_ms"], 3601000)
+        self.assertEqual(row["prediction_time_ms"], 1800000001250)
+        self.assertEqual(row["window_revision"], 2)
+        self.assertTrue(row["advisory_only"])
+        self.assertEqual(row["reason_codes"], ["velocity"])
+        self.assertNotIn("account_id", row)
+
+    def test_map_uses_table_specific_mapper(self):
+        writer = analytics.ClickHouseMap(analytics.LATE_TABLE)
+        writer.endpoint, writer.user, writer.password = "http://clickhouse", "user", "secret"
+        value = json.dumps({"event": {
+            "timestamp_ms": 1, "event_id": "e1", "payment_id": "p1", "amount_minor": 1,
+            "currency": "EUR", "country": "DE", "payment_method": "card", "outcome": "authorized",
+        }, "reason": "all-windows-expired", "watermark_ms": 2})
+        with patch.object(analytics, "insert_batch") as insert:
+            self.assertEqual(writer.map(value), value)
+        self.assertEqual(insert.call_args.args[3], analytics.LATE_TABLE)
+        self.assertEqual(json.loads(insert.call_args.args[4][0])["reason"], "all-windows-expired")
+
     def test_map_rejects_unknown_table(self):
         with self.assertRaisesRegex(ValueError, "unsupported"):
             analytics.ClickHouseMap("arbitrary")

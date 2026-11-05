@@ -2,6 +2,39 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "properties": {
-    "replicaCount": { "type": "integer", "minimum": 1 }
+    "replicaCount": { "type": "integer", "minimum": 1 },
+    "identity": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "existingSecret": { "type": "string", "minLength": 1 },
+        "allowedOrigins": { "type": "array", "items": { "type": "string", "pattern": "^https?://[^/\\s]+$" } }
+      },
+      "if": { "properties": { "enabled": { "const": true } } },
+      "then": { "properties": { "allowedOrigins": { "minItems": 1 } } }
+    },
+    "bi": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "supersetUrl": { "type": "string" },
+        "publicUrl": { "type": "string" },
+        "dashboardId": { "type": "string" },
+        "tokenIssuer": { "type": "string" },
+        "existingSecret": { "type": "string" },
+        "issuerPasswordKey": { "type": "string" }
+      },
+      "if": { "properties": { "enabled": { "const": true } } },
+      "then": {
+        "properties": {
+          "supersetUrl": { "pattern": "^https?://" },
+          "publicUrl": { "pattern": "^https?://" },
+          "dashboardId": { "pattern": "^[0-9a-f-]{36}$" },
+          "tokenIssuer": { "minLength": 1 },
+          "existingSecret": { "minLength": 1 },
+          "issuerPasswordKey": { "minLength": 1 }
+        }
+      }
+    }
   }
 }

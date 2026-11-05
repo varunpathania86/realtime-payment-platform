@@ -272,6 +272,39 @@ savepoints as `STREAMING_RESTORE_PATH` and `LAKEHOUSE_RESTORE_PATH`. The
 [lakehouse runbook](runbooks/lakehouse.md) covers diagnosis,
 maintenance and evolution.
 
+### Optional Stage 9 Superset BI
+
+[Superset](../modules/bi-dashboards/README.md) is a container image pinned by
+version and digest in `.tool-versions` (`superset` and
+`superset-image-digest`). `make dev-images` builds it, and `make doctor`
+checks the pins. You don't need to install Superset on the host.
+
+`make dev-up DEV_CONFIG=templates/bi-topology.json` enables streaming,
+analytics, the lakehouse and BI in cluster A. BI requires analytics, and
+cluster A needs at least 7168 MiB, or 11264 MiB with the lakehouse. Superset
+stores its metadata in the profile-local PostgreSQL, so BI can't be combined
+with the full-stack external database.
+
+To verify on one dedicated profile:
+
+```bash
+PROFILE=rpp-stage9-verify
+mkdir -p ".local/$PROFILE"
+printf '{"streaming_enabled": true, "analytics_enabled": true, "lakehouse_enabled": true, "bi_enabled": true}\n' \
+  > ".local/$PROFILE/events.tfvars.json"
+MINIKUBE_PROFILE="$PROFILE" MINIKUBE_CPUS=4 MINIKUBE_MEMORY=11264 bash scripts/local-dev.sh up
+make streaming-fixtures MINIKUBE_PROFILE="$PROFILE"
+make bi-verify MINIKUBE_PROFILE="$PROFILE"
+make dev-access MINIKUBE_PROFILE="$PROFILE"   # http://localhost:8080/analytics
+minikube stop -p "$PROFILE"
+```
+
+Sign in as `ops-viewer`. `payments-clerk` is the denied example. Both are
+synthetic local development users (ADR-025) with generated per-profile
+passwords; the [BI runbook](runbooks/bi-dashboards.md) shows how to read
+them. The browser origins allowed to embed Superset come from `LOCAL_PORT`
+during `dev-up`/`dev-update`, so browse with the same port.
+
 ### Clone and initialize
 
 ```bash

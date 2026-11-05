@@ -1,5 +1,6 @@
 {{/*
-One-off Helm hook that runs after install/upgrade to apply idempotent table-creation SQL.
+One-off Helm hook that runs after install/upgrade to apply idempotent table-creation SQL and,
+when biReader.enabled, to create or rotate the SELECT-only dashboard user.
 Reads config.yaml's ConfigMap, the external password Secret, and connects through service.yaml
 to the ClickHouse pod in statefulset.yaml. Successful hooks are deleted; failed ones remain
 for diagnosis until the next run. See ../README.md.
@@ -32,15 +33,25 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command: ["sh", "-ec"]
           args:
-            - >-
-              clickhouse-client --host "$CLICKHOUSE_HOST" --user "$CLICKHOUSE_USER"
-              --password "$CLICKHOUSE_PASSWORD" --multiquery --queries-file /schema/schema.sql
+            - |
+              clickhouse-client --host "$CLICKHOUSE_HOST" --user "$CLICKHOUSE_USER" \
+                --password "$CLICKHOUSE_PASSWORD" --multiquery --queries-file /schema/schema.sql
+              {{- if .Values.biReader.enabled }}
+              sh /schema/bi-reader.sh
+              {{- end }}
           env:
             - {name: CLICKHOUSE_HOST, value: {{ .Release.Name | quote }}}
             - {name: CLICKHOUSE_USER, value: {{ .Values.user | quote }}}
             - name: CLICKHOUSE_PASSWORD
               valueFrom:
                 secretKeyRef: {name: {{ .Values.existingSecret }}, key: password}
+            {{- if .Values.biReader.enabled }}
+            - {name: BI_READER_USER, value: {{ .Values.biReader.user | quote }}}
+            - {name: BI_READER_DATABASE, value: {{ .Values.database | quote }}}
+            - name: BI_READER_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: {{ .Values.existingSecret }}, key: {{ .Values.biReader.passwordKey }}}
+            {{- end }}
           resources:
             requests: {cpu: 100m, memory: 128Mi}
             limits: {cpu: 500m, memory: 512Mi}

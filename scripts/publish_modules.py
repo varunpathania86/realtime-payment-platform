@@ -270,6 +270,8 @@ def publish(source: Path, context: dict, output: Path) -> dict:
                 "--build-arg", f"HADOOP_CLIENT_VERSION={pins['hadoop-client']}",
                 "--build-arg", f"HADOOP_CLIENT_API_SHA256={pins['hadoop-client-api-sha256']}",
                 "--build-arg", f"HADOOP_CLIENT_RUNTIME_SHA256={pins['hadoop-client-runtime-sha256']}",
+                "--build-arg", f"SUPERSET_VERSION={pins['superset']}",
+                "--build-arg", f"SUPERSET_DIGEST={pins['superset-image-digest']}",
                 "--build-arg", f"VERSION={version}",
                 "--build-arg", f"COMMIT={context['sourceCommit']}",
                 "--file", str(source / "modules" / context["module"] / "Dockerfile"),

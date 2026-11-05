@@ -8,6 +8,11 @@ local:
 database: analytics
 user: rpp_analytics
 existingSecret: realtime-analytics
+# Optional SELECT-only user for dashboards; its password is another key in existingSecret.
+biReader:
+  enabled: false
+  user: rpp_bi_reader
+  passwordKey: bi-reader-password
 storage: 8Gi
 resources:
   requests: {cpu: 500m, memory: 768Mi}

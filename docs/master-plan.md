@@ -1332,6 +1332,14 @@ Security rules:
 
 **Exit criteria:** A viewer can access only the intended embedded dashboard, and the browser cannot access privileged Superset APIs or database credentials.
 
+Implementation notes ([ADR-028](adr/ADR-028-embedded-superset-bi.md)):
+Flink writes advisory risk predictions and late events to ClickHouse over the
+existing HTTP sink; Superset reads them through the SELECT-only `rpp_bi_reader`.
+No Redis or Celery is deployed; Superset runs one replica. Guest chart-data
+requests are limited to the embedded dashboard's saved charts and stored query
+context. `templates/bi-topology.json` enables BI, and `make bi-verify` checks
+the access boundaries.
+
 ---
 
 ## Stage 10: AI operations assistant with RAG, LangChain, LangGraph and MCP
@@ -2560,11 +2568,14 @@ runbooks. See the [low-memory pipeline report](../tests/benchmarks/pipeline/2026
 and [ClickHouse query report](../tests/benchmarks/pipeline/2026-11-03-clickhouse-query.md).
 
 ```yaml
-current_milestone: stage-8-iceberg-lakehouse
-stage_status: Stage 8 Iceberg lakehouse implemented on feature/stage-8-iceberg-lakehouse; Apache Polaris REST catalog on MinIO, Flink Iceberg writer and Trino with writer, reader and admin catalogs passed single-cluster live acceptance; awaiting PR review
-last_completed_task: Stage 8 single-cluster acceptance on 4 CPU / 8 GiB passed bronze/curated queries, deduplication, time travel, read-only denial, schema and partition evolution, compaction/expiry maintenance, savepoint stop and restore of both Flink jobs, and stable Terraform plans
-next_task: Merge Stage 8, then start Stage 9 with Superset over Trino and ClickHouse embedded in the React application
+current_milestone: stage-9-superset-bi
+stage_status: Stage 9 Superset BI implemented on feature/stage-9-superset-bi; Superset 6.1.0 embedded in the React portal through portal-issued guest tokens over ClickHouse and Trino passed single-cluster live acceptance; awaiting PR review
+last_completed_task: Stage 9 single-cluster acceptance on 4 CPU / 11 GiB (streaming, analytics, lakehouse, risk and BI) passed make bi-verify (26 checks), a browser run with 10/10 embedded charts as ops-viewer and denial for payments-clerk, risk-verify with predictions in ClickHouse, savepoint-safe risk enablement and a stable Terraform plan
+next_task: Merge Stage 9, then start Stage 10 with the AI operations assistant (pgvector RAG, LangChain, LangGraph, llama.cpp and read-only MCP tools)
 known_issues:
+  - Superset 6.1.0 registers /static/service-worker.js, which the pinned image does not ship; the browser logs a harmless 404 and the optional service worker is skipped
+  - the Stage 9 single-cluster node used about 7.5 GiB of 11 GiB with streaming, analytics, lakehouse, risk and BI; Superset used about 280 MiB idle
+  - embedded Superset loads off-screen charts lazily; charts below the iframe fold query only when scrolled into view
   - ADR-027 renamed product-named modules to capability names; existing local clusters need make streaming-stop and restore paths before the next dev-update, and local ClickHouse tables start empty under the new release
   - Kafka storage formatting passed a random cluster id that could start with "-" as a separate argument; Terraform now uses --cluster-id=<id>
   - Polaris rejects Trino DROP TABLE with purge unless polaris.config.drop-with-purge.enabled is set; catalog setup converges it on existing catalogs
@@ -2582,6 +2593,7 @@ known_issues:
   - local Flink JobManager and MinIO are not HA; external sinks are at-least-once, and deduplication has a 24-hour processing-time TTL
   - Stage 5 scoped scanner exceptions retain official Flink UID/GID, Kubernetes health/namespace ownership and local Never images; exact paths expire 2027-01-01
 architecture_decisions:
+  - ADR-028 Embedded Superset through portal-issued guest tokens, guest-path hardening and Flink-written risk/late tables
   - ADR-027 Capability-based module names; product names stay inside modules
   - ADR-026 Apache Polaris Iceberg REST catalog, Flink Iceberg writer and Trino lakehouse
   - ADR-025 Interview-focused roadmap order (Stages 10-13) and platform-hosted read-only MCP tools

@@ -18,7 +18,7 @@ import (
 
 var version = "dev"
 
-func handler(files fs.FS) http.Handler {
+func handler(files fs.FS, app http.Handler) http.Handler {
 	proxy := &telemetryProxy{endpoint: strings.TrimRight(os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"), "/"),
 		client: &http.Client{Timeout: 2 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error {
 			return http.ErrUseLastResponse
@@ -38,6 +38,14 @@ func handler(files fs.FS) http.Handler {
 			}
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte("{\"status\":\"ok\"}\n"))
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, "/auth/") || strings.HasPrefix(r.URL.Path, "/bi/") {
+			if app == nil {
+				http.NotFound(w, r)
+				return
+			}
+			app.ServeHTTP(w, r)
 			return
 		}
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
@@ -70,10 +78,10 @@ func handler(files fs.FS) http.Handler {
 	}))
 }
 
-func newServer(addr string, files fs.FS) *http.Server {
+func newServer(addr string, files fs.FS, app http.Handler) *http.Server {
 	return &http.Server{
 		Addr:              addr,
-		Handler:           handler(files),
+		Handler:           handler(files, app),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      10 * time.Second,
@@ -134,8 +142,17 @@ func main() {
 		slog.Error("static_build_unavailable", "hint", "run make build")
 		os.Exit(1)
 	}
+	app, err := portalFromEnvironment()
+	if err != nil {
+		slog.Error("portal_configuration_failed", "error", err.Error())
+		os.Exit(1)
+	}
+	var routes http.Handler
+	if app != nil {
+		routes = app
+	}
 	slog.Info("server_listening", "service.name", "web-portal", "address", addr)
-	if err := run(ctx, newServer(addr, files)); err != nil {
+	if err := run(ctx, newServer(addr, files, routes)); err != nil {
 		slog.Error("server_failed")
 		os.Exit(1)
 	}

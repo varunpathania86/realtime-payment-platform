@@ -97,6 +97,17 @@ schema/partition evolution, and `make lakehouse-maintain` compacts and expires
 snapshots. See [ADR-026](docs/adr/ADR-026-polaris-iceberg-lakehouse.md) and the
 [lakehouse runbook](docs/runbooks/lakehouse.md).
 
+Stage 9 adds opt-in [Superset BI](modules/bi-dashboards/README.md) embedded in
+the [React portal](modules/web-portal/README.md). The payment operations
+dashboard reads ClickHouse (including advisory risk predictions and late
+events written by Flink), and Iceberg history through Trino. The Go portal
+signs in synthetic local development users and issues a five-minute guest
+token scoped to that one dashboard. React never sees Superset or database
+credentials, and the guest role cannot reach SQL Lab or other privileged APIs.
+`templates/bi-topology.json` enables it, and `make bi-verify` checks the access
+boundaries. See [ADR-028](docs/adr/ADR-028-embedded-superset-bi.md) and the
+[BI runbook](docs/runbooks/bi-dashboards.md).
+
 ## Repository map
 
 | Path | Purpose |
@@ -119,8 +130,9 @@ show resource relationships with Mermaid:
 [portal](modules/web-portal/chart/README.md),
 [Flink](modules/stream-processor/chart/README.md),
 [ClickHouse](modules/realtime-analytics/chart/README.md),
-[Polaris](modules/lakehouse-catalog/chart/README.md), and
-[Trino](modules/lakehouse-query/chart/README.md).
+[Polaris](modules/lakehouse-catalog/chart/README.md),
+[Trino](modules/lakehouse-query/chart/README.md), and
+[Superset](modules/bi-dashboards/chart/README.md).
 
 Start with the [local platform walkthrough](docs/architecture/local-platform-guide.md)
 to connect the repository layout, Make scripts, Terraform, Helm and Kubernetes.

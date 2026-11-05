@@ -1,0 +1,8 @@
+# Database drivers added to the pinned Superset image; its installed packages are constraints.
+clickhouse-connect==0.15.1
+psycopg2-binary==2.9.9
+trino==0.340.0
+# Transitive driver dependencies not already present in Superset, pinned for reproducible builds.
+lz4==4.4.5
+orjson==3.13.0
+tzlocal==5.4.5

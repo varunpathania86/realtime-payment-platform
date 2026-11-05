@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
+import { AnalyticsPage } from "./AnalyticsPage.js";
 import { StatusPage } from "./StatusPage.js";
 import { loadStatus } from "./status.js";
 import type { StatusState } from "./status.js";
 
-export function App() {
+function StatusApp() {
   const [state, setState] = useState<StatusState>({ kind: "loading" });
   const [attempt, setAttempt] = useState(0);
 
@@ -48,5 +49,18 @@ export function App() {
       uiVersion={import.meta.env.VITE_APP_VERSION || "dev"}
       uiCommit={import.meta.env.VITE_APP_COMMIT || "unknown"}
     />
+  );
+}
+
+export function App() {
+  const analytics = window.location.pathname === "/analytics";
+  return (
+    <>
+      <nav aria-label="Portal" className={analytics ? "wide" : undefined}>
+        <a href="/" aria-current={analytics ? undefined : "page"}>Status</a>
+        <a href="/analytics" aria-current={analytics ? "page" : undefined}>Analytics</a>
+      </nav>
+      {analytics ? <AnalyticsPage /> : <StatusApp />}
+    </>
   );
 }

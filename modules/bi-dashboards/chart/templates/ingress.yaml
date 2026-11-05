@@ -1,0 +1,23 @@
+{{/*
+Host-based route on the separately installed Traefik ingress controller. Browsers load the embedded
+dashboard iframe from this separate origin (default http://bi.localhost:8080 through make dev-access),
+so Superset cookies and scripts stay isolated from the portal at http://localhost:8080. Routes to
+service.yaml. See ../README.md.
+*/}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Release.Name }}
+                port:
+                  name: http

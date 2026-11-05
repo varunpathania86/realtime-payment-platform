@@ -21,11 +21,12 @@ def positive_integer(value, name):
 
 def validate(data):
     if not isinstance(data, dict) or set(data) - {
-        "node", "clusters", "nodes", "observability", "streaming", "analytics", "lakehouse", "runtime_profile", "risk",
+        "node", "clusters", "nodes", "observability", "streaming", "analytics", "lakehouse", "bi", "runtime_profile",
+        "risk",
     }:
         raise ValueError(
             "configuration accepts only node, nodes, clusters, observability, streaming, analytics, lakehouse, "
-            "runtime_profile and risk"
+            "bi, runtime_profile and risk"
         )
     node = data.get("node", {})
     if not isinstance(node, dict) or set(node) - {"cpus", "memory_mib"}:
@@ -74,7 +75,7 @@ def validate(data):
             if not isinstance(value, dict):
                 raise ValueError(f"nodes.{key} must be a node budget object")
             result["nodes"][key] = validate({"node": {**result["node"], **value}})["node"]
-    for feature in ("observability", "streaming", "analytics", "lakehouse"):
+    for feature in ("observability", "streaming", "analytics", "lakehouse", "bi"):
         if feature in data:
             if not isinstance(data[feature], bool):
                 raise ValueError(f"{feature} must be a boolean")
@@ -93,6 +94,14 @@ def validate(data):
         minimum = 10240 if result.get("analytics", False) else 8192
         if cluster_a["cpus"] < 4 or cluster_a["memory_mib"] < minimum:
             raise ValueError(f"lakehouse requires cluster A to have at least 4 CPUs and {minimum} MiB")
+    if result.get("bi", False):
+        if not result.get("analytics", False):
+            raise ValueError("bi requires analytics to be enabled")
+        cluster_a = result.get("nodes", {}).get("a", result["node"])
+        # Superset adds about 1 GiB of limits on cluster A on top of analytics (and the lakehouse).
+        minimum = 11264 if result.get("lakehouse", False) else 7168
+        if cluster_a["memory_mib"] < minimum:
+            raise ValueError(f"bi requires cluster A to have at least {minimum} MiB")
     if "risk" in data:
         risk = data["risk"]
         if not isinstance(risk, dict) or set(risk) != {"package_key", "package_sha256"}:

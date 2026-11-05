@@ -1,0 +1,8 @@
+{
+  "node": { "cpus": 4, "memory_mib": 6144 },
+  "nodes": { "a": { "cpus": 4, "memory_mib": 12288 } },
+  "streaming": true,
+  "analytics": true,
+  "lakehouse": true,
+  "bi": true
+}
