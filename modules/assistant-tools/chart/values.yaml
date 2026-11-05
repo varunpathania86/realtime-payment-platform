@@ -1,0 +1,44 @@
+image:
+  repository: rpp-local/assistant-tools
+  tag: development
+  digest: ""
+  pullPolicy: Never
+local:
+  feature: ai
+replicaCount: 1
+# Ed25519 public key that verifies portal-signed assertions for the assistant-tools audience.
+assertionVerifier:
+  existingSecret: ai-identity
+  publicKeyKey: public-key.pem
+# Host headers the MCP transport accepts (DNS-rebinding protection); the Service is cluster-internal.
+allowedHosts:
+  - "assistant-tools:*"
+  - "assistant-tools.apps:*"
+  - "assistant-tools.apps.svc:*"
+  - "assistant-tools.apps.svc.cluster.local:*"
+  - "127.0.0.1:*"
+  - "localhost:*"
+embeddings:
+  url: http://llm-serving-embed:8080
+knowledgeDatabase:
+  host: knowledge-postgres.data.svc.cluster.local
+  port: 5432
+  name: ai_knowledge
+  # SELECT-only role; retrieval filters run inside its SQL.
+  user: rpp_knowledge_reader
+  existingSecret: knowledge-database
+  passwordKey: reader-password
+paymentApi:
+  url: http://payment-api
+clickhouse:
+  # SELECT-only, readonly=2 user created by the realtime-analytics chart when aiReader.enabled is true.
+  url: http://realtime-analytics:8123
+  user: rpp_ai_reader
+  existingSecret: realtime-analytics
+  passwordKey: ai-reader-password
+trino:
+  # Empty makes payment_history report "unavailable"; Terraform sets it when the lakehouse is enabled.
+  url: ""
+resources:
+  requests: {cpu: 50m, memory: 192Mi}
+  limits: {cpu: 500m, memory: 384Mi}

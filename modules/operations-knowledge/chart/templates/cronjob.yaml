@@ -1,0 +1,65 @@
+{{/*
+Suspended CronJob that only stores the ingestion pod template; it never runs on a schedule.
+`make knowledge-ingest` refreshes the corpus ConfigMap and starts a run with
+`kubectl create job --from=cronjob/<release>-ingest`. The pod waits for the llm-serving embedding
+server, copies originals to MinIO, then writes versioned chunks and embeddings to the knowledge
+PostgreSQL as rpp_knowledge_writer. Needs the knowledge-database and streaming-storage Secrets
+created by local Terraform. The ConfigMap is optional so the chart installs before the first run.
+See ../README.md.
+*/}}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ .Release.Name }}-ingest
+spec:
+  schedule: "0 0 1 1 *"
+  suspend: true
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 1800
+      ttlSecondsAfterFinished: 86400
+      template:
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: ingest
+              image: {{ include "operations-knowledge.image" . | quote }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              env:
+                - {name: LLM_EMBEDDINGS_URL, value: {{ .Values.embeddings.url | quote }}}
+                - {name: LLM_READY_TIMEOUT_SECONDS, value: {{ .Values.embeddings.readyTimeoutSeconds | quote }}}
+                - {name: CORPUS_ARCHIVE, value: {{ printf "/corpus/%s" .Values.corpus.key | quote }}}
+                - {name: KNOWLEDGE_BUCKET, value: {{ .Values.objectStore.bucket | quote }}}
+                - {name: MINIO_ENDPOINT, value: {{ .Values.objectStore.endpoint | quote }}}
+                - name: MINIO_ACCESS_KEY
+                  valueFrom: {secretKeyRef: {name: {{ .Values.objectStore.existingSecret }}, key: access-key}}
+                - name: MINIO_SECRET_KEY
+                  valueFrom: {secretKeyRef: {name: {{ .Values.objectStore.existingSecret }}, key: secret-key}}
+                {{- with .Values.knowledgeDatabase }}
+                # libpq reads PGPASSWORD, so the DSN itself never contains the secret.
+                - name: KNOWLEDGE_DSN
+                  value: {{ printf "host=%s port=%v dbname=%s user=%s" .host .port .name .user | quote }}
+                - name: PGPASSWORD
+                  valueFrom: {secretKeyRef: {name: {{ .existingSecret }}, key: {{ .passwordKey }}}}
+                {{- end }}
+              resources:
+                {{- toYaml .Values.resources | nindent 16 }}
+              securityContext:
+                readOnlyRootFilesystem: true
+                allowPrivilegeEscalation: false
+                capabilities: {drop: ["ALL"]}
+              volumeMounts:
+                - {name: corpus, mountPath: /corpus, readOnly: true}
+                - {name: tmp, mountPath: /tmp}
+          volumes:
+            - name: corpus
+              configMap: {name: {{ .Values.corpus.configMap }}, optional: true}
+            - {name: tmp, emptyDir: {sizeLimit: 64Mi}}

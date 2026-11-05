@@ -1,0 +1,6 @@
+apiVersion: v2
+name: llm-serving
+description: CPU llama.cpp chat and embedding servers for the Stage 10 AI assistant
+type: application
+version: 0.1.0
+appVersion: "server-b12124"

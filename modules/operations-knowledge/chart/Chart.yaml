@@ -1,0 +1,6 @@
+apiVersion: v2
+name: operations-knowledge
+description: Batch ingestion of the operations knowledge corpus into PostgreSQL + pgvector for the Stage 10 assistant
+type: application
+version: 0.1.0
+appVersion: "0.0.0"

@@ -1,0 +1,18 @@
+misconfigurations:
+  - id: KSV-0110
+    paths: [chart/templates/cronjob.yaml]
+    expired_at: 2027-01-01
+    statement: >-
+      Terraform installs this reusable Helm release in the apps namespace.
+      Raw chart scanning lacks the release namespace; keep templates reusable.
+  - id: KSV-0125
+    paths: [chart/templates/cronjob.yaml]
+    expired_at: 2027-01-01
+    statement: >-
+      Local development intentionally loads rpp-local images with pull policy
+      Never. Trusted publication supplies verified GHCR digests.
+  - id: DS-0026
+    paths: [Dockerfile]
+    expired_at: 2027-01-01
+    statement: >-
+      The image runs a run-to-completion ingestion Job; Kubernetes Job status is the health signal.

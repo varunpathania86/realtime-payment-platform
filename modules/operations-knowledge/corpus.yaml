@@ -1,0 +1,39 @@
+# Knowledge corpus for the Stage 10 operations assistant. Globs are relative to the repository
+# root; `make knowledge-ingest` bundles the matching files and the ingestion job indexes them.
+# Classification and required_permission are enforced inside the retrieval SQL.
+schemaVersion: 1
+chunkingVersion: markdown-headings-1200c-v1
+tenant: platform
+sources:
+  - glob: docs/runbooks/*.md
+    docType: runbook
+    classification: internal
+    requiredPermission: knowledge:read
+  - glob: docs/adr/ADR-*.md
+    docType: adr
+    classification: public
+    requiredPermission: knowledge:read
+  - glob: modules/*/README.md
+    docType: module-readme
+    classification: public
+    requiredPermission: knowledge:read
+  - glob: modules/operations-knowledge/documents/support/*.md
+    docType: support-playbook
+    classification: internal
+    requiredPermission: knowledge:read
+  - glob: modules/operations-knowledge/documents/vendor/*.md
+    docType: vendor-notice
+    classification: internal
+    requiredPermission: knowledge:read
+  - glob: modules/operations-knowledge/documents/incidents/*.md
+    docType: incident
+    classification: restricted
+    requiredPermission: knowledge:restricted
+  - glob: modules/payment-api/openapi.yaml
+    docType: openapi
+    classification: public
+    requiredPermission: knowledge:read
+  - glob: modules/event-contracts/schemas/*.avsc
+    docType: event-contract
+    classification: public
+    requiredPermission: knowledge:read

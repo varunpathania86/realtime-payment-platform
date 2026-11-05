@@ -1,0 +1,19 @@
+{{/*
+Two ClusterIP Services over the deployment.yaml pod, both on port 8080:
+- <release>-chat: OpenAI-compatible chat completions for ai-orchestrator;
+- <release>-embed: /embedding and /v1/embeddings for operations-knowledge and assistant-tools.
+Neither is exposed through ingress.
+*/}}
+{{- range $role := list "chat" "embed" }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ printf "%s-%s" $.Release.Name $role }}
+  labels: {app.kubernetes.io/name: llm-serving, app.kubernetes.io/instance: {{ $.Release.Name }}}
+spec:
+  type: ClusterIP
+  selector: {app.kubernetes.io/name: llm-serving, app.kubernetes.io/instance: {{ $.Release.Name }}}
+  ports:
+    - {name: http, port: 8080, targetPort: {{ $role }}}
+{{- end }}

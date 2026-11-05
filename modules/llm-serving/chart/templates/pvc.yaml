@@ -1,0 +1,20 @@
+{{/*
+Persistent volume for the downloaded GGUF model files, mounted by deployment.yaml. It survives pod
+restarts and chart upgrades so models download only once per cluster; the fetch init container
+re-verifies them on every start. The default storage class is Minikube's host-path provisioner.
+*/}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Release.Name }}-models
+  annotations:
+    # Keep multi-gigabyte downloads when the release is uninstalled and reinstalled.
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- with .Values.modelStorage.storageClassName }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.modelStorage.size }}

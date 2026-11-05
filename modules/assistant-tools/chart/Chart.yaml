@@ -1,0 +1,6 @@
+apiVersion: v2
+name: assistant-tools
+description: Cluster-internal MCP server with read-only, permission-checked platform tools for the Stage 10 assistant
+type: application
+version: 0.1.0
+appVersion: "0.0.0"

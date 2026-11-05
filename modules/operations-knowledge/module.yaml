@@ -4,4 +4,5 @@ type: knowledge
 version: 0.0.0
 owners:
   - varunpathania86
-dependencies: []
+dependencies:
+  - ai-core

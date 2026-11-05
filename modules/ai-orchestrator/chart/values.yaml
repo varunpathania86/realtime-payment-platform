@@ -1,0 +1,22 @@
+image:
+  repository: rpp-local/ai-orchestrator
+  tag: development
+  digest: ""
+  pullPolicy: Never
+local:
+  feature: ai
+replicaCount: 1
+# Ed25519 public key that verifies both portal-signed assertions (orchestrator and relayed tools audience).
+assertionVerifier:
+  existingSecret: ai-identity
+  publicKeyKey: public-key.pem
+llm:
+  # OpenAI-compatible llama.cpp endpoint; empty forces the deterministic no-model fallback.
+  chatUrl: http://llm-serving-chat:8080/v1
+  # Must equal the llm-serving chat alias (models.chat.name).
+  model: qwen2.5-1.5b-instruct-q4_k_m
+assistantTools:
+  url: http://assistant-tools:8080/mcp
+resources:
+  requests: {cpu: 50m, memory: 256Mi}
+  limits: {cpu: "1", memory: 512Mi}
