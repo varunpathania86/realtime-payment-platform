@@ -114,6 +114,14 @@ if [[ "$(pinned_version superset)" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] &&
 else
   bad "invalid Superset pins in .tool-versions (restore superset and superset-image-digest)"
 fi
+if [[ "$(pinned_version ai-python)" =~ ^3\.[0-9]+\.[0-9]+-slim-bookworm$ ]] &&
+  [[ "$(pinned_version llama-cpp)" =~ ^server-b[0-9]+$ ]] &&
+  [[ "$(pinned_version llama-cpp-image-digest)" =~ ^sha256:[a-f0-9]{64}$ ]] &&
+  [[ "$(pinned_version pgvector)" =~ ^[0-9]+\.[0-9]+\.[0-9]+-pg16-bookworm$ ]]; then
+  ok "AI assistant image pins: Python $(pinned_version ai-python), llama.cpp $(pinned_version llama-cpp), pgvector $(pinned_version pgvector) (built or pulled by local deployment)"
+else
+  bad "invalid AI pins in .tool-versions (restore ai-python, llama-cpp, llama-cpp-image-digest and pgvector)"
+fi
 flink_pin=$(pinned_version flink)
 if [ "${flink_pin%%-*}" != "$(pinned_version flink-python)" ]; then
   bad "Flink and PyFlink pins must match (restore .tool-versions and run STREAMING=1 make setup)"
@@ -124,6 +132,14 @@ if [ "${STREAMING:-0}" = 1 ]; then
     ok "streaming runtime images (run STREAMING=1 make setup to refresh)"
   else
     bad "streaming runtime images are missing (run STREAMING=1 make setup)"
+  fi
+fi
+
+if [ "${AI:-0}" = 1 ]; then
+  if docker image inspect "$(bash "$REPO_ROOT/scripts/ai-python.sh" image)" >/dev/null 2>&1; then
+    ok "AI Python test runtime $(bash "$REPO_ROOT/scripts/ai-python.sh" image)"
+  else
+    bad "AI Python test runtime missing (run: AI=1 make setup)"
   fi
 fi
 

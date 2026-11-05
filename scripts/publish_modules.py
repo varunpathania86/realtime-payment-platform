@@ -19,7 +19,9 @@ from pathlib import Path
 
 import yaml
 
-from scripts.module_catalog import ROOT, _load_yaml, _module_manifests, _schema_errors, plan_matrix, validate_catalog
+from scripts.module_catalog import (
+    ROOT, _load_yaml, _module_manifests, _schema_errors, dependency_closure, plan_matrix, validate_catalog,
+)
 from scripts.release_state import GitHubAPI, github_store, record_publication, reserve
 from scripts.release_versions import (
     RC_BRANCH, active_iteration, branch_version, classify_rc_branch, normalized_branch, target_version,
@@ -252,8 +254,13 @@ def publish(source: Path, context: dict, output: Path) -> dict:
                 line.split() for line in (source / ".tool-versions").read_text().splitlines()
                 if line.strip() and not line.lstrip().startswith("#")
             )
+            contexts = [
+                argument
+                for dependency in dependency_closure(context["module"], _module_manifests(source))
+                for argument in ("--build-context", f"{dependency}={source / 'modules' / dependency}")
+            ]
             subprocess.run([
-                "docker", "buildx", "build",
+                "docker", "buildx", "build", *contexts,
                 "--build-arg", f"GO_VERSION={pins['go']}",
                 "--build-arg", f"NODE_VERSION={pins['nodejs']}",
                 "--build-arg", f"FLINK_VERSION={pins['flink']}",
@@ -272,6 +279,9 @@ def publish(source: Path, context: dict, output: Path) -> dict:
                 "--build-arg", f"HADOOP_CLIENT_RUNTIME_SHA256={pins['hadoop-client-runtime-sha256']}",
                 "--build-arg", f"SUPERSET_VERSION={pins['superset']}",
                 "--build-arg", f"SUPERSET_DIGEST={pins['superset-image-digest']}",
+                "--build-arg", f"AI_PYTHON_VERSION={pins['ai-python']}",
+                "--build-arg", f"LLAMA_CPP_VERSION={pins['llama-cpp']}",
+                "--build-arg", f"LLAMA_CPP_DIGEST={pins['llama-cpp-image-digest']}",
                 "--build-arg", f"VERSION={version}",
                 "--build-arg", f"COMMIT={context['sourceCommit']}",
                 "--file", str(source / "modules" / context["module"] / "Dockerfile"),

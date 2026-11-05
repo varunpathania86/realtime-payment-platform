@@ -52,3 +52,8 @@ hadoop-client-runtime-sha256 18d071c7f72f8a946677b398a57af9c7afa2dd41a81023c310f
 # Stage 9 BI image base (not a host CLI); the digest pins the multi-arch index.
 superset 6.1.0
 superset-image-digest sha256:16b50bbef6648912a79e3293d418fefa743ce555d36c5af6b85d859119ed7f88
+# Stage 10 AI assistant images (not host CLIs); the llama.cpp digest pins the server image.
+ai-python 3.12.16-slim-bookworm
+llama-cpp server-b12124
+llama-cpp-image-digest sha256:c0a11067c72bb1eb330b8bddbf9869274c195e596bf4fae55fd527102e644b85
+pgvector 0.8.7-pg16-bookworm

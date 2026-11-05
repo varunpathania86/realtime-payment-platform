@@ -9,6 +9,7 @@ from scripts.module_catalog import (
     _dependency_cycle_errors,
     _schema_errors,
     affected_modules,
+    dependency_closure,
     is_stable_version_only_change,
     run_module,
     validate_catalog,
@@ -180,6 +181,15 @@ class ModuleCatalogTests(unittest.TestCase):
             affected_modules(["modules/event-contracts/module.yaml"], modules),
             ["event-contracts", "payment-api", "web-portal"],
         )
+
+    def test_dependency_closure_is_transitive_sorted_and_strict(self) -> None:
+        modules = module_map(("core", []), ("knowledge", ["core"]), ("agent", ["knowledge", "core"]))
+        self.assertEqual(dependency_closure("agent", modules), ["core", "knowledge"])
+        self.assertEqual(dependency_closure("core", modules), [])
+        with self.assertRaisesRegex(ValueError, "unknown"):
+            dependency_closure("agent", module_map(("agent", ["missing"])))
+        with self.assertRaisesRegex(ValueError, "unknown catalog module"):
+            dependency_closure("absent", modules)
 
     def test_catalog_and_shared_validation_changes_select_all_modules(self) -> None:
         modules = module_map(("one", []), ("two", ["one"]))
