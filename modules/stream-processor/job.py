@@ -210,7 +210,7 @@ def build():
     analytics_enabled = os.environ.get("ANALYTICS_ENABLED") == "true"
     if analytics_enabled:
         # Stateless side branches: Kafka sinks keep their uids and savepoints restore unchanged.
-        clickhouse_branch(windowed.get_side_output(TOO_LATE), LATE_TABLE, "clickhouse-late-events")
+        clickhouse_branch(windowed, LATE_TABLE, "clickhouse-late-events", TOO_LATE)
     if os.environ.get("RISK_ENABLED") == "true":
         from risk import RISK_TOO_LATE, RiskPayments, account_currency
 
@@ -229,11 +229,14 @@ def build():
             output.sink_to(sink).uid(uid)
         if analytics_enabled:
             clickhouse_branch(predictions, RISK_TABLE, "clickhouse-risk-predictions")
-            clickhouse_branch(predictions.get_side_output(RISK_TOO_LATE), LATE_TABLE, "clickhouse-risk-late-events")
+            clickhouse_branch(predictions, LATE_TABLE, "clickhouse-risk-late-events", RISK_TOO_LATE)
     return env
 
 
-def clickhouse_branch(stream, table, name):
+def clickhouse_branch(stream, table, name, side_output=None):
+    # Resolving a side output here keeps it out of the graph when the branch is skipped.
+    if side_output is not None:
+        stream = stream.get_side_output(side_output)
     return stream.map(ClickHouseMap(table), output_type=Types.STRING()).name(name).uid(f"{name}-v1")
 
 
