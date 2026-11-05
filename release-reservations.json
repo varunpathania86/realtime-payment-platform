@@ -943,6 +943,25 @@
       "integrated": true,
       "iteration": 1,
       "module": "payment-api",
+      "publication": {
+        "approvedImpact": "patch",
+        "branch": "main",
+        "chart": {
+          "digest": "sha256:fda988c16bc124fcd24da2c2a3dccceb0acd61774cebec48786d6b1d2db78086",
+          "repository": "ghcr.io/varunpathania86/charts/payment-api",
+          "version": "0.0.1-it1-rv.8"
+        },
+        "digest": "sha256:b7f0a89cfc394670c41f89d99d241b18f66da1353ac5ecca3c1c05413b469aa2",
+        "module": "payment-api",
+        "provenance": "ghcr.io/varunpathania86/payment-api@sha256:b7f0a89cfc394670c41f89d99d241b18f66da1353ac5ecca3c1c05413b469aa2",
+        "repository": "ghcr.io/varunpathania86/payment-api",
+        "sbom": "ghcr.io/varunpathania86/payment-api@sha256:b7f0a89cfc394670c41f89d99d241b18f66da1353ac5ecca3c1c05413b469aa2",
+        "schemaVersion": 1,
+        "sourceCommit": "816b8db42ef610f6747423da3b2b7f6cfdd44916",
+        "testRun": "https://github.com/varunpathania86/realtime-payment-platform/actions/runs/41987058779",
+        "version": "0.0.1-it1-rv.8",
+        "workflowRun": "https://github.com/varunpathania86/realtime-payment-platform/actions/runs/41987597411"
+      },
       "registry": "ghcr.io/varunpathania86",
       "releaseLine": "main",
       "reservedVersion": "0.0.1-it1-rv.8",
