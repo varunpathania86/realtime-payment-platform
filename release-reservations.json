@@ -1371,6 +1371,25 @@
       "integrated": true,
       "iteration": 1,
       "module": "bi-dashboards",
+      "publication": {
+        "approvedImpact": "patch",
+        "branch": "main",
+        "chart": {
+          "digest": "sha256:e47b61641c0325c89ab88d7d48df769d67be1615571b4dc72c701e25c1e8850a",
+          "repository": "ghcr.io/varunpathania86/charts/bi-dashboards",
+          "version": "0.0.1-it1-rv.2"
+        },
+        "digest": "sha256:7fab7525e2a251557c8401ccc83562f658c2986a2971a57c665fc4fb2e347fc1",
+        "module": "bi-dashboards",
+        "provenance": "ghcr.io/varunpathania86/bi-dashboards@sha256:7fab7525e2a251557c8401ccc83562f658c2986a2971a57c665fc4fb2e347fc1",
+        "repository": "ghcr.io/varunpathania86/bi-dashboards",
+        "sbom": "ghcr.io/varunpathania86/bi-dashboards@sha256:7fab7525e2a251557c8401ccc83562f658c2986a2971a57c665fc4fb2e347fc1",
+        "schemaVersion": 1,
+        "sourceCommit": "d77a5828ec8d97c350fde9ab47b6a5ec870eba13",
+        "testRun": "https://github.com/varunpathania86/realtime-payment-platform/actions/runs/42219281612",
+        "version": "0.0.1-it1-rv.2",
+        "workflowRun": "https://github.com/varunpathania86/realtime-payment-platform/actions/runs/42220084396"
+      },
       "registry": "ghcr.io/varunpathania86",
       "releaseLine": "main",
       "reservedVersion": "0.0.1-it1-rv.2",
