@@ -1432,6 +1432,20 @@
       "reservedVersion": "0.0.1-it1-rv.3",
       "sourceCommit": "d77a5828ec8d97c350fde9ab47b6a5ec870eba13",
       "targetVersion": "0.0.1"
+    },
+    {
+      "approvedImpact": "patch",
+      "branch": "main",
+      "chartRegistry": "oci://ghcr.io/varunpathania86/charts",
+      "counter": 1,
+      "integrated": true,
+      "iteration": 1,
+      "module": "ai-orchestrator",
+      "registry": "ghcr.io/varunpathania86",
+      "releaseLine": "main",
+      "reservedVersion": "0.0.1-it1-rv.1",
+      "sourceCommit": "d77a5828ec8d97c350fde9ab47b6a5ec870eba13",
+      "targetVersion": "0.0.1"
     }
   ],
   "schemaVersion": 1
