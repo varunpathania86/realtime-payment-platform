@@ -1,0 +1,8 @@
+schemaVersion: 1
+name: assistant-tools
+type: api
+version: 0.0.0
+owners:
+  - varunpathania86
+dependencies:
+  - ai-core

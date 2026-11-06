@@ -257,6 +257,23 @@ def affected_modules(changed_paths: list[str], modules: dict[str, tuple[Path, An
     return sorted(affected)
 
 
+def dependency_closure(module_name: str, modules: dict[str, tuple[Path, Any]]) -> list[str]:
+    """Return a module's transitive catalog dependencies, used as named image build contexts."""
+    if module_name not in modules:
+        raise ValueError(f"unknown catalog module: {module_name}")
+    found: set[str] = set()
+    pending = list(modules[module_name][1].get("dependencies", []))
+    while pending:
+        dependency = pending.pop()
+        if dependency in found or dependency == module_name:
+            continue
+        if dependency not in modules:
+            raise ValueError(f"{module_name} depends on unknown module: {dependency}")
+        found.add(dependency)
+        pending.extend(modules[dependency][1].get("dependencies", []))
+    return sorted(found)
+
+
 def _without_version(document: Any, section: str | None = None) -> Any:
     result = copy.deepcopy(document)
     target = result if section is None else result.get(section, {})
@@ -399,6 +416,10 @@ def main() -> int:
     plan_parser.add_argument("--head", required=True)
     module_parser = subparsers.add_parser("run-module", help="run a module's build/test/lint targets")
     module_parser.add_argument("--name", required=True)
+    dependencies_parser = subparsers.add_parser(
+        "dependencies", help="list a module's transitive catalog dependencies"
+    )
+    dependencies_parser.add_argument("--name", required=True)
     args = parser.parse_args()
 
     try:
@@ -414,6 +435,9 @@ def main() -> int:
             return 0
         if args.command == "local-modules":
             print("\n".join(local_modules(features=set(args.feature) if args.enabled_only else None)))
+            return 0
+        if args.command == "dependencies":
+            print("\n".join(dependency_closure(args.name, _module_manifests(ROOT))))
             return 0
         return run_module(args.name)
     except (OSError, subprocess.CalledProcessError, ValueError, yaml.YAMLError) as error:

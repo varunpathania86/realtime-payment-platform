@@ -88,6 +88,9 @@ class PublicationTests(unittest.TestCase):
                 ("flink-kafka-connector-sha256", "FLINK_KAFKA_CONNECTOR_SHA256"),
                 ("clickhouse", "CLICKHOUSE_VERSION"),
                 ("risk-python", "RISK_PYTHON_VERSION"),
+                ("ai-python", "AI_PYTHON_VERSION"),
+                ("llama-cpp", "LLAMA_CPP_VERSION"),
+                ("llama-cpp-image-digest", "LLAMA_CPP_DIGEST"),
             ):
                 self.assertIn(f"{argument}={pins[key]}", args)
 
@@ -103,6 +106,28 @@ class PublicationTests(unittest.TestCase):
                 self.assertEqual(result["sbom"], f"ghcr.io/example/event-contracts@{DIGEST}")
                 self.assertEqual(result["testRun"], ENV["SOURCE_RUN_URL"])
                 record.assert_called_once()
+
+    def test_catalog_dependencies_become_named_build_contexts(self) -> None:
+        reservation = {**CONTEXT, "module": "ai-orchestrator", "reservedVersion": "0.0.1-it1-rv.1", "counter": 1}
+        builds: list[list[str]] = []
+
+        def build(args: list[str], **_kwargs: object) -> None:
+            builds.append(args)
+            Path(args[args.index("--metadata-file") + 1]).write_text(json.dumps({"containerimage.digest": DIGEST}))
+
+        with tempfile.TemporaryDirectory() as directory:
+            with (
+                patch("scripts.publish_modules.github_store"),
+                patch("scripts.publish_modules.reserve", return_value=reservation),
+                patch("scripts.publish_modules.record_publication"),
+                patch("scripts.publish_modules.publish_chart", return_value=None),
+                patch("scripts.publish_modules.registry_manifest", side_effect=[None, (DIGEST, {})]),
+                patch("scripts.publish_modules.subprocess.run", side_effect=build),
+            ):
+                publish(ROOT, {**CONTEXT, "module": "ai-orchestrator"}, Path(directory))
+        contexts = [builds[0][index + 1] for index, value in enumerate(builds[0]) if value == "--build-context"]
+        self.assertEqual(contexts, [f"ai-core={ROOT / 'modules' / 'ai-core'}"])
+        self.assertEqual(builds[0][-1], str(ROOT / "modules" / "ai-orchestrator"))
 
     def test_branch_hash_collision_and_stale_build_fail(self) -> None:
         context = {**CONTEXT, "branch": "feature/contracts", "integrated": False}

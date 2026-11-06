@@ -34,3 +34,16 @@ moved {
   from = kubernetes_stateful_set_v1.postgres
   to   = kubernetes_stateful_set_v1.postgres[0]
 }
+# Stage 10: the portal identity serves BI and the assistant, so its passwords left random_password.bi.
+moved {
+  from = random_password.bi["portal-session-key"]
+  to   = random_password.portal["portal-session-key"]
+}
+moved {
+  from = random_password.bi["ops-viewer"]
+  to   = random_password.portal["ops-viewer"]
+}
+moved {
+  from = random_password.bi["payments-clerk"]
+  to   = random_password.portal["payments-clerk"]
+}

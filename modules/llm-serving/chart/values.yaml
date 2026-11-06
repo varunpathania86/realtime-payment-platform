@@ -1,0 +1,44 @@
+image:
+  repository: rpp-local/llm-serving
+  tag: development
+  digest: ""
+  pullPolicy: Never
+local:
+  feature: ai
+# One pod owns the ReadWriteOnce models volume; scale-out would need a shared volume or per-pod copies.
+replicaCount: 1
+# Models download once into this volume and are re-verified (size + SHA-256) on every start.
+modelStorage:
+  size: 2Gi
+  storageClassName: ""
+models:
+  chat:
+    # Qwen2.5-1.5B-Instruct Q4_K_M GGUF (Apache-2.0), from the Ollama registry blob store.
+    name: qwen2.5-1.5b-instruct-q4_k_m
+    file: qwen2.5-1.5b-instruct-q4_k_m.gguf
+    url: https://registry.ollama.ai/v2/library/qwen2.5/blobs/sha256:183715c435899236895da3869489cc30ac241476b4971a20285b1a462818a5b4
+    sha256: 183715c435899236895da3869489cc30ac241476b4971a20285b1a462818a5b4
+    size: 986048512
+  embed:
+    # nomic-embed-text-v1.5 F16 GGUF (Apache-2.0), 768 dimensions.
+    name: nomic-embed-text-v1.5
+    file: nomic-embed-text-v1.5.f16.gguf
+    url: https://registry.ollama.ai/v2/library/nomic-embed-text/blobs/sha256:970aa74c0a90ef7482477cf803618e776e173c007bf957f635f1015bfcfef0e6
+    sha256: 970aa74c0a90ef7482477cf803618e776e173c007bf957f635f1015bfcfef0e6
+    size: 274290656
+chat:
+  contextSize: 4096
+  threads: 2
+  parallel: 1
+  resources:
+    requests: {cpu: 500m, memory: 1Gi}
+    limits: {cpu: "2", memory: 1536Mi}
+embed:
+  contextSize: 2048
+  threads: 1
+  resources:
+    requests: {cpu: 100m, memory: 384Mi}
+    limits: {cpu: "1", memory: 768Mi}
+fetchResources:
+  requests: {cpu: 50m, memory: 64Mi}
+  limits: {cpu: 500m, memory: 256Mi}

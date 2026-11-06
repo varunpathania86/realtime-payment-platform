@@ -5,6 +5,8 @@ The browser calls /api separately through the payment-api Ingress, not through t
 With identity.enabled the same server signs in synthetic local users (Secret identity.existingSecret)
 and, with bi.enabled, requests Superset guest tokens from the bi-dashboards Service using the
 token-issuer password from that module's Secret; the browser loads the dashboard from bi.publicUrl.
+With assistant.enabled it also signs short-lived identity assertions with the Ed25519 private key mounted
+from assistant.signingSecret and forwards questions to the ai-orchestrator Service (ADR-030).
 values.yaml supplies the image, replicas, resource budget, identity, BI and optional telemetry. See ../README.md.
 */}}
 apiVersion: apps/v1
@@ -26,6 +28,10 @@ spec:
         runAsNonRoot: true
         runAsUser: 65532
         runAsGroup: 65532
+        {{- if and .Values.identity.enabled .Values.assistant.enabled }}
+        # Lets the non-root user read the 0440 signing key file.
+        fsGroup: 65532
+        {{- end }}
         seccompProfile:
           type: RuntimeDefault
       containers:
@@ -65,6 +71,16 @@ spec:
               valueFrom:
                 secretKeyRef: {name: {{ .Values.bi.existingSecret }}, key: {{ .Values.bi.issuerPasswordKey }}}
           {{- end }}
+          {{- if and .Values.identity.enabled .Values.assistant.enabled }}
+            - name: AI_ORCHESTRATOR_URL
+              value: {{ .Values.assistant.orchestratorUrl | quote }}
+            - name: AI_ASSERTION_PRIVATE_KEY_FILE
+              value: /assistant-identity/private-key.pem
+          volumeMounts:
+            - name: assistant-identity
+              mountPath: /assistant-identity
+              readOnly: true
+          {{- end }}
           ports:
             - name: http
               containerPort: 8080
@@ -86,3 +102,14 @@ spec:
             initialDelaySeconds: 3
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+      {{- if and .Values.identity.enabled .Values.assistant.enabled }}
+      volumes:
+        # Only the portal mounts the private key; orchestrator and tools mount the public key (ai-identity).
+        - name: assistant-identity
+          secret:
+            secretName: {{ .Values.assistant.signingSecret }}
+            defaultMode: 0440
+            items:
+              - key: {{ .Values.assistant.privateKeyKey }}
+                path: private-key.pem
+      {{- end }}

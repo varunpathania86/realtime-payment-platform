@@ -1,0 +1,126 @@
+{{/*
+One pod with two llama.cpp servers sharing the models volume from pvc.yaml:
+- init container `fetch-models` downloads and checksum-verifies both GGUF files;
+- `chat` serves the instruction model's OpenAI-compatible API on 8080 (ai-orchestrator);
+- `embed` serves embeddings on 8081 (operations-knowledge ingestion and assistant-tools search).
+service.yaml exposes each server separately. Recreate avoids two pods contending for the
+ReadWriteOnce volume during upgrades. See ../README.md.
+*/}}
+{{- if ne (int .Values.replicaCount) 1 }}
+{{- fail "llm-serving supports exactly one replica: the models volume is ReadWriteOnce" }}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  labels: {app.kubernetes.io/name: llm-serving, app.kubernetes.io/instance: {{ .Release.Name }}}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app.kubernetes.io/name: llm-serving, app.kubernetes.io/instance: {{ .Release.Name }}}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: llm-serving, app.kubernetes.io/instance: {{ .Release.Name }}}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile: {type: RuntimeDefault}
+      initContainers:
+        - name: fetch-models
+          image: {{ include "llm-serving.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["sh", "-ec"]
+          args:
+            - |
+              {{- range $role := list "chat" "embed" }}
+              {{- with index $.Values.models $role }}
+              /opt/llm/fetch-model.sh {{ printf "/models/%s" .file | quote }} {{ .url | quote }} {{ .sha256 | quote }} {{ .size | int64 | quote }}
+              {{- end }}
+              {{- end }}
+          resources:
+            {{- toYaml .Values.fetchResources | nindent 12 }}
+          securityContext:
+            {{- include "llm-serving.securityContext" . | nindent 12 }}
+          volumeMounts:
+            - {name: models, mountPath: /models}
+      containers:
+        - name: chat
+          image: {{ include "llm-serving.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - --model
+            - {{ printf "/models/%s" .Values.models.chat.file | quote }}
+            - --alias
+            - {{ .Values.models.chat.name | quote }}
+            - --port
+            - "8080"
+            - --ctx-size
+            - {{ .Values.chat.contextSize | quote }}
+            - --threads
+            - {{ .Values.chat.threads | quote }}
+            - --parallel
+            - {{ .Values.chat.parallel | quote }}
+            # Chat templates from the GGUF metadata; needed for structured JSON-schema output.
+            - --jinja
+          ports:
+            - {name: chat, containerPort: 8080}
+          readinessProbe:
+            httpGet: {path: /health, port: chat}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /health, port: chat}
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            failureThreshold: 6
+          resources:
+            {{- toYaml .Values.chat.resources | nindent 12 }}
+          securityContext:
+            {{- include "llm-serving.securityContext" . | nindent 12 }}
+          volumeMounts:
+            - {name: models, mountPath: /models, readOnly: true}
+        - name: embed
+          image: {{ include "llm-serving.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - --model
+            - {{ printf "/models/%s" .Values.models.embed.file | quote }}
+            - --alias
+            - {{ .Values.models.embed.name | quote }}
+            - --port
+            - "8081"
+            - --embeddings
+            # Embedding models need the whole input in one batch.
+            - --ctx-size
+            - {{ .Values.embed.contextSize | quote }}
+            - --batch-size
+            - {{ .Values.embed.contextSize | quote }}
+            - --ubatch-size
+            - {{ .Values.embed.contextSize | quote }}
+            - --threads
+            - {{ .Values.embed.threads | quote }}
+            - --parallel
+            - "1"
+          ports:
+            - {name: embed, containerPort: 8081}
+          readinessProbe:
+            httpGet: {path: /health, port: embed}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /health, port: embed}
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            failureThreshold: 6
+          resources:
+            {{- toYaml .Values.embed.resources | nindent 12 }}
+          securityContext:
+            {{- include "llm-serving.securityContext" . | nindent 12 }}
+          volumeMounts:
+            - {name: models, mountPath: /models, readOnly: true}
+      volumes:
+        - name: models
+          persistentVolumeClaim: {claimName: {{ .Release.Name }}-models}

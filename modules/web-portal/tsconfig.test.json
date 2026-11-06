@@ -7,5 +7,5 @@
     "outDir": ".test-dist",
     "types": ["node"]
   },
-  "include": ["src/status.ts", "src/StatusPage.tsx", "src/identity.ts", "src/AnalyticsView.tsx", "tests"]
+  "include": ["src/status.ts", "src/StatusPage.tsx", "src/identity.ts", "src/AnalyticsView.tsx", "src/assistant.ts", "src/AssistantView.tsx", "tests"]
 }

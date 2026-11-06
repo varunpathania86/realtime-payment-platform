@@ -21,12 +21,12 @@ def positive_integer(value, name):
 
 def validate(data):
     if not isinstance(data, dict) or set(data) - {
-        "node", "clusters", "nodes", "observability", "streaming", "analytics", "lakehouse", "bi", "runtime_profile",
-        "risk",
+        "node", "clusters", "nodes", "observability", "streaming", "analytics", "lakehouse", "bi", "ai",
+        "runtime_profile", "risk",
     }:
         raise ValueError(
             "configuration accepts only node, nodes, clusters, observability, streaming, analytics, lakehouse, "
-            "bi, runtime_profile and risk"
+            "bi, ai, runtime_profile and risk"
         )
     node = data.get("node", {})
     if not isinstance(node, dict) or set(node) - {"cpus", "memory_mib"}:
@@ -75,13 +75,13 @@ def validate(data):
             if not isinstance(value, dict):
                 raise ValueError(f"nodes.{key} must be a node budget object")
             result["nodes"][key] = validate({"node": {**result["node"], **value}})["node"]
-    for feature in ("observability", "streaming", "analytics", "lakehouse", "bi"):
+    for feature in ("observability", "streaming", "analytics", "lakehouse", "bi", "ai"):
         if feature in data:
             if not isinstance(data[feature], bool):
                 raise ValueError(f"{feature} must be a boolean")
             result[feature] = data[feature]
-    if result.get("analytics", False) and not result.get("streaming", False):
-        raise ValueError("analytics requires streaming to be enabled")
+    if result.get("analytics", False) and not (result.get("streaming", False) or result.get("ai", False)):
+        raise ValueError("analytics requires streaming, or ai for the lean AI profile")
     if result.get("analytics", False):
         cluster_a = result.get("nodes", {}).get("a", result["node"])
         if cluster_a["cpus"] < 4 or cluster_a["memory_mib"] < 6144:
@@ -102,6 +102,21 @@ def validate(data):
         minimum = 11264 if result.get("lakehouse", False) else 7168
         if cluster_a["memory_mib"] < minimum:
             raise ValueError(f"bi requires cluster A to have at least {minimum} MiB")
+    if result.get("ai", False):
+        if not result.get("analytics", False):
+            raise ValueError("ai requires analytics to be enabled")
+        cluster_a = result.get("nodes", {}).get("a", result["node"])
+        # llama.cpp chat and embeddings, knowledge PostgreSQL, MinIO and three Python services add
+        # about 4 GiB of limits on cluster A; Flink, the lakehouse and Superset add their own.
+        minimum = 8192
+        if result.get("streaming", False):
+            minimum += 4096
+        if result.get("lakehouse", False):
+            minimum += 2048
+        if result.get("bi", False):
+            minimum += 1024
+        if cluster_a["cpus"] < 4 or cluster_a["memory_mib"] < minimum:
+            raise ValueError(f"ai requires cluster A to have at least 4 CPUs and {minimum} MiB")
     if "risk" in data:
         risk = data["risk"]
         if not isinstance(risk, dict) or set(risk) != {"package_key", "package_sha256"}:

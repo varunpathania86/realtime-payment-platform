@@ -40,7 +40,8 @@ func handler(files fs.FS, app http.Handler) http.Handler {
 			_, _ = w.Write([]byte("{\"status\":\"ok\"}\n"))
 			return
 		}
-		if strings.HasPrefix(r.URL.Path, "/auth/") || strings.HasPrefix(r.URL.Path, "/bi/") {
+		if strings.HasPrefix(r.URL.Path, "/auth/") || strings.HasPrefix(r.URL.Path, "/bi/") ||
+			strings.HasPrefix(r.URL.Path, "/assistant/") {
 			if app == nil {
 				http.NotFound(w, r)
 				return

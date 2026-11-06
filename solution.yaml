@@ -17,6 +17,8 @@ modules:
   - event-generator
   - ai-gateway
   - ai-orchestrator
+  - assistant-tools
+  - llm-serving
   - llm-enrichment-worker
   - web-portal
   - ai-core

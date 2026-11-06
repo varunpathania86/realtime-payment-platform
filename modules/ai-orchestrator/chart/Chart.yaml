@@ -1,0 +1,6 @@
+apiVersion: v2
+name: ai-orchestrator
+description: LangGraph operations-assistant API that routes, retrieves through MCP and returns cited, redacted answers
+type: application
+version: 0.1.0
+appVersion: "0.0.0"

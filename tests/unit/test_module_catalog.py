@@ -9,6 +9,7 @@ from scripts.module_catalog import (
     _dependency_cycle_errors,
     _schema_errors,
     affected_modules,
+    dependency_closure,
     is_stable_version_only_change,
     run_module,
     validate_catalog,
@@ -181,6 +182,15 @@ class ModuleCatalogTests(unittest.TestCase):
             ["event-contracts", "payment-api", "web-portal"],
         )
 
+    def test_dependency_closure_is_transitive_sorted_and_strict(self) -> None:
+        modules = module_map(("core", []), ("knowledge", ["core"]), ("agent", ["knowledge", "core"]))
+        self.assertEqual(dependency_closure("agent", modules), ["core", "knowledge"])
+        self.assertEqual(dependency_closure("core", modules), [])
+        with self.assertRaisesRegex(ValueError, "unknown"):
+            dependency_closure("agent", module_map(("agent", ["missing"])))
+        with self.assertRaisesRegex(ValueError, "unknown catalog module"):
+            dependency_closure("absent", modules)
+
     def test_catalog_and_shared_validation_changes_select_all_modules(self) -> None:
         modules = module_map(("one", []), ("two", ["one"]))
         self.assertEqual(affected_modules(["solution.yaml"], modules), ["one", "two"])
@@ -211,6 +221,16 @@ class ModuleCatalogTests(unittest.TestCase):
             (module / "main.go").write_text("package main\n", encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "no Makefile"):
                 run_module("unfinished", root)
+
+    def test_ci_module_targets_do_not_need_pre_commit(self) -> None:
+        # The CI module matrix installs only the catalog requirements, not pre-commit; hooks belong in fmt.
+        for makefile in sorted((ROOT / "modules").glob("*/Makefile")):
+            with self.subTest(module=makefile.parent.name):
+                plan = subprocess.run(
+                    ["make", "-s", "-n", "-C", str(makefile.parent), "build", "test", "lint"],
+                    check=True, capture_output=True, text=True, timeout=60,
+                )
+                self.assertNotIn("pre-commit", plan.stdout)
 
     def test_stable_version_only_change_is_detected_by_yaml_fields(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

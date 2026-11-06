@@ -1,10 +1,32 @@
 import { embedDashboard } from "@superset-ui/embedded-sdk";
 import { useEffect, useRef, useState } from "react";
+import { askAssistant } from "./assistant.js";
 import { AnalyticsView } from "./AnalyticsView.js";
+import { AssistantView } from "./AssistantView.js";
+import type { AssistantState } from "./AssistantView.js";
 import type { AnalyticsState } from "./AnalyticsView.js";
 import { fetchGuestToken, loadSession, signIn, signOut } from "./identity.js";
 
 const failure = (error: unknown) => (error instanceof Error ? error.message : "Unexpected failure");
+
+function AssistantPanel() {
+  const [state, setState] = useState<AssistantState>({ kind: "idle" });
+  const controllerRef = useRef<AbortController | null>(null);
+  useEffect(() => () => controllerRef.current?.abort(), []);
+  const ask = (question: string) => {
+    controllerRef.current?.abort();
+    const controller = new AbortController();
+    controllerRef.current = controller;
+    setState({ kind: "asking", question });
+    askAssistant(question, fetch, controller.signal).then(
+      (answer) => setState({ kind: "answered", question, answer }),
+      (error: unknown) => {
+        if (!controller.signal.aborted) setState({ kind: "error", question, message: failure(error) });
+      },
+    );
+  };
+  return <AssistantView state={state} onAsk={ask} />;
+}
 
 export function AnalyticsPage() {
   const [state, setState] = useState<AnalyticsState>({ kind: "loading" });
@@ -63,6 +85,7 @@ export function AnalyticsPage() {
       state={state}
       busy={busy}
       mountRef={mountRef}
+      assistant={<AssistantPanel />}
       onSignIn={(username, password) => run(async () => ({ kind: "signed-in", session: await signIn(username, password) }))}
       onSignOut={() => run(async () => {
         await signOut();

@@ -72,6 +72,26 @@ class TopologyConfigurationTests(unittest.TestCase):
             with self.subTest(invalid=invalid), self.assertRaises(ValueError):
                 validate(invalid)
 
+    def test_lean_ai_profile_runs_analytics_without_streaming(self):
+        config = json.loads((ROOT / "templates/ai-topology.json").read_text())
+        settings = validate(config)
+        self.assertTrue(settings["ai"])
+        self.assertTrue(settings["analytics"])
+        self.assertFalse(settings["streaming"])
+        self.assertEqual(settings["nodes"]["a"], {"cpus": 4, "memory_mib": 10240})
+        full = {**config, "streaming": True, "lakehouse": True, "bi": True, "nodes": {"a": {"cpus": 6, "memory_mib": 16384}}}
+        self.assertTrue(validate(full)["ai"])
+        for invalid in (
+            {**config, "analytics": False},
+            {**config, "ai": "yes"},
+            {**config, "ai": False},
+            {**config, "nodes": {"a": {"cpus": 4, "memory_mib": 7168}}},
+            {**config, "nodes": {"a": {"cpus": 3, "memory_mib": 10240}}},
+            {**full, "nodes": {"a": {"cpus": 6, "memory_mib": 12288}}},
+        ):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                validate(invalid)
+
     def test_explicit_observability_and_per_node_budgets(self):
         config = json.loads((ROOT / "templates/observability-topology.json").read_text())
         settings = validate(config)

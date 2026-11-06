@@ -108,6 +108,21 @@ credentials, and the guest role cannot reach SQL Lab or other privileged APIs.
 boundaries. See [ADR-028](docs/adr/ADR-028-embedded-superset-bi.md) and the
 [BI runbook](docs/runbooks/bi-dashboards.md).
 
+Stage 10 adds an opt-in AI operations assistant to the portal. A
+[LangGraph orchestrator](modules/ai-orchestrator/README.md) answers from the
+[operations knowledge base](modules/operations-knowledge/README.md) (hybrid
+pgvector and full-text retrieval with citations) and from read-only
+[MCP tools](modules/assistant-tools/README.md) over ClickHouse, Trino and
+payment status. A [local llama.cpp server](modules/llm-serving/README.md)
+runs pinned open-weight models with no hosted API. The portal signs a
+short-lived identity assertion per request; authorization, redaction and
+citation checks are deterministic code, and the assistant never changes or
+approves payments. `templates/ai-topology.json` enables a lean profile, and
+`make ai-eval` runs the evaluation set. See
+[ADR-029](docs/adr/ADR-029-ai-operations-assistant.md),
+[ADR-030](docs/adr/ADR-030-assistant-identity-assertions.md) and the
+[assistant runbook](docs/runbooks/ai-assistant.md).
+
 ## Repository map
 
 | Path | Purpose |
@@ -131,8 +146,9 @@ show resource relationships with Mermaid:
 [Flink](modules/stream-processor/chart/README.md),
 [ClickHouse](modules/realtime-analytics/chart/README.md),
 [Polaris](modules/lakehouse-catalog/chart/README.md),
-[Trino](modules/lakehouse-query/chart/README.md), and
-[Superset](modules/bi-dashboards/chart/README.md).
+[Trino](modules/lakehouse-query/chart/README.md),
+[Superset](modules/bi-dashboards/chart/README.md), and the AI
+[model server](modules/llm-serving/chart/README.md).
 
 Start with the [local platform walkthrough](docs/architecture/local-platform-guide.md)
 to connect the repository layout, Make scripts, Terraform, Helm and Kubernetes.

@@ -33,3 +33,11 @@ input { font: inherit; padding: 0.5rem; border: 1px solid #596579; border-radius
 .dashboard { height: 75vh; min-height: 40rem; border: 1px solid #cad1df; border-radius: 0.5rem; overflow: hidden; }
 /* The SDK creates the iframe without dimensions. */
 .dashboard iframe { width: 100%; height: 100%; border: 0; }
+.assistant { margin-top: 1.5rem; }
+.question { max-width: 48rem; }
+textarea { font: inherit; padding: 0.5rem; border: 1px solid #596579; border-radius: 0.3rem; resize: vertical; }
+.answer { white-space: pre-wrap; }
+.badge { display: inline-block; margin: 0; padding: 0.1rem 0.6rem; border-radius: 1rem; font-weight: 600; background: #e4e8f0; }
+.badge.answered { color: #17653b; background: #dff1e6; }
+.badge.denied, .badge.rejected { color: #972222; background: #f7e1e1; }
+.meta { color: #596579; font-size: 0.9rem; }

@@ -1,0 +1,29 @@
+image:
+  repository: rpp-local/operations-knowledge
+  tag: development
+  digest: ""
+  pullPolicy: Never
+local:
+  feature: ai
+# ConfigMap holding corpus.tar.gz; `make knowledge-ingest` creates it from corpus.yaml before each run.
+corpus:
+  configMap: operations-knowledge-corpus
+  key: corpus.tar.gz
+embeddings:
+  # llama.cpp embedding server from the llm-serving module (nomic-embed-text-v1.5).
+  url: http://llm-serving-embed:8080
+  readyTimeoutSeconds: 900
+knowledgeDatabase:
+  host: knowledge-postgres.data.svc.cluster.local
+  port: 5432
+  name: ai_knowledge
+  user: rpp_knowledge_writer
+  existingSecret: knowledge-database
+  passwordKey: writer-password
+objectStore:
+  endpoint: minio.data.svc.cluster.local:9000
+  bucket: knowledge-originals
+  existingSecret: streaming-storage
+resources:
+  requests: {cpu: 100m, memory: 256Mi}
+  limits: {cpu: "1", memory: 768Mi}

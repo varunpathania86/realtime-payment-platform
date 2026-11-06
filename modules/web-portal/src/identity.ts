@@ -7,6 +7,7 @@ export interface PortalSession {
   username: string;
   permissions: string[];
   bi?: DashboardAccess;
+  assistant: boolean;
 }
 
 type Fetcher = (input: string, init?: RequestInit) => Promise<Response>;
@@ -26,7 +27,7 @@ function parseSession(body: unknown): PortalSession {
   if (bi !== undefined && (typeof bi?.dashboardId !== "string" || typeof bi?.supersetDomain !== "string")) {
     throw new Error("The portal returned invalid dashboard settings");
   }
-  return { username: value.username, permissions: value.permissions.map(String), bi };
+  return { username: value.username, permissions: value.permissions.map(String), bi, assistant: value.assistant === true };
 }
 
 export async function loadSession(fetcher: Fetcher = fetch, signal?: AbortSignal): Promise<PortalSession | null> {

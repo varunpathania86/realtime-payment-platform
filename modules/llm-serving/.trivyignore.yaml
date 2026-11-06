@@ -1,0 +1,20 @@
+misconfigurations:
+  - id: KSV-0110
+    paths: [chart/templates/deployment.yaml]
+    expired_at: 2027-01-01
+    statement: >-
+      Terraform installs this reusable Helm release in the apps namespace.
+      Raw chart scanning lacks the release namespace; keep templates reusable.
+  - id: KSV-0125
+    paths: [chart/templates/deployment.yaml]
+    expired_at: 2027-01-01
+    statement: >-
+      Local development intentionally loads rpp-local images with pull policy
+      Never. Trusted publication supplies verified GHCR digests.
+  - id: DS-0026
+    paths: [Dockerfile]
+    expired_at: 2027-01-01
+    statement: >-
+      One image runs the model-fetch init container and both llama.cpp
+      server containers. Each server has Kubernetes readiness and liveness
+      probes; an image-level HEALTHCHECK would not fit the fetch step.

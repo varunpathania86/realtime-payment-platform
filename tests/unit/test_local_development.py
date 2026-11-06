@@ -70,6 +70,16 @@ class LocalChartTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "loaded images"):
             validate([self.deployment])
 
+    def test_cronjob_pods_are_restricted_but_need_no_probes(self):
+        pod = copy.deepcopy(self.deployment["spec"]["template"]["spec"])
+        del pod["containers"][0]["readinessProbe"]
+        del pod["containers"][0]["livenessProbe"]
+        cronjob = {"kind": "CronJob", "spec": {"jobTemplate": {"spec": {"template": {"spec": pod}}}}}
+        validate([cronjob])
+        pod["securityContext"] = {}
+        with self.assertRaisesRegex(ValueError, "non-root"):
+            validate([cronjob])
+
     def test_missing_deployment_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "no Deployment"):
             validate([{"kind": "Service"}])
@@ -256,6 +266,21 @@ if name == "kubectl" and "port-forward" in sys.argv:
             pins.write("# changed tool policy\n")
         self.assertEqual(self.run_command("images").returncode, 0)
         self.assertNotEqual(second, self.inventory())
+
+    def test_catalog_dependencies_are_build_contexts_and_image_identity(self):
+        library = self.root / "modules" / "library"
+        library.mkdir()
+        (library / "module.yaml").write_text("name: library\ntype: library\n")
+        (library / "code.py").write_text("VALUE = 1\n")
+        (self.source.parent / "module.yaml").write_text("name: demo\ntype: library\ndependencies: [library]\n")
+        self.assertEqual(self.run_command("images").returncode, 0)
+        first = self.inventory()
+        builds = [json.loads(line) for line in self.log.read_text().splitlines()]
+        build = next(call for call in builds if call[:2] == ["docker", "build"])
+        self.assertEqual(build[build.index("--build-context") + 1], "library=modules/library")
+        (library / "code.py").write_text("VALUE = 2\n")
+        self.assertEqual(self.run_command("images").returncode, 0)
+        self.assertNotEqual(self.inventory(), first)
 
     def test_build_and_load_failures_surface_without_inventory(self):
         for failure in ("FAIL_BUILD", "FAIL_LOAD"):

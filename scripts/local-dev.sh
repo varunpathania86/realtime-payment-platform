@@ -47,6 +47,10 @@ modules() {
     jq -e '.bi_enabled == true' "$STATE_DIR/events.tfvars.json" >/dev/null; then
     arguments+=(--feature bi)
   fi
+  if [ -f "$STATE_DIR/events.tfvars.json" ] &&
+    jq -e '.ai_enabled == true' "$STATE_DIR/events.tfvars.json" >/dev/null; then
+    arguments+=(--feature ai)
+  fi
   "$PYTHON" scripts/module_catalog.py local-modules "${arguments[@]}"
 }
 
@@ -65,12 +69,19 @@ init() {
 }
 
 build_images() (
-  local name path tag image commit inventory candidate selected streaming=false
+  local name path tag image commit inventory candidate selected dependency streaming=false object_store=false
+  local -a dependencies sources contexts
   selected=$(modules)
   mkdir -p "$STATE_DIR"
   if [ -f "$STATE_DIR/events.tfvars.json" ] &&
     jq -e '.streaming_enabled == true' "$STATE_DIR/events.tfvars.json" >/dev/null; then
     streaming=true
+    object_store=true
+  fi
+  # The assistant keeps original knowledge documents in MinIO even without Flink.
+  if [ -f "$STATE_DIR/events.tfvars.json" ] &&
+    jq -e '.ai_enabled == true' "$STATE_DIR/events.tfvars.json" >/dev/null; then
+    object_store=true
   fi
   inventory=$(mktemp "$STATE_DIR/images.XXXXXX")
   candidate=$(mktemp "$STATE_DIR/images-candidate.XXXXXX")
@@ -79,11 +90,16 @@ build_images() (
   while IFS= read -r name; do
     [ -n "$name" ] || continue
     path="modules/$name"
+    mapfile -t dependencies < <("$PYTHON" scripts/module_catalog.py dependencies --name "$name")
+    sources=("$path")
+    for dependency in "${dependencies[@]}"; do
+      [ -n "$dependency" ] && sources+=("modules/$dependency")
+    done
     tag=$(
       {
         printf '%s\n' "$commit"
         sha256sum .tool-versions
-        git ls-files --cached --others --exclude-standard --deduplicate -z -- "$path" |
+        git ls-files --cached --others --exclude-standard --deduplicate -z -- "${sources[@]}" |
           sort -z |
           while IFS= read -r -d '' file; do
             printf '%s\0' "$file"
@@ -105,13 +121,19 @@ Path(sys.argv[2]).write_text(json.dumps({"local_images": images}, indent=2) + "\
 PY
   if [ "$streaming" = true ]; then
     "$PYTHON" scripts/streaming-control.py guard --profile "$PROFILE" --images "$candidate"
+  fi
+  if [ "$object_store" = true ]; then
     bash scripts/build-minio.sh
     minikube -p "$PROFILE" image load "rpp-runtime/minio:$(pinned_version minio)" --overwrite=false
   fi
   while IFS=$'\t' read -r name image; do
     path="modules/$name"
     tag="${image##*:}"
-    docker build --build-arg "GO_VERSION=$(pinned_version go)" \
+    contexts=()
+    while IFS= read -r dependency; do
+      [ -n "$dependency" ] && contexts+=(--build-context "$dependency=modules/$dependency")
+    done < <("$PYTHON" scripts/module_catalog.py dependencies --name "$name")
+    docker build "${contexts[@]}" --build-arg "GO_VERSION=$(pinned_version go)" \
       --build-arg "NODE_VERSION=$(pinned_version nodejs)" \
       --build-arg "FLINK_VERSION=$(pinned_version flink)" \
       --build-arg "FLINK_PYTHON_VERSION=$(pinned_version flink-python)" \
@@ -129,6 +151,9 @@ PY
       --build-arg "HADOOP_CLIENT_RUNTIME_SHA256=$(pinned_version hadoop-client-runtime-sha256)" \
       --build-arg "SUPERSET_VERSION=$(pinned_version superset)" \
       --build-arg "SUPERSET_DIGEST=$(pinned_version superset-image-digest)" \
+      --build-arg "AI_PYTHON_VERSION=$(pinned_version ai-python)" \
+      --build-arg "LLAMA_CPP_VERSION=$(pinned_version llama-cpp)" \
+      --build-arg "LLAMA_CPP_DIGEST=$(pinned_version llama-cpp-image-digest)" \
       --build-arg "VERSION=$tag" --build-arg "COMMIT=$commit" -t "$image" "$path"
     minikube -p "$PROFILE" image load "$image" --overwrite=false
   done < "$inventory"

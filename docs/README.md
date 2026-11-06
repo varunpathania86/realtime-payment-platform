@@ -35,10 +35,14 @@ All design documentation lives here, written in Markdown with Mermaid diagrams. 
 | [adr/ADR-026-polaris-iceberg-lakehouse.md](adr/ADR-026-polaris-iceberg-lakehouse.md) | Polaris REST catalog on PostgreSQL, Flink bronze/curated Iceberg writer, Trino reader/maintainer catalogs |
 | [adr/ADR-027-capability-module-names.md](adr/ADR-027-capability-module-names.md) | Capability-based module names; product names stay inside modules |
 | [adr/ADR-028-embedded-superset-bi.md](adr/ADR-028-embedded-superset-bi.md) | Superset embedded through portal-issued guest tokens, guest-path hardening, Flink-written risk/late tables, no Redis/Celery |
+| [adr/ADR-029-ai-operations-assistant.md](adr/ADR-029-ai-operations-assistant.md) | LangGraph assistant over pgvector RAG and read-only MCP tools, local llama.cpp models, deterministic safety and evaluation |
+| [adr/ADR-030-assistant-identity-assertions.md](adr/ADR-030-assistant-identity-assertions.md) | Portal-signed Ed25519 per-audience assertions until Keycloak; permissions intersected in code |
+| [adr/ADR-031-catalog-dependency-build-contexts.md](adr/ADR-031-catalog-dependency-build-contexts.md) | Catalog-declared library dependencies passed to image builds as named build contexts |
 | [runbooks/flink-recovery.md](runbooks/flink-recovery.md) | Synthetic fixtures, lateness, persistent checkpoints and savepoint/restore |
 | [runbooks/realtime-analytics.md](runbooks/realtime-analytics.md) | ClickHouse readiness, sink recovery, replacement queries and failure boundaries |
 | [runbooks/lakehouse.md](runbooks/lakehouse.md) | Polaris/Trino diagnosis, Iceberg maintenance, evolution and savepoint-safe toggling |
 | [runbooks/bi-dashboards.md](runbooks/bi-dashboards.md) | Embedded Superset diagnosis, local credentials, chart changes and fixture re-capture |
+| [runbooks/ai-assistant.md](runbooks/ai-assistant.md) | Assistant diagnosis, local users, knowledge ingestion, evaluation and model-down fallback |
 | [../tests/benchmarks/](../tests/benchmarks/README.md) | Cross-module benchmark goals, targets, setup/cleanup, measured reports and raw JSON |
 | [adr/](adr/) | Architecture Decision Records |
 | [runbooks/](runbooks/) | Operational procedures |

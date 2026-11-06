@@ -1,0 +1,7 @@
+schemaVersion: 1
+name: llm-serving
+type: model
+version: 0.0.0
+owners:
+  - varunpathania86
+dependencies: []

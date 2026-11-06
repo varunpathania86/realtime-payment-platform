@@ -5,16 +5,24 @@ import sys
 
 import yaml
 
+# Run-to-completion workloads need no HTTP probes; everything else applies to every pod.
+POD_PATHS = {
+    "Deployment": ("spec", "template", "spec"),
+    "StatefulSet": ("spec", "template", "spec"),
+    "Job": ("spec", "template", "spec"),
+    "CronJob": ("spec", "jobTemplate", "spec", "template", "spec"),
+}
+
 
 def validate(documents):
-    workloads = [
-        item for item in documents
-        if item and item.get("kind") in ("Deployment", "StatefulSet")
-    ]
+    workloads = [item for item in documents if item and item.get("kind") in POD_PATHS]
     if not workloads:
-        raise ValueError("chart has no Deployment or StatefulSet")
+        raise ValueError("chart has no Deployment, StatefulSet, Job or CronJob")
     for item in workloads:
-        pod = item["spec"]["template"]["spec"]
+        pod = item
+        for key in POD_PATHS[item["kind"]]:
+            pod = pod[key]
+        serving = item["kind"] in ("Deployment", "StatefulSet")
         if pod.get("automountServiceAccountToken") is not False:
             raise ValueError("local application must not mount service-account tokens")
         if pod["securityContext"].get("runAsNonRoot") is not True:
@@ -25,7 +33,7 @@ def validate(documents):
                 raise ValueError("application filesystem must be read-only")
             if security.get("allowPrivilegeEscalation") is not False:
                 raise ValueError("privilege escalation must be disabled")
-            if container in pod["containers"]:
+            if serving and container in pod["containers"]:
                 for probe in ("readinessProbe", "livenessProbe"):
                     if not container.get(probe):
                         raise ValueError(f"missing {probe}")

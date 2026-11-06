@@ -9,8 +9,9 @@ variable "analytics_enabled" {
   type        = bool
   default     = false
   validation {
-    condition     = !var.analytics_enabled || var.streaming_enabled
-    error_message = "analytics_enabled requires streaming_enabled."
+    # Without Flink, ClickHouse holds only synthetic fixtures loaded by make ai-fixtures (lean AI profile).
+    condition     = !var.analytics_enabled || var.streaming_enabled || var.ai_enabled
+    error_message = "analytics_enabled requires streaming_enabled, or ai_enabled for the lean AI profile."
   }
 }
 
@@ -45,13 +46,13 @@ locals {
 }
 
 resource "random_password" "streaming" {
-  count   = var.streaming_enabled ? 1 : 0
+  count   = local.object_store_enabled ? 1 : 0
   length  = 64
   special = false
 }
 
 resource "kubernetes_secret_v1" "streaming" {
-  for_each = var.streaming_enabled ? toset(["apps", "data"]) : toset([])
+  for_each = local.object_store_enabled ? toset(["apps", "data"]) : toset([])
   metadata {
     name      = "streaming-storage"
     namespace = kubernetes_namespace_v1.foundation[each.key].metadata[0].name
@@ -63,7 +64,7 @@ resource "kubernetes_secret_v1" "streaming" {
 }
 
 resource "kubernetes_persistent_volume_claim_v1" "streaming" {
-  count = var.streaming_enabled ? 1 : 0
+  count = local.object_store_enabled ? 1 : 0
   metadata {
     name      = "minio-state"
     namespace = kubernetes_namespace_v1.foundation["data"].metadata[0].name
@@ -77,7 +78,7 @@ resource "kubernetes_persistent_volume_claim_v1" "streaming" {
 }
 
 resource "kubernetes_service_v1" "minio" {
-  count = var.streaming_enabled ? 1 : 0
+  count = local.object_store_enabled ? 1 : 0
   metadata {
     name      = "minio"
     namespace = kubernetes_namespace_v1.foundation["data"].metadata[0].name
@@ -93,7 +94,7 @@ resource "kubernetes_service_v1" "minio" {
 }
 
 resource "kubernetes_deployment_v1" "minio" {
-  count = var.streaming_enabled ? 1 : 0
+  count = local.object_store_enabled ? 1 : 0
   metadata {
     name      = "minio"
     namespace = kubernetes_namespace_v1.foundation["data"].metadata[0].name

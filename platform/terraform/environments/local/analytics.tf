@@ -10,9 +10,10 @@ resource "kubernetes_secret_v1" "realtime_analytics" {
     name      = "realtime-analytics"
     namespace = kubernetes_namespace_v1.foundation["apps"].metadata[0].name
   }
-  # The SELECT-only Superset reader password (Stage 9) is added only when BI is enabled.
+  # SELECT-only reader passwords: Superset (Stage 9) with BI, the assistant tools (Stage 10) with AI.
   data = merge(
     { password = random_password.realtime_analytics[0].result },
     var.bi_enabled ? { bi-reader-password = random_password.bi["bi-reader-password"].result } : {},
+    var.ai_enabled ? { ai-reader-password = random_password.ai["ai-reader"].result } : {},
   )
 }

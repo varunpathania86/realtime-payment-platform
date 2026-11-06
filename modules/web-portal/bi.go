@@ -39,15 +39,16 @@ type supersetConfig struct {
 }
 
 type portal struct {
-	key      []byte
-	users    map[string]devUser
-	origins  map[string]bool
-	superset supersetConfig
-	client   *http.Client
-	now      func() time.Time
+	key       []byte
+	users     map[string]devUser
+	origins   map[string]bool
+	superset  supersetConfig
+	assistant *assistantProxy
+	client    *http.Client
+	now       func() time.Time
 }
 
-// newPortalFromEnv returns nil when the identity is not configured, so /auth and /bi stay disabled.
+// newPortalFromEnv returns nil when the identity is not configured, so /auth, /bi and /assistant stay disabled.
 func newPortalFromEnv(getenv func(string) string) (*portal, error) {
 	key, users := getenv("PORTAL_SESSION_KEY"), getenv("PORTAL_DEV_USERS")
 	if key == "" && users == "" {
@@ -82,6 +83,11 @@ func newPortalFromEnv(getenv func(string) string) (*portal, error) {
 		p.superset.User == "" || p.superset.Password == "") {
 		return nil, errors.New("BI_SUPERSET_URL needs BI_SUPERSET_PUBLIC_URL, BI_DASHBOARD_ID and token-issuer credentials")
 	}
+	assistant, err := newAssistantFromEnv(getenv)
+	if err != nil {
+		return nil, err
+	}
+	p.assistant = assistant
 	return p, nil
 }
 
@@ -100,6 +106,7 @@ func (p *portal) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		"/auth/logout":    {http.MethodPost, p.logout},
 		"/auth/session":   {http.MethodGet, p.session},
 		"/bi/guest-token": {http.MethodPost, p.guestToken},
+		"/assistant/ask":  {http.MethodPost, p.askAssistant},
 	}
 	route, ok := routes[r.URL.Path]
 	if !ok {
@@ -212,6 +219,7 @@ func (p *portal) writeSession(w http.ResponseWriter, name string, user devUser) 
 	if p.superset.URL != "" && has(user.Permissions, permissionBI) {
 		response["bi"] = map[string]string{"dashboardId": p.superset.DashboardID, "supersetDomain": p.superset.PublicURL}
 	}
+	response["assistant"] = p.assistant != nil && has(user.Permissions, permissionAI)
 	writeJSON(w, http.StatusOK, response)
 }
 

@@ -71,6 +71,17 @@ class ClickHouseAnalyticsTests(unittest.TestCase):
         self.assertEqual(password["valueFrom"]["secretKeyRef"], {
             "name": "realtime-analytics", "key": "bi-reader-password",
         })
+        self.assertNotIn("AI_READER_PASSWORD", {item["name"] for item in enabled["env"]})
+        assistant = schema_job("--set", "aiReader.enabled=true")["containers"][0]
+        self.assertIn(
+            'BI_READER_USER="$AI_READER_USER" BI_READER_PASSWORD="$AI_READER_PASSWORD" sh /schema/bi-reader.sh',
+            assistant["args"][0],
+        )
+        environment = {item["name"]: item.get("value", item.get("valueFrom")) for item in assistant["env"]}
+        self.assertEqual(environment["AI_READER_USER"], "rpp_ai_reader")
+        self.assertEqual(environment["BI_READER_DATABASE"], "analytics")
+        self.assertEqual(environment["AI_READER_PASSWORD"]["secretKeyRef"]["key"], "ai-reader-password")
+        self.assertNotIn("BI_READER_PASSWORD", environment)
         script = (ROOT / "modules/realtime-analytics/chart/files/bi-reader.sh").read_text()
         self.assertIn("REVOKE ALL ON *.*", script)
         self.assertIn("GRANT SELECT ON ${BI_READER_DATABASE}.*", script)
