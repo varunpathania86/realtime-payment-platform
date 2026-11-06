@@ -1479,6 +1479,25 @@
       "integrated": true,
       "iteration": 1,
       "module": "lakehouse-catalog",
+      "publication": {
+        "approvedImpact": "patch",
+        "branch": "main",
+        "chart": {
+          "digest": "sha256:cc85cabf0cdb08415cf49af0b47fb89f0946442a869ff62ccf07e88c39dd5eaa",
+          "repository": "ghcr.io/varunpathania86/charts/lakehouse-catalog",
+          "version": "0.0.1-it1-rv.3"
+        },
+        "digest": "sha256:5cdf803cd9219e84247741bb8bc79ccd35dcdf52e6321acc4aec72f6ec475f66",
+        "module": "lakehouse-catalog",
+        "provenance": "ghcr.io/varunpathania86/lakehouse-catalog@sha256:5cdf803cd9219e84247741bb8bc79ccd35dcdf52e6321acc4aec72f6ec475f66",
+        "repository": "ghcr.io/varunpathania86/lakehouse-catalog",
+        "sbom": "ghcr.io/varunpathania86/lakehouse-catalog@sha256:5cdf803cd9219e84247741bb8bc79ccd35dcdf52e6321acc4aec72f6ec475f66",
+        "schemaVersion": 1,
+        "sourceCommit": "d77a5828ec8d97c350fde9ab47b6a5ec870eba13",
+        "testRun": "https://github.com/varunpathania86/realtime-payment-platform/actions/runs/42219281612",
+        "version": "0.0.1-it1-rv.3",
+        "workflowRun": "https://github.com/varunpathania86/realtime-payment-platform/actions/runs/42220084396"
+      },
       "registry": "ghcr.io/varunpathania86",
       "releaseLine": "main",
       "reservedVersion": "0.0.1-it1-rv.3",
