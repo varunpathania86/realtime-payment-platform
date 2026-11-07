@@ -84,6 +84,14 @@ Tables use Iceberg format v2, zstd Parquet and hidden `day()` partitions on
 
 ## Documentation
 
+Trino enumerates views as well as tables for `SHOW TABLES`. Read grants include
+`VIEW_LIST` so DBX and native-client metadata browsing works even when the namespace
+contains no views. This does not grant view creation, modification or content
+access. Existing deployments gain the grant through the idempotent setup hook
+on an upgrade. For a single-cluster profile, use
+`make run-local MINIKUBE_PROFILE=<profile>` (retain your memory override);
+`make dev-update` is the three-cluster workflow.
+
 - [Chart guide](chart/README.md)
 - [Lakehouse runbook](../../docs/runbooks/lakehouse.md)
 - [Lakehouse query (Trino)](../lakehouse-query/README.md)

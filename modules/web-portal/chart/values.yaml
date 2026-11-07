@@ -38,3 +38,10 @@ resources:
   limits:
     cpu: 250m
     memory: 64Mi
+oidc:
+  enabled: false
+  issuer: ""
+  internalUrl: ""
+  portalOrigin: ""
+  existingSecret: web-portal-identity
+  localHTTP: false

@@ -163,7 +163,7 @@ inventory() {
   fi
   mv "$STATE/topology.pending.json" "$STATE/topology.tfvars.json"
   if [ -f "$STATE/configuration.json" ]; then
-    jq --slurpfile config "$STATE/configuration.json" '. + {cluster_sizes:$config[0].clusters, observability_enabled:($config[0].observability // false)}' \
+    jq --slurpfile config "$STATE/configuration.json" '. + {cluster_sizes:$config[0].clusters, observability_enabled:($config[0].observability // false), identity_enabled:($config[0].identity // false)}' \
       "$STATE/topology.tfvars.json" > "$STATE/topology.pending.json"
     mv "$STATE/topology.pending.json" "$STATE/topology.tfvars.json"
   fi
@@ -229,7 +229,7 @@ deploy() {
     jq --arg key "${profile: -1}" --slurpfile workloads "$STATE/workloads.pending.json" \
       '. * $workloads[0][$key]' "$STATE/events.pending.json" > "$REPO_ROOT/.local/$profile/events.tfvars.json"
     jq --arg key "${profile: -1}" --slurpfile config "$STATE/configuration.json" \
-      '. + {streaming_enabled: ($key == "a" and ($config[0].streaming // false)), analytics_enabled: ($key == "a" and ($config[0].analytics // false)), lakehouse_enabled: ($key == "a" and ($config[0].lakehouse // false)), bi_enabled: ($key == "a" and ($config[0].bi // false)), ai_enabled: ($key == "a" and ($config[0].ai // false)), runtime_profile: ($config[0].runtime_profile // "standard"), risk_enabled: ($key == "a" and ($config[0].risk != null)), risk_package_key: ($config[0].risk.package_key // ""), risk_package_sha256: ($config[0].risk.package_sha256 // "")}' \
+      '. + {streaming_enabled: ($key == "a" and ($config[0].streaming // false)), analytics_enabled: ($key == "a" and ($config[0].analytics // false)), lakehouse_enabled: ($key == "a" and ($config[0].lakehouse // false)), bi_enabled: ($key == "a" and ($config[0].bi // false)), ai_enabled: ($key == "a" and ($config[0].ai // false)), identity_enabled: ($key == "a" and ($config[0].identity // false)), dbx_enabled: ($key == "a" and ($config[0].dbx // false)), runtime_profile: ($config[0].runtime_profile // "standard"), risk_enabled: ($key == "a" and ($config[0].risk != null)), risk_package_key: ($config[0].risk.package_key // ""), risk_package_sha256: ($config[0].risk.package_sha256 // "")}' \
       "$REPO_ROOT/.local/$profile/events.tfvars.json" > "$REPO_ROOT/.local/$profile/streaming.pending.json"
     mv "$REPO_ROOT/.local/$profile/streaming.pending.json" "$REPO_ROOT/.local/$profile/events.tfvars.json"
     MINIKUBE_PROFILE="$profile" scripts/local-dev.sh update

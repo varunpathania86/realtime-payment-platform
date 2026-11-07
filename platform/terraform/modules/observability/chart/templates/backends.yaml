@@ -1,3 +1,9 @@
+{{/*
+Creates the selected telemetry backends and their persistent storage, Services and provisioning.
+Collectors and Grafana data sources call the backends. With OIDC enabled Grafana uses the
+confidential client Secret and Keycloak endpoints; strict client-role mapping denies unknown roles.
+backendNames permits the single-profile identity path to reuse Grafana without other backends.
+*/}}
 {{- if .Values.backends }}
 apiVersion: v1
 kind: Secret
@@ -5,6 +11,9 @@ metadata:
   name: grafana-admin
 stringData:
   password: {{ required "grafanaPassword is required" .Values.grafanaPassword | quote }}
+  {{- if .Values.oidc.enabled }}
+  oidc-client-secret: {{ .Values.oidc.clientSecret | quote }}
+  {{- end }}
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -24,6 +33,7 @@ data:
   (dict "name" "grafana" "port" 3000 "nodePort" 30300 "ready" "/api/health" "args" (list) "memory" "256Mi")
 }}
 {{- range $spec := $specs }}
+{{- if has $spec.name $.Values.backendNames }}
 {{- $config := $.Files.Get (printf "config/%s.yaml" $spec.name) }}
 {{- if eq $spec.name "grafana" }}
 {{- $config = printf "%s%s%s" ($.Files.Get "config/datasources.yaml") ($.Files.Get "config/dashboards.yaml") ($.Files.Get "config/payments.json") }}
@@ -55,6 +65,9 @@ spec:
         config-checksum: {{ $config | sha256sum | quote }}
         {{- if eq $spec.name "grafana" }}
         admin-configuration: {{ $.Values.grafanaPassword | sha256sum | quote }}
+        {{- if $.Values.oidc.enabled }}
+        oidc-configuration: {{ $.Values.oidc | toJson | sha256sum | quote }}
+        {{- end }}
         {{- end }}
     spec:
       automountServiceAccountToken: false
@@ -70,6 +83,26 @@ spec:
           args: {{ $spec.args | toJson }}
           {{- if eq $spec.name "grafana" }}
           env:
+            {{- if $.Values.oidc.enabled }}
+            # Browser authorization uses the public issuer; token/userinfo requests use cluster DNS.
+            - {name: GF_SERVER_ROOT_URL, value: {{ $.Values.oidc.rootUrl | quote }}}
+            - {name: GF_AUTH_GENERIC_OAUTH_ENABLED, value: "true"}
+            - {name: GF_AUTH_GENERIC_OAUTH_NAME, value: Keycloak}
+            - {name: GF_AUTH_GENERIC_OAUTH_CLIENT_ID, value: grafana}
+            - name: GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef: {name: grafana-admin, key: oidc-client-secret}
+            - {name: GF_AUTH_GENERIC_OAUTH_SCOPES, value: "openid profile email"}
+            - {name: GF_AUTH_GENERIC_OAUTH_LOGIN_ATTRIBUTE_PATH, value: preferred_username}
+            - {name: GF_AUTH_GENERIC_OAUTH_AUTH_URL, value: {{ printf "%s/protocol/openid-connect/auth" $.Values.oidc.issuer | quote }}}
+            - {name: GF_AUTH_GENERIC_OAUTH_TOKEN_URL, value: {{ printf "%s/protocol/openid-connect/token" $.Values.oidc.internalUrl | quote }}}
+            - {name: GF_AUTH_GENERIC_OAUTH_API_URL, value: {{ printf "%s/protocol/openid-connect/userinfo" $.Values.oidc.internalUrl | quote }}}
+            - {name: GF_AUTH_GENERIC_OAUTH_USE_PKCE, value: "true"}
+            - {name: GF_AUTH_GENERIC_OAUTH_USE_REFRESH_TOKEN, value: "true"}
+            - {name: GF_AUTH_GENERIC_OAUTH_ALLOW_SIGN_UP, value: "true"}
+            - {name: GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_STRICT, value: "true"}
+            - {name: GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_PATH, value: "contains(roles[*], 'Admin') && 'Admin' || contains(roles[*], 'Editor') && 'Editor' || contains(roles[*], 'Viewer') && 'Viewer'"}
+            {{- end }}
             - {name: GF_PATHS_DATA, value: /data}
             - {name: GF_PATHS_LOGS, value: /tmp}
             - {name: GF_PATHS_PLUGINS, value: /data/plugins}
@@ -136,5 +169,6 @@ spec:
     - {name: otlp, port: 4318, targetPort: otlp, nodePort: 30418}
     {{- end }}
 ---
+{{- end }}
 {{- end }}
 {{- end }}

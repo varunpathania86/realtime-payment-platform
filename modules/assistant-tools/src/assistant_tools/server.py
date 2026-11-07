@@ -27,7 +27,8 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from ai_core.embeddings import LlamaEmbeddings
-from ai_core.identity import TOOLS_AUDIENCE, IdentityError, Principal, bearer_token, load_public_key, verify_assertion
+from ai_core.identity import (TOOLS_AUDIENCE, IdentityError, Principal, bearer_token, verify_assertion,
+                            identity_key_from_env, KeycloakVerifier, payment_token_context)
 from assistant_tools.backends import BackendError, ClickHouse, KnowledgeIndex, PaymentApi, Trino
 from assistant_tools.tools import Toolset
 
@@ -57,13 +58,23 @@ def create_server(toolset: Toolset, public_key: Ed25519PublicKey, allowed_hosts:
                                     "request_id": request_id if _REQUEST_ID.fullmatch(request_id) else None}
         try:
             principal = verify_assertion(bearer_token(headers.get("authorization")), public_key, TOOLS_AUDIENCE)
+            payment_token = None
+            if isinstance(public_key, KeycloakVerifier) and tool == "get_payment":
+                payment_token = headers.get("x-assistant-payment-token")
+                payment = verify_assertion(payment_token or "", public_key, "payment-api")
+                if payment.subject != principal.subject or not payment.has("payments:read"):
+                    raise IdentityError("mismatched payment-tool identity")
         except IdentityError:
             result = {"status": "unauthenticated", "tool": tool}
         else:
             record.update(subject=principal.subject, tenant=principal.tenant,
                             assertion_hash=hashlib.sha256(principal.assertion_id.encode()).hexdigest()[:16])
             try:
-                result = await call(principal)
+                context_token = payment_token_context.set(payment_token)
+                try:
+                    result = await call(principal)
+                finally:
+                    payment_token_context.reset(context_token)
             except BackendError:
                 result = {"status": "unavailable", "tool": tool, "message": "backend unavailable"}
         record.update(status=result["status"], duration_ms=round((time.monotonic() - started) * 1000))
@@ -118,7 +129,7 @@ def main() -> None:
                     os.environ["CLICKHOUSE_PASSWORD"]),
         Trino(client, trino_url) if trino_url else None,
     )
-    public_key = load_public_key(Path(os.environ["ASSERTION_PUBLIC_KEY_FILE"]).read_bytes())
+    public_key = identity_key_from_env()
     allowed_hosts = os.environ.get("ALLOWED_HOSTS", "127.0.0.1:*,localhost:*").split(",")
     app = create_app(toolset, public_key, allowed_hosts)
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "8080")), access_log=False,

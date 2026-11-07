@@ -22,11 +22,11 @@ def positive_integer(value, name):
 def validate(data):
     if not isinstance(data, dict) or set(data) - {
         "node", "clusters", "nodes", "observability", "streaming", "analytics", "lakehouse", "bi", "ai",
-        "runtime_profile", "risk",
+        "runtime_profile", "risk", "identity", "dbx",
     }:
         raise ValueError(
             "configuration accepts only node, nodes, clusters, observability, streaming, analytics, lakehouse, "
-            "bi, ai, runtime_profile and risk"
+            "bi, ai, identity, dbx, runtime_profile and risk"
         )
     node = data.get("node", {})
     if not isinstance(node, dict) or set(node) - {"cpus", "memory_mib"}:
@@ -62,6 +62,7 @@ def validate(data):
                 raise ValueError(f"application {module} is not a runnable catalog module")
             positive_integer(count, f"{cluster}.applications.{module}")
     result = {"node": {"cpus": cpus, "memory_mib": memory}, "clusters": clusters}
+    required_memory = 3072
     if "runtime_profile" in data:
         if data["runtime_profile"] not in ("standard", "low-memory"):
             raise ValueError("runtime_profile must be standard or low-memory")
@@ -75,7 +76,7 @@ def validate(data):
             if not isinstance(value, dict):
                 raise ValueError(f"nodes.{key} must be a node budget object")
             result["nodes"][key] = validate({"node": {**result["node"], **value}})["node"]
-    for feature in ("observability", "streaming", "analytics", "lakehouse", "bi", "ai"):
+    for feature in ("observability", "streaming", "analytics", "lakehouse", "bi", "ai", "identity", "dbx"):
         if feature in data:
             if not isinstance(data[feature], bool):
                 raise ValueError(f"{feature} must be a boolean")
@@ -83,6 +84,7 @@ def validate(data):
     if result.get("analytics", False) and not (result.get("streaming", False) or result.get("ai", False)):
         raise ValueError("analytics requires streaming, or ai for the lean AI profile")
     if result.get("analytics", False):
+        required_memory = 6144
         cluster_a = result.get("nodes", {}).get("a", result["node"])
         if cluster_a["cpus"] < 4 or cluster_a["memory_mib"] < 6144:
             raise ValueError("analytics requires cluster A to have at least 4 CPUs and 6144 MiB")
@@ -92,6 +94,7 @@ def validate(data):
         cluster_a = result.get("nodes", {}).get("a", result["node"])
         # Polaris, Trino and the second Flink slot add about 2.5 GiB of limits on cluster A.
         minimum = 10240 if result.get("analytics", False) else 8192
+        required_memory = max(required_memory, minimum)
         if cluster_a["cpus"] < 4 or cluster_a["memory_mib"] < minimum:
             raise ValueError(f"lakehouse requires cluster A to have at least 4 CPUs and {minimum} MiB")
     if result.get("bi", False):
@@ -100,6 +103,7 @@ def validate(data):
         cluster_a = result.get("nodes", {}).get("a", result["node"])
         # Superset adds about 1 GiB of limits on cluster A on top of analytics (and the lakehouse).
         minimum = 11264 if result.get("lakehouse", False) else 7168
+        required_memory = max(required_memory, minimum)
         if cluster_a["memory_mib"] < minimum:
             raise ValueError(f"bi requires cluster A to have at least {minimum} MiB")
     if result.get("ai", False):
@@ -115,8 +119,20 @@ def validate(data):
             minimum += 2048
         if result.get("bi", False):
             minimum += 1024
+        required_memory = max(required_memory, minimum)
         if cluster_a["cpus"] < 4 or cluster_a["memory_mib"] < minimum:
             raise ValueError(f"ai requires cluster A to have at least 4 CPUs and {minimum} MiB")
+    if result.get("identity", False):
+        cluster_a = result.get("nodes", {}).get("a", result["node"])
+        minimum = required_memory + 2048
+        required_memory = max(required_memory, minimum)
+        if cluster_a["memory_mib"] < minimum:
+            raise ValueError(f"identity requires cluster A to have at least {minimum} MiB")
+    if result.get("dbx", False):
+        cluster_a = result.get("nodes", {}).get("a", result["node"])
+        minimum = required_memory + 512
+        if cluster_a["memory_mib"] < minimum:
+            raise ValueError(f"dbx requires cluster A to have at least {minimum} MiB")
     if "risk" in data:
         risk = data["risk"]
         if not isinstance(risk, dict) or set(risk) != {"package_key", "package_sha256"}:

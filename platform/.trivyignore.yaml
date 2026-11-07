@@ -6,3 +6,38 @@ misconfigurations:
       Kubernetes HTTP readiness and liveness probes manage MinIO health.
       The scratch runtime contains only the checksum-verified server binary.
       Revisit for standalone Docker deployment or if those probes change.
+  - id: DS-0026
+    paths: [runtime/identity-provider/Dockerfile]
+    expired_at: 2027-01-01
+    statement: >-
+      The optimized Keycloak runtime enables management health endpoints.
+      Kubernetes startup, readiness and liveness probes manage its lifecycle.
+      The upstream image has no curl; do not install a second health client.
+  - id: DS-0026
+    paths: [runtime/dbx/Dockerfile]
+    expired_at: 2027-01-01
+    statement: >-
+      Kubernetes startup, readiness and liveness probes call DBX's
+      /api/auth/check endpoint. The pinned upstream image has no curl or wget;
+      do not install a second health client. Revisit for standalone Docker use.
+  - id: KSV-0020
+    paths: [terraform/modules/identity/chart/templates/provider.yaml]
+    expired_at: 2027-01-01
+    statement: >-
+      Preserve the upstream Keycloak UID 1000 and its image ownership.
+      The runtime is non-root, read-only, drops all capabilities and uses
+      dedicated writable volumes. Revisit with a runtime-user change.
+  - id: KSV-0021
+    paths: [terraform/modules/identity/chart/templates/provider.yaml]
+    expired_at: 2027-01-01
+    statement: >-
+      Use GID 1000 for the dedicated writable volumes without root privileges.
+      Keycloak has no service-account token and uses RuntimeDefault seccomp.
+      Revisit with a runtime-user change.
+  - id: KSV-0125
+    paths: [terraform/modules/identity/chart/templates/provider.yaml]
+    expired_at: 2027-01-01
+    statement: >-
+      The local Terraform runtime is built from the checksum-pinned upstream
+      image, loaded into the explicitly selected Minikube profile and uses
+      pull policy Never. This chart is not a production registry policy.

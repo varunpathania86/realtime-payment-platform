@@ -9,6 +9,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+import urllib.parse
 
 PORTAL_HOST = "localhost"
 SUPERSET_HOST = "bi.localhost"
@@ -170,10 +171,19 @@ def main(argv=None):
         origins = portal_env(args.profile, "PORTAL_ALLOWED_ORIGINS").split()
         if not dashboard_id or not origins:
             raise RuntimeError("BI is not enabled on this profile (web-portal has no BI configuration)")
-        users = json.loads(secret(args.profile, "web-portal-identity", "dev-users"))
+        issuer = portal_env(args.profile, "OIDC_ISSUER")
+        if issuer:
+            from scripts.identity_browser import credentials
+            _, users = credentials(args.profile)
+        else:
+            users = json.loads(secret(args.profile, "web-portal-identity", "dev-users"))
         process, base = forward(args.profile)
         try:
-            results = verify(lambda *request: http(base, *request), origins[0], users, dashboard_id)
+            send = lambda *request: http(base, *request)  # noqa: E731
+            if issuer:
+                from scripts.identity_browser import OIDCSessionSender
+                send = OIDCSessionSender(urllib.parse.urlparse(base).port, origins[0], issuer, send)
+            results = verify(send, origins[0], users, dashboard_id)
         finally:
             process.terminate()
             process.wait(timeout=10)

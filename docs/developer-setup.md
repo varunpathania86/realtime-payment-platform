@@ -340,6 +340,202 @@ minikube stop -p "$PROFILE"
 case. Answer quality is reported, not enforced, because a small local model
 varies.
 
+### Stage 11 unified identity
+
+Identity uses Keycloak-managed synthetic users in a dedicated PostgreSQL
+database, **not LDAP**. See [ADR-032](adr/ADR-032-keycloak-identity-and-bff.md).
+The provider is shared infrastructure; it does not add a catalog module.
+
+Keycloak and its upstream image digest are pinned as `keycloak` and
+`keycloak-image-digest` in `.tool-versions`. The optimized runtime is built
+through `IDENTITY=1 make setup` and checked by `IDENTITY=1 make doctor`.
+No host Java, LDAP server or Keycloak CLI installation is required.
+
+```bash
+IDENTITY=1 make setup
+make identity-integration
+```
+
+The integration check uses isolated disposable containers and generated test
+credentials. First-use image downloads need internet; no publication,
+registry login or GitHub Actions run is required.
+
+`templates/identity-topology.json` enables the provider in cluster A with
+5120 MiB. Identity adds a 2048 MiB budget to the existing feature minimums;
+combining it with AI needs at least 10240 MiB on cluster A. For one dedicated
+profile instead of three clusters:
+
+```bash
+PROFILE=rpp-stage11-verify
+mkdir -p ".local/$PROFILE"
+printf '{"identity_enabled": true}\n' > ".local/$PROFILE/events.tfvars.json"
+make dev-up MINIKUBE_PROFILE="$PROFILE" MINIKUBE_CPUS=4 MINIKUBE_MEMORY=5120
+make dev-access MINIKUBE_PROFILE="$PROFILE"
+# OIDC discovery: http://identity.localhost:8080/realms/rpp/.well-known/openid-configuration
+minikube stop -p "$PROFILE"
+```
+
+`dev-up`/`dev-update` operate on that one explicitly selected
+`MINIKUBE_PROFILE`; without it they retain the existing three-cluster workflow.
+Never stop, delete or resize somebody else's profile. A stateful streaming
+image change still requires `make streaming-stop` and both printed restore
+paths before `make dev-update MINIKUBE_PROFILE=...`; identity does not bypass
+the savepoint guard.
+
+The initial realm seed imports only into a new identity database. Startup does
+not overwrite an existing realm. See the [chart guide](../platform/terraform/modules/identity/chart/README.md)
+for storage, ingress and seed lifecycle. Enabling identity replaces the portal
+password form with Keycloak Authorization Code + S256 PKCE. The Go BFF keeps
+OAuth tokens server-side behind opaque HttpOnly sessions, refreshes them and
+exchanges separate payment, orchestrator and MCP audience tokens. Each API
+verifies its own resource roles. Superset and Grafana use interactive OIDC;
+Argo CD is only a disabled, reserved client.
+
+Existing databases require explicit realm upgrades:
+
+```bash
+make identity-access MINIKUBE_PROFILE="$PROFILE"   # dedicated loopback admin forward
+make identity-sync MINIKUBE_PROFILE="$PROFILE"     # another terminal; repeatable
+make identity-verify MINIKUBE_PROFILE="$PROFILE"   # full AI/BI profile required
+```
+
+The sync preserves existing human passwords, creates missing users, reconciles
+declared client/group/user role mappings and does not delete unrelated
+identities. Do not assume pod restart reimports an existing realm.
+The BFF currently uses one replica with bounded in-memory sessions; restarting
+it signs users out. Identity-disabled development remains available, but
+configured and unavailable OIDC never falls back to the development password.
+See the [identity runbook](runbooks/unified-identity.md).
+
+The initial dedicated-profile check used about 2.8 GiB of its 5 GiB budget
+with the base application stack and identity provider idle. This is not a
+measurement of the later combined AI/BI/SSO stack.
+
+## Local accounts and credentials
+
+All accounts are synthetic local-development accounts. Most credentials are
+generated per profile; payment database credentials follow the selected local
+or external database configuration. The
+Stage 11 Keycloak identities sign in to the portal, Superset and Grafana when
+identity is enabled. The identity-disabled development passwords are separate;
+identical usernames do not imply identical passwords.
+
+### Password retrieval helpers
+
+Select a running profile with the required features, then define these helpers
+in your terminal. `secret_value` decodes one exact Secret key; `portal_password`
+extracts one user from the portal's JSON credential map. The commands in the
+tables below use these helpers, not additional installed tools.
+
+```bash
+PROFILE=rpp-stage11-verify   # replace with your running profile
+secret_value() {
+  kubectl --context "$PROFILE" -n "$1" get secret "$2" -o json |
+    jq -er --arg key "$3" '.data[$key] | select(. != null) | @base64d'
+}
+portal_password() {
+  secret_value apps web-portal-identity dev-users |
+    jq -er --arg user "$1" '.[$user].password'
+}
+```
+
+### Human logins and application service accounts
+
+| Module | Username | Description | Roles | How to get password |
+|---|---|---|---|---|
+| `web-portal` (React; identity disabled, BI or AI enabled) | `ops-viewer` | Development-only portal login for dashboards and assistant | `bi:view`, `ai:invoke`, `knowledge:read`, `analytics:read` | `portal_password ops-viewer` |
+| `web-portal` (React; identity disabled, BI or AI enabled) | `payments-clerk` | Development-only assistant payment lookup; no dashboard | `ai:invoke`, `payments:read` | `portal_password payments-clerk` |
+| `web-portal` (React; identity disabled, BI or AI enabled) | `ops-engineer` | Development-only restricted incident knowledge | `bi:view`, `ai:invoke`, `knowledge:read`, `knowledge:restricted`, `analytics:read`, `payments:read` | `portal_password ops-engineer` |
+| `bi-dashboards` (Superset; BI enabled) | `admin` | Local administration API account; interactive humans use Keycloak when identity is enabled | Superset `Admin` | `secret_value apps bi-dashboards admin-password` |
+| `bi-dashboards` (Superset; BI enabled) | `rpp_guest_token_issuer` | Backend service account, not a human login | Least-privilege guest-token issuance | `secret_value apps bi-dashboards token-issuer-password` |
+| DBX infrastructure (DBX enabled) | No username; shared access password | Browser login to the development database workbench; separate from Keycloak | Access to provisioned connections; underlying database permissions still apply | `secret_value apps dbx-workbench password` |
+| Shared MinIO infrastructure (streaming or AI enabled) | `rpp-streaming` | Browser login to the separate MinIO console | Local MinIO root administrator; same credential as the S3 service account | `secret_value apps streaming-storage secret-key` |
+| Observability infrastructure (Grafana; identity or observability enabled) | `admin` | Local break-glass administrator; humans use Keycloak SSO when identity is enabled | Grafana server administrator | `secret_value telemetry grafana-admin password` |
+| Identity infrastructure (Keycloak realm `rpp`; identity enabled) | `ops-viewer` | Portal, Superset and Grafana SSO human identity | `viewer` group: payment read, dashboard, non-restricted knowledge, analytics and assistant access; Grafana `Viewer`, Superset `Gamma`, reserved Argo CD `readonly` | `secret_value security identity-provider VIEWER_PASSWORD` |
+| Identity infrastructure (Keycloak realm `rpp`; identity enabled) | `payments-clerk` | Seeded human identity without knowledge or dashboard access | Explicit payment read/write, assistant invocation and payment lookup | `secret_value security identity-provider CLERK_PASSWORD` |
+| Identity infrastructure (Keycloak realm `rpp`; identity enabled) | `ops-engineer` | Seeded developer identity with restricted knowledge access | `developer` group plus `knowledge:restricted`: payment read/write, dashboard, analytics and assistant access; Grafana `Editor`, Superset `Gamma`, reserved Argo CD `readonly` | `secret_value security identity-provider ENGINEER_PASSWORD` |
+| Identity infrastructure (Keycloak administration; identity enabled) | `bootstrap-admin` | Bootstrap provider administrator, not an application user | Keycloak administration in the `master` realm | `secret_value security identity-provider KC_BOOTSTRAP_ADMIN_PASSWORD` |
+
+### Database, storage and catalog service accounts
+
+These are machine credentials, not browser logins. Read-only application
+readers are distinct from administrators and writers. Optional accounts exist
+only when their corresponding features are enabled.
+
+| Module | Username | Description | Roles | How to get password |
+|---|---|---|---|---|
+| `payment-api` / payment PostgreSQL | `payments` | Database login for the API, migration and outbox workers | Payment database access; bootstrap superuser in the default single-cluster database | `secret_value data payments-postgres POSTGRES_PASSWORD` |
+| Shared Kafka infrastructure | `payments` | SASL/SCRAM service identity for payment event clients | Kafka producer/consumer authentication | `secret_value apps payment-api-events KAFKA_PASSWORD` |
+| Shared MinIO infrastructure (streaming or AI enabled) | `rpp-streaming` | Object storage access for state, lakehouse and knowledge originals | Local MinIO root account | `secret_value apps streaming-storage secret-key` |
+| `realtime-analytics` (ClickHouse; analytics enabled) | `rpp_analytics` | Local analytics administrator and ingestion account | Schema management and writes | `secret_value apps realtime-analytics password` |
+| `bi-dashboards` / ClickHouse (BI enabled) | `rpp_bi_reader` | Superset analytics reader | SELECT-only analytics access | `secret_value apps realtime-analytics bi-reader-password` |
+| `assistant-tools` / ClickHouse (AI enabled) | `rpp_ai_reader` | Assistant analytics reader | SELECT-only analytics access | `secret_value apps realtime-analytics ai-reader-password` |
+| `bi-dashboards` / PostgreSQL (BI enabled) | `superset` | Superset metadata database owner | Owns database `superset` | `secret_value data superset-database password` |
+| `lakehouse-catalog` / PostgreSQL (lakehouse enabled) | `polaris` | Polaris metadata database owner | Owns database `polaris` and its catalog schema | `secret_value data polaris-database password` |
+| `lakehouse-catalog` (Polaris; lakehouse enabled) | `root` principal; generated client ID | Catalog bootstrap administrator | Polaris bootstrap administration | `secret_value apps lakehouse-catalog root-client-secret`; client ID: `secret_value apps lakehouse-catalog root-client-id` |
+| `stream-processor` / Polaris (lakehouse enabled) | `writer` principal; generated client ID | Flink Iceberg writer | Catalog/table write access | `secret_value apps lakehouse-writer client-secret`; client ID: `secret_value apps lakehouse-writer client-id` |
+| `lakehouse-query` / Polaris (lakehouse enabled) | `reader` principal; generated client ID | Trino read-only catalog identity | Catalog/table read access | `secret_value apps lakehouse-query reader-credential` returns `client-id:client-secret` |
+| `lakehouse-query` / Polaris (lakehouse enabled) | `maintainer` principal; generated client ID | Trino maintenance identity | Iceberg maintenance/write access | `secret_value apps lakehouse-query maintainer-credential` returns `client-id:client-secret` |
+| AI knowledge PostgreSQL (AI enabled) | `rpp_knowledge_admin` | Knowledge database bootstrap administrator | Database administration and pgvector extension setup | `secret_value data knowledge-postgres POSTGRES_PASSWORD` |
+| `operations-knowledge` / PostgreSQL (AI enabled) | `rpp_knowledge_writer` | Ingestion/schema owner | Knowledge schema creation and data writes | `secret_value apps knowledge-database writer-password` |
+| `assistant-tools` / PostgreSQL (AI enabled) | `rpp_knowledge_reader` | Knowledge retrieval service identity | Read-only knowledge access | `secret_value apps knowledge-database reader-password` |
+| Identity PostgreSQL (identity enabled) | `keycloak` | Dedicated provider database login | Owns Keycloak database; bootstrap superuser in the local identity database | `secret_value data identity-postgres POSTGRES_PASSWORD` |
+
+Other components such as llama.cpp, Flink, Prometheus, Loki and Tempo do not
+have separately provisioned username/password logins in the current local
+deployment. Argo CD is not deployed; its disabled Keycloak client is a reserved
+configuration, not a usable account.
+
+The Keycloak `analyst` and `platform-admin` groups also exist, but no default
+human user belongs to them. Application permissions in the Keycloak rows
+describe the realm configuration, not completed application enforcement.
+Portal dashboard viewers use scoped guest tokens; they do not need separate
+Superset accounts.
+
+Select the profile that actually runs the relevant feature. It must be
+running, and your Kubernetes credentials must permit reading its Secrets.
+These commands print passwords to your terminal: do not paste their output
+into issues, logs, screenshots or commits.
+
+Existing React portal passwords:
+
+```bash
+PROFILE=rpp-stage10-verify   # or your BI/AI-enabled profile
+kubectl --context "$PROFILE" -n apps get secret web-portal-identity \
+  -o jsonpath='{.data.dev-users}' | base64 -d | jq 'map_values(.password)'
+```
+
+Superset passwords (requires a BI-enabled profile):
+
+```bash
+PROFILE=rpp-stage9-verify   # or your BI-enabled profile
+# Human administrator: admin
+kubectl --context "$PROFILE" -n apps get secret bi-dashboards \
+  -o jsonpath='{.data.admin-password}' | base64 -d; echo
+# Backend service account: rpp_guest_token_issuer
+kubectl --context "$PROFILE" -n apps get secret bi-dashboards \
+  -o jsonpath='{.data.token-issuer-password}' | base64 -d; echo
+```
+
+Keycloak initial passwords:
+
+```bash
+PROFILE=rpp-stage11-verify   # or your identity-enabled profile
+kubectl --context "$PROFILE" -n security get secret identity-provider -o json |
+  jq '.data | {
+    "ops-viewer": (.VIEWER_PASSWORD | @base64d),
+    "payments-clerk": (.CLERK_PASSWORD | @base64d),
+    "ops-engineer": (.ENGINEER_PASSWORD | @base64d),
+    "bootstrap-admin": (.KC_BOOTSTRAP_ADMIN_PASSWORD | @base64d)
+  }'
+```
+
+The Keycloak Secret records **initial seed/bootstrap passwords**. If a
+password is subsequently changed in Keycloak, that Secret does not show the
+new password, and restarting the provider does not reset it. Administration
+is not exposed through the public identity Ingress; use an explicit
+loopback-only port forward when administration is necessary.
+
 ### Clone and initialize
 
 ```bash
@@ -433,6 +629,289 @@ Same-repository PR checks no longer test GitHub's synthetic merge commit; update
 the branch from its target when you need to verify the combined source.
 
 ## 4. Local application development
+
+### Single-cluster end-to-end development
+
+```bash
+make run-local
+make dev-access MINIKUBE_PROFILE=rpp-dev-single   # separate terminal; http://localhost:8080
+make stop-local                                # preserve data for the next run
+make clean-local                               # DESTRUCTIVE: delete profile and profile-local state
+```
+
+`run-local` defaults to one profile named `rpp-dev-single`, 6 CPUs and
+16384 MiB of cluster memory. On first use it enables streaming, ClickHouse,
+the Iceberg lakehouse, Superset BI and the AI assistant. It builds and loads
+local images, applies Terraform and runs the existing smoke check without
+GitHub Actions or registry publication. Subsequent runs preserve the profile's
+saved feature settings in `.local/rpp-dev-single/events.tfvars.json`.
+It does not automatically produce payment traffic or ingest knowledge.
+
+The combined feature set has **not been certified together** on this host.
+The host needs additional memory beyond the 16 GiB cluster allocation for
+Docker, the OS and development tools. Prefer a smaller saved feature
+configuration on a 16 GiB machine. Stage 11 Keycloak is not enabled by default
+while application integration is incomplete, and risk inference still requires
+its separately configured model artifact.
+
+```bash
+# Use the same profile override for every lifecycle command.
+make run-local MINIKUBE_PROFILE=my-dev MINIKUBE_CPUS=6 MINIKUBE_MEMORY=16384
+make stop-local MINIKUBE_PROFILE=my-dev
+make clean-local MINIKUBE_PROFILE=my-dev
+
+# After changing application sources on the default single-cluster profile:
+MINIKUBE_PROFILE=rpp-dev-single bash scripts/local-dev.sh update
+make smoke MINIKUBE_PROFILE=rpp-dev-single
+
+# Prepare the assistant corpus, then generate synthetic pipeline traffic:
+make knowledge-ingest MINIKUBE_PROFILE=rpp-dev-single
+make streaming-fixtures MINIKUBE_PROFILE=rpp-dev-single
+```
+
+`stop-local` only stops the selected cluster. `clean-local` deletes that
+Minikube profile (including its volumes) and its `.local/<profile>` directory,
+including Terraform state, saved feature settings and local reports. It does
+not delete other profiles, host Docker images, shared tool caches or trained
+model artifacts outside that directory. A failed cluster deletion preserves
+the state directory. Cleanup refuses symlinked state paths and fenced profiles.
+The existing `make dev-up`/`make dev-update` commands remain the **three-cluster**
+workflow.
+
+### Optional in-cluster DBX workbench
+
+#### Browser URLs and login credentials
+
+Select your running profile; these commands do not require the password helper
+functions from the account table:
+
+```bash
+PROFILE=rpp-dev-single
+```
+
+| Browser interface | URL | Username | Password source |
+|---|---|---|---|
+| DBX workbench | `http://127.0.0.1:44224` | None; enter the shared access password | `apps/dbx-workbench`, key `password` |
+| MinIO console | `http://127.0.0.1:19091` | `rpp-streaming` | `apps/streaming-storage`, key `secret-key` |
+
+Start DBX browser access in one terminal and leave it running:
+
+```bash
+make dbx-access MINIKUBE_PROFILE="$PROFILE"
+```
+
+In another terminal, retrieve the DBX password:
+
+```bash
+kubectl --context "$PROFILE" -n apps get secret dbx-workbench \
+  -o jsonpath='{.data.password}' | base64 --decode
+printf '\n'
+```
+
+DBX uses this one web-login password; saved database usernames/passwords and
+Kafka credentials remain server-side. The DBX password is **not** the MinIO
+password and is not a Keycloak login.
+
+MinIO is a separate web interface, not a connection inside DBX. Start its
+console access in another terminal and leave that command running:
+
+```bash
+make minio-access MINIKUBE_PROFILE="$PROFILE"
+```
+
+Then retrieve the MinIO password (also its S3 secret key):
+
+```bash
+printf 'MinIO username: rpp-streaming\n'
+kubectl --context "$PROFILE" -n apps get secret streaming-storage \
+  -o jsonpath='{.data.secret-key}' | base64 --decode
+printf '\n'
+```
+
+Enter `rpp-streaming` and the decoded value at the MinIO console URL, not at
+the S3 API endpoint (`http://127.0.0.1:19090`). MinIO's root account is
+privileged; do not delete application buckets or modify their contents during
+normal inspection.
+
+Both forwards bind only to loopback. Ctrl-C closes the corresponding forward
+without stopping the cluster. Restart browser access after pod replacement.
+`make minio-access` forwards only the console, not the S3 API or databases.
+DBX uses internal Services; the broad `make access-local` command is needed
+only when deliberately using native desktop clients, not for DBX or MinIO
+console access.
+Credentials are generated per profile and may change after cleanup/recreation;
+retrieve them again rather than relying on an old copied password. These
+commands deliberately display secrets in your local terminal: do not paste
+their output into documentation, commits, screenshots or shared logs.
+
+#### Setup, provisioning and security boundaries
+
+DBX's pinned connection picker/driver manifest does not provide an S3/MinIO
+profile. MinIO is object storage, not a PostgreSQL database or Kafka service,
+and cannot be added as a working DBX connection by renaming a profile.
+Use the existing MinIO console at `http://127.0.0.1:19091` while
+`make minio-access` runs; its username is `rpp-streaming` and its credential is
+listed in the local accounts table. A unified browser endpoint for that
+separate console requires an additional routing integration; it is not
+provided by DBX itself.
+
+Saved DBX connections are distinct from the databases/schemas expanded under
+them. The payment server contains application-owned metadata databases, while
+knowledge uses its own PostgreSQL server. Provisioning uses separate logins
+for Superset, Polaris and the knowledge reader rather than treating the payment
+administrator as the identity for every database. ClickHouse inspection
+prefers its application reader account when BI or AI is enabled.
+
+Saved profiles must include the browser's `driver_profile` identity; otherwise
+password-viewer protection rejects connections as a changed target. The
+provisioner includes this field and reruns its completed sync Job when adapter
+or credential revisions change. Reload the browser after synchronization.
+PostgreSQL, ClickHouse and Trino queries and Kafka topic listing have been
+verified through DBX. The upstream image does not bundle those Kafka/Trino
+runtimes; the deployment installs checksum-verified, pinned Kafka and Trino
+agents plus Java 21 through an init container and DBX's runtime APIs.
+Trino saves its passwordless configuration so the browser does not prompt for
+an unnecessary password. Do not disable credential protection or enter
+replacement credentials to bypass a target check.
+
+The optional DBX Web workbench runs inside the selected Minikube cluster and
+preloads connections from the platform's existing Kubernetes Secrets. It is
+shared local infrastructure, not a product module. The workbench is disabled
+unless `dbx_enabled: true` is added to the selected profile's
+`.local/<profile>/events.tfvars.json`; preserve all other saved settings. Then
+reconcile the already-running single-cluster profile with:
+
+```bash
+make run-local MINIKUBE_PROFILE=rpp-dev-single MINIKUBE_CPUS=6 MINIKUBE_MEMORY=13312
+```
+
+For multi-cluster topology configuration, use `dbx: true`; the workbench is
+installed only on cluster A. The configuration validator budgets an additional
+512 MiB for DBX.
+
+Forward the web UI only to loopback:
+
+```bash
+make dbx-access MINIKUBE_PROFILE=rpp-dev-single
+# Open http://127.0.0.1:44224 in a browser; Ctrl-C stops only this forward.
+make dbx-status MINIKUBE_PROFILE=rpp-dev-single
+```
+
+DBX has its own single shared web password; this is not yet a Keycloak SSO
+client. Retrieve the profile-generated login password only when needed:
+
+```bash
+kubectl --context rpp-dev-single -n apps get secret dbx-workbench \
+  -o jsonpath='{.data.password}' | base64 --decode
+```
+
+The Secret is never emitted by setup, Terraform outputs, provisioning logs or
+smoke checks. DBX's saved-password viewer is disabled. Its data and encryption
+key are stored in the workbench PVC; the server starts as UID 10001 with a
+read-only root filesystem and writable data/runtime-temp mounts only. Browser access has
+no Ingress, NodePort or host bind except the explicit loopback port-forward.
+
+The workbench uses the Apache-2.0 DBX Web image pinned by version and OCI index
+digest in `.tool-versions`. Provisioning uses the DBX Web API's connection
+list/save routes through a deliberately version-coupled adapter. Upstream marks
+these routes internal and unstable, so the exact API contract version is also
+pinned; changing the DBX image requires updating the adapter contract tests and
+passing local API/credential verification. The adapter authenticates to DBX,
+upserts stable connection IDs, verifies saved IDs/types, never deletes other
+connections, rejects non-cluster API URLs/redirects and suppresses response
+bodies from errors. It writes no DBX private storage.
+
+PostgreSQL and Kafka login details are sourced from the existing application
+Secrets; ClickHouse is added when analytics is enabled, and Trino when the
+lakehouse is enabled. Connections use in-cluster Service DNS. Credentials stay
+inside Kubernetes/DBX server storage, and the profiles are configured read-only.
+No DBX cloud sync, remote AI provider or external AI agent integration is configured; do
+not enable remote sync or send payment data to hosted tools. The DBX image
+defaults to root, so its non-root startup and writable directories are checked
+before deployment.
+
+### Optional native database and desktop resource access
+
+#### Manual connection setup
+
+After starting the single-cluster solution, leave this command running in a
+separate terminal:
+
+```bash
+make access-local
+# For a different running profile:
+make access-local MINIKUBE_PROFILE=my-dev
+```
+
+It discovers deployed data Services in the explicitly selected Kubernetes
+context and opens loopback-only forwards. Features not deployed are reported
+as skipped. Startup failures, occupied ports and failed forwards are errors,
+not successful connection reports. Ctrl-C closes only the command's own
+forwards; it does not stop the cluster. Restart it after cluster recreation or
+pod replacement. Browser application access remains `make dev-access`.
+
+For clients running on the developer machine, use the settings below where
+DBX is disabled or where a native client is specifically needed. Trino is an
+HTTP service; a forwarded endpoint does not by itself install a driver.
+
+| Resource | Host / local port | Connection settings | Credential retrieval |
+|---|---|---|---|
+| Payment PostgreSQL | `127.0.0.1:15432` | PostgreSQL, database `payments`, user `payments`; local TLS disabled | `secret_value data payments-postgres POSTGRES_PASSWORD` |
+| Superset metadata | `127.0.0.1:15432` | PostgreSQL, database/user `superset`; BI must be enabled | `secret_value data superset-database password` |
+| Polaris metadata | `127.0.0.1:15432` | PostgreSQL, database/user `polaris`; lakehouse must be enabled | `secret_value data polaris-database password` |
+| AI knowledge PostgreSQL | `127.0.0.1:15433` | PostgreSQL, database `ai_knowledge`, user `rpp_knowledge_reader` for inspection | `secret_value apps knowledge-database reader-password` |
+| Keycloak PostgreSQL | `127.0.0.1:15434` | PostgreSQL, database/user `keycloak`; identity must be enabled | `secret_value data identity-postgres POSTGRES_PASSWORD` |
+| ClickHouse | HTTP `127.0.0.1:18123`; native `127.0.0.1:19000` | Database `analytics`, user `rpp_analytics`; prefer `rpp_bi_reader` or `rpp_ai_reader` for read-only inspection when enabled | `secret_value apps realtime-analytics password`; reader keys are in the account table |
+| Trino | `http://127.0.0.1:18080` | Catalog `lakehouse`, schema `payments`; a nonempty client username such as `developer`, no password in the current local configuration | No HTTP authentication is configured; `lakehouse` is read-only, but `lakehouse_admin` allows maintenance writes |
+| MinIO S3 API | `http://127.0.0.1:19090` | Access key `rpp-streaming`, region `us-east-1`, path-style access, local HTTP | `secret_value apps streaming-storage secret-key` |
+| MinIO console | `http://127.0.0.1:19091` | Browser login with username `rpp-streaming` | Same MinIO secret key |
+| Kafka | `localhost:19092` by default | `SASL_SSL`, `SCRAM-SHA-512`, username `payments`, trusted CA file, hostname verification enabled | `secret_value apps payment-api-events KAFKA_PASSWORD` |
+| Polaris catalog API | `http://127.0.0.1:18181` | Iceberg REST/OAuth API, not a SQL database; use catalog reader credentials | See the Polaris principal rows in the account table |
+| Apicurio schema registry | `http://127.0.0.1:18081` | HTTP API, e.g. `/apis/registry/v3/system/info`; no local user login | No password in the current local configuration |
+
+`secret_value` is defined in [Local accounts and credentials](#local-accounts-and-credentials).
+Do not edit Superset, Polaris, Keycloak or knowledge metadata directly during
+normal application development. Their owning applications manage schema and
+state. These connections are for inspection; administrator credentials can
+modify or destroy data.
+
+#### Kafka desktop listener and certificate
+
+New `make run-local` profiles enable `kafka_host_port: 19092` automatically.
+For an existing single-cluster profile, add `"kafka_host_port": 19092` to its
+saved `.local/<profile>/events.tfvars.json`, retaining every other setting,
+then run `make run-local MINIKUBE_PROFILE=<profile>` before `make access-local`.
+This changes the broker configuration and certificate and restarts the broker;
+allow internal clients time to reconnect.
+
+The desktop listener is separate from the internal
+`payments-kafka.data.svc.cluster.local:9092` listener. It advertises
+`localhost:<kafka_host_port>` so metadata remains reachable from desktop
+clients, uses the existing SCRAM credentials and TLS, and has localhost and
+loopback certificate SANs. No external NodePort or unauthenticated listener is
+created. Zero (the Terraform default outside `run-local`) disables this
+single-broker desktop listener. The multi-cluster Kafka configuration is not
+changed.
+
+Export the **public CA certificate**, not a private key:
+
+```bash
+PROFILE=rpp-dev-single
+mkdir -p ".local/$PROFILE/access"
+secret_value apps payment-api-events ca.pem > ".local/$PROFILE/access/kafka-ca.pem"
+```
+
+Select that file as the Kafka connector's CA certificate; keep certificate and
+hostname verification enabled. Do not use the internal listener as the desktop
+bootstrap address. If you change `kafka_host_port`, `access-local` reads the
+actual advertised port; configure the extension with that same port and avoid
+the other reserved ports in the table. Re-export the CA after certificate
+rotation.
+
+The forwards run where VS Code's extension host runs. In Remote SSH or WSL,
+install/run the extension on that host, or explicitly forward the required
+ports to your desktop. `127.0.0.1` in another machine's extension host is not
+the development machine.
 
 Stage 0 prepares the workstation and cluster lifecycle. Stage 1 supplies the
 first runnable applications and the local edit/build/deploy/test loop.

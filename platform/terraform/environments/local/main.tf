@@ -140,6 +140,14 @@ resource "helm_release" "application" {
       existingSecret = "web-portal-identity"
       allowedOrigins = local.bi_origins
     }
+    oidc = {
+      enabled        = var.identity_enabled
+      issuer         = "http://identity.localhost:${var.access_port}/realms/rpp"
+      internalUrl    = "http://identity-provider.security.svc.cluster.local:8080/realms/rpp"
+      portalOrigin   = "http://localhost:${var.access_port}"
+      existingSecret = "web-portal-identity"
+      localHTTP      = true
+    }
     assistant = {
       enabled         = var.ai_enabled
       orchestratorUrl = "http://ai-orchestrator:8080"

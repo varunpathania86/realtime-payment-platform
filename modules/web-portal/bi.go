@@ -19,8 +19,8 @@ import (
 	"time"
 )
 
-// Local development identity (ADR-025): synthetic users from a Kubernetes Secret, enforced here.
-// It is non-production and is replaced, not extended, by Keycloak in Stage 11.
+// ADR-025 development identity is available only without OIDC configuration.
+// Stage 11 uses Keycloak and server-side opaque sessions (oidc.go).
 
 const (
 	sessionCookie  = "rpp_portal_session"
@@ -39,6 +39,7 @@ type supersetConfig struct {
 }
 
 type portal struct {
+	oidc      *portalOIDC
 	key       []byte
 	users     map[string]devUser
 	origins   map[string]bool
@@ -50,6 +51,9 @@ type portal struct {
 
 // newPortalFromEnv returns nil when the identity is not configured, so /auth, /bi and /assistant stay disabled.
 func newPortalFromEnv(getenv func(string) string) (*portal, error) {
+	if getenv("OIDC_ISSUER") != "" || getenv("OIDC_INTERNAL_URL") != "" || getenv("OIDC_CLIENT_SECRET") != "" {
+		return newOIDCPortal(getenv)
+	}
 	key, users := getenv("PORTAL_SESSION_KEY"), getenv("PORTAL_DEV_USERS")
 	if key == "" && users == "" {
 		return nil, nil
@@ -102,13 +106,26 @@ func (p *portal) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		method string
 		serve  func(http.ResponseWriter, *http.Request)
 	}{
-		"/auth/login":     {http.MethodPost, p.login},
-		"/auth/logout":    {http.MethodPost, p.logout},
-		"/auth/session":   {http.MethodGet, p.session},
+		"/auth/login":   {http.MethodPost, p.login},
+		"/auth/logout":  {http.MethodPost, p.logout},
+		"/auth/session": {http.MethodGet, p.session},
+		"/auth/config": {http.MethodGet, func(w http.ResponseWriter, _ *http.Request) {
+			writeJSON(w, http.StatusOK, map[string]bool{"oidc": p.oidc != nil})
+		}},
 		"/bi/guest-token": {http.MethodPost, p.guestToken},
 		"/assistant/ask":  {http.MethodPost, p.askAssistant},
 	}
 	route, ok := routes[r.URL.Path]
+	if p.oidc != nil {
+		switch r.URL.Path {
+		case "/auth/login":
+			route.method, route.serve, ok = http.MethodGet, p.oidcLogin, true
+		case "/auth/callback":
+			route.method, route.serve, ok = http.MethodGet, p.oidcCallback, true
+		case "/auth/logout":
+			route.serve = p.oidcLogout
+		}
+	}
 	if !ok {
 		http.NotFound(w, r)
 		return
@@ -144,6 +161,13 @@ func (p *portal) passwordMatches(username, password string) bool {
 }
 
 func (p *portal) currentUser(r *http.Request) (string, devUser, bool) {
+	if p.oidc != nil {
+		s, ok := p.oidcCurrent(r)
+		if !ok {
+			return "", devUser{}, false
+		}
+		return s.name, s.user, true
+	}
 	cookie, err := r.Cookie(sessionCookie)
 	if err != nil {
 		return "", devUser{}, false
@@ -175,8 +199,9 @@ func has(permissions []string, wanted string) bool {
 }
 
 func (p *portal) setSession(w http.ResponseWriter, value string, maxAge int) {
+	secure := p.oidc != nil && p.oidc.secure
 	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: value, Path: "/", MaxAge: maxAge,
-		HttpOnly: true, SameSite: http.SameSiteStrictMode})
+		HttpOnly: true, Secure: secure, SameSite: http.SameSiteStrictMode})
 }
 
 func (p *portal) login(w http.ResponseWriter, r *http.Request) {

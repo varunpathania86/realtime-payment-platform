@@ -42,3 +42,7 @@ trino:
 resources:
   requests: {cpu: 50m, memory: 192Mi}
   limits: {cpu: 500m, memory: 384Mi}
+oidc:
+  enabled: false
+  issuer: ""
+  internalUrl: ""

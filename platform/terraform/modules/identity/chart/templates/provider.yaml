@@ -1,0 +1,108 @@
+{{/*
+Terraform owns the shared identity release in security, not the application catalog.
+The realm Secret seeds only a new database; restarting never overwrites an existing realm.
+The optimized runtime enables the management-port probes without writable image layers.
+The PostgreSQL Service and credentials must exist before Helm installs this Deployment.
+*/}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: identity-provider
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: identity-provider}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: identity-provider}
+      annotations:
+        checksum/realm: {{ .Values.realmRevision | quote }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: keycloak
+          image: {{ required "identity runtime image is required" .Values.image | quote }}
+          imagePullPolicy: Never
+          args: [start, --optimized, --import-realm]
+          env:
+            - {name: KC_HOSTNAME, value: {{ .Values.hostname | quote }}}
+            - {name: KC_HTTP_ENABLED, value: "true"}
+            - {name: KC_HOSTNAME_BACKCHANNEL_DYNAMIC, value: "true"}
+            - {name: KC_BOOTSTRAP_ADMIN_USERNAME, value: bootstrap-admin}
+            - {name: JAVA_OPTS_KC_HEAP, value: "-Xms128m -Xmx512m"}
+          envFrom:
+            - secretRef: {name: {{ .Values.existingSecret }}}
+          ports:
+            - {name: http, containerPort: 8080}
+            - {name: management, containerPort: 9000}
+          startupProbe:
+            httpGet: {path: /health/started, port: management}
+            failureThreshold: 120
+            periodSeconds: 5
+          readinessProbe:
+            httpGet: {path: /health/ready, port: management}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /health/live, port: management}
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+          volumeMounts:
+            - {name: realm, mountPath: /opt/keycloak/data/import, readOnly: true}
+            - {name: data, mountPath: /opt/keycloak/data}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: realm
+          secret: {secretName: {{ .Values.realmSecret }}}
+        - {name: data, emptyDir: {sizeLimit: 256Mi}}
+        - {name: tmp, emptyDir: {sizeLimit: 128Mi}}
+---
+{{/*
+Only Keycloak HTTP is exposed to workloads. Management health and metrics are not
+in the Service and are not exposed through ingress.
+*/}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: identity-provider
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector: {app.kubernetes.io/name: identity-provider}
+  ports:
+    - {name: http, port: 8080, targetPort: http}
+---
+{{/*
+The selected profile's Traefik routes browser realm and static-resource requests.
+No /admin or /realms/master path is published. Administration requires an explicit
+loopback port forward to the Service. A local HTTP URL is not a production TLS policy.
+*/}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: identity-provider
+  namespace: {{ .Release.Namespace }}
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: {{ (urlParse .Values.hostname).hostname | quote }}
+      http:
+        paths:
+          - path: /realms/rpp
+            pathType: Prefix
+            backend:
+              service: {name: identity-provider, port: {name: http}}
+          - path: /resources
+            pathType: Prefix
+            backend:
+              service: {name: identity-provider, port: {name: http}}

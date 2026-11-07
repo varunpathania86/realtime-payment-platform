@@ -4,6 +4,14 @@ Apache Superset that serves the payment-operations dashboard, embedded in the
 web portal through guest tokens. Part of
 [realtime-payment-platform](../../README.md).
 
+Stage 11 adds interactive Keycloak OIDC (`superset` confidential client).
+Verified userinfo maps the explicit Superset client roles `Gamma`/`Admin` and
+resynchronizes roles at each login. Unknown roles cannot register.
+The embedded guest-token path remains narrowly scoped; Keycloak now
+authenticates the human BFF session that authorizes issuance, while the
+separate least-privilege token-issuer account stays server-side.
+See the [identity runbook](../../docs/runbooks/unified-identity.md).
+
 ## Responsibilities
 
 - Serve one provisioned dashboard: real-time charts from ClickHouse

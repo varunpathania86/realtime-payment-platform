@@ -9,6 +9,15 @@ metadata. Stage 3 atomically adds an outbox event per payment and provides relay
 and receipt-consumer worker modes. Neither mode authorizes or settles payments.
 Only synthetic UUIDs and integer money amounts are used.
 
+Stage 11 `OIDC_ISSUER`/`OIDC_INTERNAL_URL` enable independent Keycloak RS256
+verification for every payment endpoint: exact issuer, `payment-api` audience,
+expiry, `openid` scope and resource-specific `payments:read` or
+`payments:write`. Viewers cannot write. Browser traffic reaches these
+endpoints through the portal's opaque session and audience-token exchange;
+direct API callers supply their own valid audience-scoped bearer token.
+Health, readiness, metrics and build metadata remain available to probes and
+local smoke checks. Configured invalid identity fails closed.
+
 ## Layout
 
 See the [Helm chart guide](chart/README.md) for template purposes, Kubernetes

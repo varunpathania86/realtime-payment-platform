@@ -21,6 +21,7 @@ Thumbs.db
 crash.log
 tfplan
 .local/
+.cache/dbx-runtime/
 
 # Go
 bin/

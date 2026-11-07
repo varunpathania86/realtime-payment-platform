@@ -107,6 +107,19 @@ class TopologyConfigurationTests(unittest.TestCase):
             with self.subTest(invalid=invalid), self.assertRaises(ValueError):
                 validate(invalid)
 
+    def test_dbx_is_opt_in_and_adds_512_mib_to_cluster_a_budget(self):
+        self.assertNotIn("dbx", validate({}))
+        settings = validate(
+            {"dbx": True, "node": {"cpus": 4, "memory_mib": 3584}}
+        )
+        self.assertTrue(settings["dbx"])
+        for invalid in (
+            {"dbx": "true"},
+            {"dbx": True, "node": {"cpus": 4, "memory_mib": 3072}},
+        ):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                validate(invalid)
+
     def test_shell_selects_each_node_budget_before_starting(self):
         with tempfile.TemporaryDirectory() as directory:
             config = Path(directory) / "configuration.json"

@@ -54,8 +54,17 @@ resource "kubernetes_secret_v1" "bi_dashboards" {
   }
 }
 
+resource "kubernetes_secret_v1" "superset_oidc" {
+  count = var.identity_enabled && var.bi_enabled ? 1 : 0
+  metadata {
+    name      = "superset-oidc"
+    namespace = kubernetes_namespace_v1.foundation["apps"].metadata[0].name
+  }
+  data = { client-secret = module.identity[0].superset_client_secret }
+}
+
 resource "random_password" "portal" {
-  for_each = local.portal_identity_enabled ? local.portal_secrets : toset([])
+  for_each = local.portal_identity_enabled && !var.identity_enabled ? local.portal_secrets : toset([])
   length   = 48
   special  = false
 }
@@ -67,7 +76,9 @@ resource "kubernetes_secret_v1" "web_portal_identity" {
     name      = "web-portal-identity"
     namespace = kubernetes_namespace_v1.foundation["apps"].metadata[0].name
   }
-  data = {
+  data = var.identity_enabled ? {
+    oidc-client-secret = module.identity[0].portal_client_secret
+    } : {
     session-key = random_password.portal["portal-session-key"].result
     dev-users = jsonencode({
       for name, permissions in local.portal_users :
@@ -195,7 +206,7 @@ resource "helm_release" "bi_dashboards" {
   cleanup_on_fail = true
   depends_on = [
     kubernetes_job_v1.superset_database, kubernetes_secret_v1.bi_dashboards, kubernetes_secret_v1.realtime_analytics,
-    helm_release.realtime_analytics, helm_release.application,
+    helm_release.realtime_analytics, helm_release.application, kubernetes_secret_v1.superset_oidc,
   ]
 
   values = [yamlencode({
@@ -208,6 +219,12 @@ resource "helm_release" "bi_dashboards" {
     trino   = { uri = var.lakehouse_enabled ? "trino://superset@lakehouse-query:8080/lakehouse" : "" }
     embed   = { origins = local.bi_origins }
     ingress = { host = "bi.localhost" }
+    oidc = {
+      enabled        = var.identity_enabled
+      issuer         = "http://identity.localhost:${var.access_port}/realms/rpp"
+      internalUrl    = "http://identity-provider.security.svc.cluster.local:8080/realms/rpp"
+      existingSecret = "superset-oidc"
+    }
   })]
 
   lifecycle {

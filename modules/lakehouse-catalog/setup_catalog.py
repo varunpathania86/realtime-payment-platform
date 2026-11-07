@@ -21,6 +21,7 @@ import urllib.request
 READ = [
     "NAMESPACE_LIST", "NAMESPACE_READ_PROPERTIES",
     "TABLE_LIST", "TABLE_READ_PROPERTIES", "TABLE_READ_DATA",
+    "VIEW_LIST",
 ]
 # The writer appends snapshots only; this setup owns table creation and evolution is a maintainer task.
 WRITE = READ + ["TABLE_WRITE_DATA"]

@@ -6,6 +6,8 @@ export PATH := $(HOME)/.local/bin:$(PATH)
 .DEFAULT_GOAL := help
 .PHONY: security security-solution security-module security-plan publication-login quality-report quality-module-report release-baseline
 .PHONY: dev-metrics dev-observability db-switchover db-failover db-rejoin
+.PHONY: identity-integration identity-sync identity-access identity-verify
+.PHONY: run-local stop-local clean-local access-local dbx-access dbx-status minio-access
 .PHONY: streaming-fixtures streaming-inspect streaming-load streaming-savepoint streaming-stop streaming-benchmark streaming-benchmark-preflight risk-publish risk-verify lakehouse-query lakehouse-verify lakehouse-maintain bi-verify knowledge-ingest ai-fixtures ai-eval
 
 # Use a system pre-commit if present, otherwise the one installed by `make setup`.
@@ -35,6 +37,8 @@ setup: ## Set up the developer environment (see docs/developer-setup.md)
 	bash scripts/setup-streaming.sh
 	bash scripts/setup-risk.sh
 	bash scripts/ai-python.sh setup
+	bash scripts/identity-runtime.sh setup
+	bash scripts/dbx-runtime.sh setup
 	@$(MAKE) --no-print-directory doctor
 
 tools: ## Install or update the pinned CLI tools from .tool-versions
@@ -54,6 +58,18 @@ remove-agent: ## Unregister and delete the self-hosted runner
 
 doctor: ## Check the environment against .tool-versions
 	@scripts/doctor.sh
+
+identity-integration: ## Test real Keycloak code+PKCE and permissions in isolated disposable containers
+	$(VENV)/bin/python tests/integration/identity_provider_check.py
+
+identity-access: ## Forward Keycloak administration to loopback only (leave this terminal running)
+	kubectl --context "$(or $(MINIKUBE_PROFILE),rpp-dev-single)" -n security port-forward --address 127.0.0.1 service/identity-provider "$(or $(IDENTITY_PORT),18081):8080"
+
+identity-sync: ## Explicitly reconcile the managed realm on an existing identity database
+	$(VENV)/bin/python -m scripts.identity_reconcile --context "$(or $(MINIKUBE_PROFILE),rpp-dev-single)" --url "$(or $(IDENTITY_URL),http://127.0.0.1:18081)"
+
+identity-verify: ## Verify live Keycloak SSO, resource authorization, logout, expiry and signing-key rotation
+	$(VENV)/bin/python -m scripts.identity_acceptance --profile "$(or $(MINIKUBE_PROFILE),rpp-dev-single)"
 
 validate-catalog: ## Validate solution, module, and release manifests against JSON Schemas
 	$(VENV)/bin/python scripts/module_catalog.py validate
@@ -94,11 +110,36 @@ release-baseline: ## Promote module/solution iteration, RC or stable artifacts (
 publication-login: ## Authenticate Helm to GHCR using the job token through stdin
 	@printf '%s' "$$GH_TOKEN" | helm registry login ghcr.io --username "$$GITHUB_ACTOR" --password-stdin
 
-dev-up: ## Start rpp-a/b/c (optional DEV_PROFILE and DEV_CONFIG overrides)
-	@bash scripts/multi-cluster.sh up
+run-local: ## Start one full development cluster (default rpp-dev-single, 6 CPUs, 16384 MiB; preserves saved features)
+	@MINIKUBE_PROFILE="$(or $(MINIKUBE_PROFILE),rpp-dev-single)" MINIKUBE_CPUS="$(or $(MINIKUBE_CPUS),6)" MINIKUBE_MEMORY="$(or $(MINIKUBE_MEMORY),16384)" bash scripts/run-local.sh
 
-dev-update: ## Rebuild/load applications and update all active clusters, retaining data
-	@bash scripts/multi-cluster.sh update
+stop-local: ## Stop the single-cluster profile, preserving its data (default rpp-dev-single)
+	@MINIKUBE_PROFILE="$(or $(MINIKUBE_PROFILE),rpp-dev-single)" bash scripts/run-local.sh stop
+
+access-local: ## Forward deployed data services to loopback ports for desktop clients (foreground; Ctrl-C stops)
+	$(VENV)/bin/python -m scripts.resource_access --profile "$(or $(MINIKUBE_PROFILE),rpp-dev-single)"
+
+dbx-access: ## Forward optional in-cluster DBX to http://127.0.0.1:44224 (foreground; Ctrl-C stops)
+	@MINIKUBE_PROFILE="$(or $(MINIKUBE_PROFILE),rpp-dev-single)" DBX_LOCAL_PORT="$(or $(DBX_LOCAL_PORT),44224)" bash scripts/local-dev.sh dbx-access
+
+dbx-status: ## Check the selected profile's optional DBX rollout
+	@MINIKUBE_PROFILE="$(or $(MINIKUBE_PROFILE),rpp-dev-single)" bash scripts/local-dev.sh dbx-status
+
+minio-access: ## Forward only the MinIO console to http://127.0.0.1:19091 (foreground; Ctrl-C stops)
+	kubectl --context "$(or $(MINIKUBE_PROFILE),rpp-dev-single)" -n data port-forward --address 127.0.0.1 service/minio 19091:9001
+
+clean-local: ## DESTRUCTIVE: delete the selected single-cluster profile and its .local state (default rpp-dev-single)
+	@MINIKUBE_PROFILE="$(or $(MINIKUBE_PROFILE),rpp-dev-single)" bash scripts/run-local.sh clean
+
+dev-up: ## Start rpp-a/b/c, or one explicit MINIKUBE_PROFILE
+	@if [ -n "$(MINIKUBE_PROFILE)" ]; then \
+		MINIKUBE_PROFILE="$(MINIKUBE_PROFILE)" bash scripts/local-dev.sh up; \
+	else bash scripts/multi-cluster.sh up; fi
+
+dev-update: ## Rebuild/load applications (all active clusters, or one explicit MINIKUBE_PROFILE)
+	@if [ -n "$(MINIKUBE_PROFILE)" ]; then \
+		MINIKUBE_PROFILE="$(MINIKUBE_PROFILE)" bash scripts/local-dev.sh update; \
+	else bash scripts/multi-cluster.sh update; fi
 
 dev-status: ## Show cluster/container CPU, RAM, readiness, requests and limits
 	@bash scripts/multi-cluster.sh status

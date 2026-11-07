@@ -33,7 +33,7 @@ variable "kube_config_path" {
 }
 
 variable "local_images" {
-  description = "Catalog module names mapped to locally built, content-tagged images."
+  description = "Catalog modules and shared platform runtimes mapped to locally built, content-tagged images."
   type        = map(string)
   default     = {}
   validation {

@@ -8,6 +8,8 @@ Single-node Trino query engine for the local Iceberg lakehouse. Part of
 - Query Iceberg tables through the Polaris REST catalog with two catalogs:
   - `lakehouse`: read-only, using the `trino-lakehouse-reader` principal.
     Use it for all ad-hoc and dashboard queries.
+    Metadata browsing (`SHOW TABLES`) also lists views; the catalog reader has
+    `VIEW_LIST` for that operation, without view creation or modification grants.
   - `lakehouse_admin`: the `lakehouse-maintainer` principal, for explicit
     schema/partition evolution and table maintenance only.
 - Read table data directly from MinIO; Trino never touches PostgreSQL.

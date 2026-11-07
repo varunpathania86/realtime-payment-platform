@@ -83,8 +83,8 @@ Stage 7 is merged as PR #10. [ADR-025](docs/adr/ADR-025-interview-roadmap-and-re
 reorders the next stages: Iceberg and Trino (Stage 8), Superset embedded in
 React (Stage 9), then one AI assistant stage combining pgvector RAG, LangChain,
 LangGraph, a local llama.cpp model and platform-hosted read-only MCP tools
-(Stage 10). Keycloak follows in Stage 11; until then Superset and the
-assistant use a clearly labelled local development identity. See the
+(Stage 10). Stage 11 replaces that temporary development issuer with
+Keycloak SSO and resource authorization when identity is enabled. See the
 [roadmap](docs/master-plan.md#stage-10-ai-operations-assistant-with-rag-langchain-langgraph-and-mcp).
 
 Stage 8 adds an opt-in Iceberg lakehouse: an
@@ -101,7 +101,7 @@ Stage 9 adds opt-in [Superset BI](modules/bi-dashboards/README.md) embedded in
 the [React portal](modules/web-portal/README.md). The payment operations
 dashboard reads ClickHouse (including advisory risk predictions and late
 events written by Flink), and Iceberg history through Trino. The Go portal
-signs in synthetic local development users and issues a five-minute guest
+signs in synthetic users (Keycloak when Stage 11 identity is enabled) and issues a five-minute guest
 token scoped to that one dashboard. React never sees Superset or database
 credentials, and the guest role cannot reach SQL Lab or other privileged APIs.
 `templates/bi-topology.json` enables it, and `make bi-verify` checks the access
@@ -114,14 +114,27 @@ Stage 10 adds an opt-in AI operations assistant to the portal. A
 pgvector and full-text retrieval with citations) and from read-only
 [MCP tools](modules/assistant-tools/README.md) over ClickHouse, Trino and
 payment status. A [local llama.cpp server](modules/llm-serving/README.md)
-runs pinned open-weight models with no hosted API. The portal signs a
-short-lived identity assertion per request; authorization, redaction and
+runs pinned open-weight models with no hosted API. With Stage 11 identity,
+the portal exchanges a separate Keycloak token per resource; authorization, redaction and
 citation checks are deterministic code, and the assistant never changes or
 approves payments. `templates/ai-topology.json` enables a lean profile, and
 `make ai-eval` runs the evaluation set. See
 [ADR-029](docs/adr/ADR-029-ai-operations-assistant.md),
 [ADR-030](docs/adr/ADR-030-assistant-identity-assertions.md) and the
 [assistant runbook](docs/runbooks/ai-assistant.md).
+
+Stage 11 is in progress: [Keycloak identity infrastructure](platform/terraform/modules/identity/chart/README.md)
+uses its own PostgreSQL database for synthetic users, with no LDAP requirement.
+[ADR-032](docs/adr/ADR-032-keycloak-identity-and-bff.md) records the selected
+Go BFF Authorization Code + S256 PKCE pattern, opaque HttpOnly sessions,
+server-side refresh/logout and per-resource token exchange. Payment and AI
+APIs independently verify Keycloak issuer, signature, audience, expiry, scope
+and application roles. Superset and Grafana have interactive SSO; Argo CD
+remains a disabled reserved client. Existing realm upgrades use
+`make identity-sync`; `make identity-verify` checks full-stack SSO, viewer write
+denial, audience boundaries, expiry and signing-key rotation. See the
+[identity runbook](docs/runbooks/unified-identity.md) and current
+[acceptance status](docs/master-plan.md#19-current-implementation-status).
 
 ## Repository map
 
@@ -154,6 +167,30 @@ Start with the [local platform walkthrough](docs/architecture/local-platform-gui
 to connect the repository layout, Make scripts, Terraform, Helm and Kubernetes.
 
 ## Quick start
+
+For single-cluster development, use `make run-local`, then
+`make dev-access MINIKUBE_PROFILE=rpp-dev-single` in another terminal.
+`make stop-local` preserves data; **`make clean-local` deletes the selected
+profile and its profile-local state**. The full default stack allocates 6 CPUs
+and 16 GiB to the cluster and needs additional host memory; combined fit is
+not yet certified. See the [single-cluster guide](docs/developer-setup.md#single-cluster-end-to-end-development)
+for feature scope, overrides and initialization. `make dev-up` remains the
+three-cluster workflow.
+
+For an optional in-cluster SQL workbench, enable DBX in the selected local
+profile and run `make dbx-access MINIKUBE_PROFILE=rpp-dev-single`; it binds
+only `127.0.0.1:44224` and preloads server-side connections from Kubernetes
+Secrets. It has a separate generated DBX password (not Keycloak SSO) and the
+upstream Web API adapter is version-pinned. See the
+[DBX and native database access guide](docs/developer-setup.md#optional-in-cluster-dbx-workbench)
+for setup, credentials and privacy boundaries. `make access-local` remains the
+optional loopback path for native clients and other data services.
+For object storage, use the separate MinIO console at
+`http://127.0.0.1:19091` with `make minio-access` running. Its username is
+`rpp-streaming`; DBX takes an access password without a username. See
+[DBX and MinIO login commands](docs/developer-setup.md#browser-urls-and-login-credentials)
+for the exact commands to retrieve each profile's password from Kubernetes
+Secrets. Never store the decoded passwords in checked-in documentation.
 
 Full environment instructions: [docs/developer-setup.md](docs/developer-setup.md).
 

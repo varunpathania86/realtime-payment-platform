@@ -9,13 +9,14 @@ export type AnalyticsState =
 interface Props {
   state: AnalyticsState;
   busy: boolean;
+  oidc?: boolean;
   mountRef?: RefObject<HTMLDivElement | null>;
   assistant?: ReactNode;
   onSignIn: (username: string, password: string) => void;
   onSignOut: () => void;
 }
 
-export function AnalyticsView({ state, busy, mountRef, assistant, onSignIn, onSignOut }: Props) {
+export function AnalyticsView({ state, busy, oidc, mountRef, assistant, onSignIn, onSignOut }: Props) {
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -27,15 +28,15 @@ export function AnalyticsView({ state, busy, mountRef, assistant, onSignIn, onSi
         <p className="eyebrow">Realtime payment platform</p>
         <h1>Payment operations</h1>
         <p>
-          Embedded Superset dashboard and operations assistant · Synthetic data only · Local development
-          identity, not for production
+          Embedded Superset dashboard and operations assistant · Synthetic data only
+          {!oidc && " · Local development identity, not for production"}
         </p>
       </header>
       {state.kind === "loading" && <p role="status">Checking your session…</p>}
       {state.kind === "signed-out" && (
         <section aria-labelledby="sign-in">
           <h2 id="sign-in">Sign in</h2>
-          <form onSubmit={submit}>
+          {oidc ? <a href="/auth/login">Sign in with Keycloak</a> : <form onSubmit={submit}>
             <label>
               Username
               <input name="username" autoComplete="username" required />
@@ -45,7 +46,7 @@ export function AnalyticsView({ state, busy, mountRef, assistant, onSignIn, onSi
               <input name="password" type="password" autoComplete="current-password" required />
             </label>
             <button type="submit" disabled={busy}>Sign in</button>
-          </form>
+          </form>}
           {state.message && <p role="alert">{state.message}</p>}
         </section>
       )}
