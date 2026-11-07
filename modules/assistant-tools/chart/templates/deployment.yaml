@@ -29,7 +29,14 @@ spec:
           image: {{ include "assistant-tools.image" . | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
+            {{- if .Values.oidc.enabled }}
+            # Keycloak signature and assistant-tools roles are checked before every tool call.
+            - {name: OIDC_ISSUER, value: {{ .Values.oidc.issuer | quote }}}
+            - {name: OIDC_INTERNAL_URL, value: {{ .Values.oidc.internalUrl | quote }}}
+            {{- end }}
+            {{- if not .Values.oidc.enabled }}
             - {name: ASSERTION_PUBLIC_KEY_FILE, value: /identity/public-key.pem}
+            {{- end }}
             - {name: ALLOWED_HOSTS, value: {{ join "," .Values.allowedHosts | quote }}}
             - {name: LLM_EMBEDDINGS_URL, value: {{ .Values.embeddings.url | quote }}}
             - {name: PAYMENT_API_URL, value: {{ .Values.paymentApi.url | quote }}}
@@ -61,11 +68,15 @@ spec:
             allowPrivilegeEscalation: false
             capabilities: {drop: ["ALL"]}
           volumeMounts:
+            {{- if not .Values.oidc.enabled }}
             - {name: identity, mountPath: /identity, readOnly: true}
+            {{- end }}
             - {name: tmp, mountPath: /tmp}
       volumes:
+        {{- if not .Values.oidc.enabled }}
         - name: identity
           secret:
             secretName: {{ .Values.assertionVerifier.existingSecret }}
             items: [{key: {{ .Values.assertionVerifier.publicKeyKey }}, path: public-key.pem}]
+        {{- end }}
         - {name: tmp, emptyDir: {sizeLimit: 16Mi}}

@@ -8,6 +8,14 @@ server for the Stage 10 AI operations assistant. Part of
 The orchestrator's graph never touches a database. All data access goes
 through these tools, and each tool checks the caller's permissions again.
 
+Stage 11 validates Keycloak RS256 signature, issuer, `assistant-tools`
+audience, expiry, `openid` scope and this resource's own client roles.
+`get_payment` additionally verifies the same-subject `payment-api` token
+relayed by the BFF/orchestrator and forwards it to the independently protected
+payment API. Tokens live only in request-local context, never model input,
+tool results or audit logs. The development Ed25519 issuer remains available
+only with OIDC unconfigured.
+
 | Tool | Permission | Backend | Bounds |
 |---|---|---|---|
 | `search_knowledge` | `knowledge:read` (restricted documents need `knowledge:restricted`) | knowledge PostgreSQL + pgvector, query embeddings from llm-serving | query 3–500 characters, 1–8 results |
@@ -22,7 +30,7 @@ sequenceDiagram
     participant T as assistant-tools (/mcp)
     participant B as Backend (read-only)
     O->>T: tools/call + Bearer assertion + X-Request-ID
-    T->>T: verify Ed25519 assertion (audience assistant-tools)
+    T->>T: verify Keycloak token (audience assistant-tools)
     T->>T: check permission and argument bounds
     T->>B: parameterized query (timeout, row limit)
     B-->>T: rows

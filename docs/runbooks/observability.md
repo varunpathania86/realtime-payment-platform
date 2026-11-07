@@ -1,5 +1,11 @@
 # Runbook: Payment observability
 
+See the [shared chart guide](../../platform/terraform/modules/observability/chart/README.md)
+for resource ownership and the [identity runbook](unified-identity.md) for
+Stage 11 Grafana SSO. Explicit Grafana client roles map to Viewer/Editor/Admin;
+unknown roles fail closed. Identity-enabled single profiles reuse Grafana
+without installing the multi-cluster telemetry collectors/backends.
+
 - **Severity:** Medium
 - **Owner:** Platform maintainers
 - **Last reviewed:** 2026-11-02

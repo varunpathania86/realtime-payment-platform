@@ -15,6 +15,11 @@ if ! [[ "$LOCAL_PORT" =~ ^[0-9]{1,5}$ ]] || ((10#$LOCAL_PORT < 1 || 10#$LOCAL_PO
   echo "LOCAL_PORT must be between 1 and 65535" >&2
   exit 1
 fi
+DBX_LOCAL_PORT="${DBX_LOCAL_PORT:-44224}"
+if ! [[ "$DBX_LOCAL_PORT" =~ ^[0-9]{1,5}$ ]] || ((10#$DBX_LOCAL_PORT < 1 || 10#$DBX_LOCAL_PORT > 65535)); then
+  echo "DBX_LOCAL_PORT must be between 1 and 65535" >&2
+  exit 1
+fi
 STATE_DIR="$REPO_ROOT/.local/$PROFILE"
 EXTRA_VARS=()
 if [ -f "$STATE_DIR/events.tfvars.json" ]; then
@@ -157,6 +162,38 @@ PY
       --build-arg "VERSION=$tag" --build-arg "COMMIT=$commit" -t "$image" "$path"
     minikube -p "$PROFILE" image load "$image" --overwrite=false
   done < "$inventory"
+  if [ -f "$STATE_DIR/events.tfvars.json" ] &&
+    jq -e '.identity_enabled == true' "$STATE_DIR/events.tfvars.json" >/dev/null; then
+    bash scripts/identity-runtime.sh build
+    image=$(bash scripts/identity-runtime.sh image)
+    minikube -p "$PROFILE" image load "$image" --overwrite=false
+    "$PYTHON" - "$candidate" "$image" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+settings = json.loads(path.read_text())
+settings["local_images"]["identity-provider"] = sys.argv[2]
+path.write_text(json.dumps(settings, indent=2) + "\n")
+PY
+  fi
+  if [ -f "$STATE_DIR/events.tfvars.json" ] &&
+    jq -e '.dbx_enabled == true' "$STATE_DIR/events.tfvars.json" >/dev/null; then
+    bash scripts/dbx-runtime.sh build
+    image=$(bash scripts/dbx-runtime.sh image)
+    minikube -p "$PROFILE" image load "$image" --overwrite=false
+    "$PYTHON" - "$candidate" "$image" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+settings = json.loads(path.read_text())
+settings["local_images"]["dbx-workbench"] = sys.argv[2]
+path.write_text(json.dumps(settings, indent=2) + "\n")
+PY
+  fi
   mv "$candidate" "$STATE_DIR/images.tfvars.json"
 )
 
@@ -245,10 +282,17 @@ case "${1:-}" in
   access)
     exec kubectl --context "$PROFILE" -n platform port-forward --address 127.0.0.1 service/traefik "$LOCAL_PORT:80"
     ;;
+  dbx-access)
+    exec kubectl --context "$PROFILE" -n apps port-forward --address 127.0.0.1 \
+      service/dbx-workbench "$DBX_LOCAL_PORT:4224"
+    ;;
+  dbx-status)
+    kubectl --context "$PROFILE" -n apps rollout status deployment/dbx-workbench --timeout=30s
+    ;;
   smoke) smoke ;;
   status)
     kubectl --context "$PROFILE" get namespaces
     kubectl --context "$PROFILE" -n apps get deployments,pods,services,ingresses
     ;;
-  *) echo "Usage: $0 up|update|images|init|plan|apply|validate|charts|smoke|access|status|down" >&2; exit 2 ;;
+  *) echo "Usage: $0 up|update|images|init|plan|apply|validate|charts|smoke|access|dbx-access|dbx-status|status|down" >&2; exit 2 ;;
 esac

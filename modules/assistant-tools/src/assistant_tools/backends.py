@@ -84,7 +84,10 @@ class PaymentApi:
 
     async def get(self, payment_id: str) -> dict[str, Any] | None:
         try:
-            response = await self._client.get(f"{self._url}/payments/{payment_id}", timeout=QUERY_TIMEOUT_SECONDS)
+            from ai_core.identity import payment_token_context
+            token = payment_token_context.get()
+            kwargs = {"headers": {"Authorization": "Bearer " + token}} if token else {}
+            response = await self._client.get(f"{self._url}/payments/{payment_id}", timeout=QUERY_TIMEOUT_SECONDS, **kwargs)
             if response.status_code == 404:
                 return None
             response.raise_for_status()

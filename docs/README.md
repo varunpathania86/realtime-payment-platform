@@ -25,6 +25,7 @@ All design documentation lives here, written in Markdown with Mermaid diagrams. 
 | [adr/ADR-018-configurable-kubernetes-topology.md](adr/ADR-018-configurable-kubernetes-topology.md) | Portable per-cluster workload counts, local node budgets and unified developer commands |
 | [adr/ADR-019-shared-observability-backends.md](adr/ADR-019-shared-observability-backends.md) | Per-cluster OpenTelemetry collectors, shared backends, correlation standards and future lineage boundary |
 | [runbooks/observability.md](runbooks/observability.md) | Opt-in Grafana access, metrics-to-traces-to-logs investigation and initial alerts |
+| [runbooks/unified-identity.md](runbooks/unified-identity.md) | Keycloak realm upgrades, opaque BFF sessions, per-resource authorization, SSO and rotation/expiry verification |
 | [adr/ADR-020-iteration-baseline-release.md](adr/ADR-020-iteration-baseline-release.md) | Stage 4 frozen module/solution baselines without deployment or PI schedule changes |
 | [runbooks/iteration-baseline.md](runbooks/iteration-baseline.md) | Protected manual baseline release, exact digests, conflicts and safe reruns |
 | [adr/ADR-021-automatic-release-promotion.md](adr/ADR-021-automatic-release-promotion.md) | Automatic module/solution iteration, RC and stable artifact promotion |
@@ -38,6 +39,8 @@ All design documentation lives here, written in Markdown with Mermaid diagrams. 
 | [adr/ADR-029-ai-operations-assistant.md](adr/ADR-029-ai-operations-assistant.md) | LangGraph assistant over pgvector RAG and read-only MCP tools, local llama.cpp models, deterministic safety and evaluation |
 | [adr/ADR-030-assistant-identity-assertions.md](adr/ADR-030-assistant-identity-assertions.md) | Portal-signed Ed25519 per-audience assertions until Keycloak; permissions intersected in code |
 | [adr/ADR-031-catalog-dependency-build-contexts.md](adr/ADR-031-catalog-dependency-build-contexts.md) | Catalog-declared library dependencies passed to image builds as named build contexts |
+| [adr/ADR-032-keycloak-identity-and-bff.md](adr/ADR-032-keycloak-identity-and-bff.md) | Keycloak-managed users in dedicated PostgreSQL, Go BFF code+PKCE and explicit resource permissions; no initial LDAP |
+| [adr/ADR-033-optional-dbx-development-workbench.md](adr/ADR-033-optional-dbx-development-workbench.md) | Optional in-cluster DBX, version-pinned internal API adapter, Secret-backed connections and loopback access |
 | [runbooks/flink-recovery.md](runbooks/flink-recovery.md) | Synthetic fixtures, lateness, persistent checkpoints and savepoint/restore |
 | [runbooks/realtime-analytics.md](runbooks/realtime-analytics.md) | ClickHouse readiness, sink recovery, replacement queries and failure boundaries |
 | [runbooks/lakehouse.md](runbooks/lakehouse.md) | Polaris/Trino diagnosis, Iceberg maintenance, evolution and savepoint-safe toggling |

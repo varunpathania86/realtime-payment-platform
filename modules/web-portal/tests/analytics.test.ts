@@ -13,6 +13,19 @@ const viewer = {
   bi: { dashboardId: "bfa817e5-b670-5c83-842c-ef5d57da6f8a", supersetDomain: "http://bi.localhost:8080" },
 };
 
+test("Keycloak mode redirects to the BFF without collecting or storing passwords or tokens", () => {
+  const html = renderToStaticMarkup(createElement(AnalyticsView, {
+    state: { kind: "signed-out" },
+    busy: false,
+    oidc: true,
+    onSignIn: () => {},
+    onSignOut: () => {},
+  }));
+  assert.match(html, /href="\/auth\/login"/);
+  assert.match(html, /Sign in with Keycloak/);
+  assert.doesNotMatch(html, /type="password"|name="username"|localStorage|access_token/);
+});
+
 test("session, sign-in, sign-out and token calls stay same-origin and uncached", async () => {
   const calls: Array<[string, RequestInit | undefined]> = [];
   const fetcher = async (path: string, init?: RequestInit) => {

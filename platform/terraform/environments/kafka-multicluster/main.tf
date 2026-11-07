@@ -219,11 +219,13 @@ output "application_vars" {
 
 output "workload_vars" {
   value = { for key, size in local.sizes : key => {
-    application_replicas = size.applications
-    worker_replicas      = { relay = size.relay, consumer = size.consumer }
-    registry_replicas    = size.registry
-    ingress_replicas     = size.ingress
-    telemetry_enabled    = var.observability_enabled
-    telemetry_cluster    = var.profiles[index(["a", "b", "c"], key)]
+    application_replicas           = size.applications
+    worker_replicas                = { relay = size.relay, consumer = size.consumer }
+    registry_replicas              = size.registry
+    ingress_replicas               = size.ingress
+    telemetry_enabled              = var.observability_enabled
+    telemetry_cluster              = var.profiles[index(["a", "b", "c"], key)]
+    identity_grafana_client_secret = key == "a" && var.identity_enabled && var.observability_enabled ? random_password.grafana_oidc[0].result : ""
   } }
+  sensitive = true
 }

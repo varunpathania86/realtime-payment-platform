@@ -1,0 +1,24 @@
+{{/*
+Publishes Grafana's interactive OIDC UI through the separately installed Traefik controller.
+backends.yaml owns the grafana Service; Keycloak redirects to rootUrl/login/generic_oauth.
+Only rendered for the backend-hosting cluster with OIDC enabled, never for collector-only clusters.
+*/}}
+{{- if and .Values.backends .Values.oidc.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: {{ (urlParse .Values.oidc.rootUrl).hostname | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: grafana
+                port:
+                  number: 3000
+{{- end }}

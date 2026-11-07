@@ -6,6 +6,7 @@ import logging
 from typing import Any, Protocol
 
 from langchain_mcp_adapters.client import MultiServerMCPClient
+from ai_core.identity import payment_token_context
 
 LOG = logging.getLogger(__name__)
 
@@ -19,10 +20,13 @@ class McpToolClient:
         self._url, self._timeout = url, timeout_seconds
 
     async def call(self, name: str, arguments: dict[str, Any], token: str, request_id: str) -> dict[str, Any]:
+        headers = {"Authorization": f"Bearer {token}", "X-Request-ID": request_id}
+        if (payment := payment_token_context.get()) and name == "get_payment":
+            headers["X-Assistant-Payment-Token"] = payment
         # A per-call client keeps the user's relayed assertion out of any shared connection state.
         client = MultiServerMCPClient({"tools": {
             "transport": "streamable_http", "url": self._url, "timeout": self._timeout,
-            "headers": {"Authorization": f"Bearer {token}", "X-Request-ID": request_id},
+            "headers": headers,
         }})
         try:
             async with client.session("tools") as session:

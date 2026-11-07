@@ -1641,9 +1641,12 @@ authorization leakage.
 
 Implement:
 
-- OIDC Authorization Code with PKCE for React
-- Optional Backend-for-Frontend token pattern if needed
-- OIDC clients for React, Superset, Grafana, and Argo CD
+- OIDC Authorization Code with S256 PKCE through the existing Go portal BFF;
+  React receives only an opaque HttpOnly session cookie
+- Explicit idempotent reconciliation of existing realms; startup import only
+  seeds a new identity database
+- OIDC clients for the portal, Superset and Grafana; reserve the disabled
+  Argo CD client contract without deploying Argo CD in this stage
 - Client Credentials only for appropriate machine clients
 - Short-lived access tokens
 - Signing-key rotation test
@@ -1673,6 +1676,17 @@ ai:admin
 Map Keycloak groups to tool-specific roles. Do not rely only on broad job-title roles.
 
 Kafka initially uses TLS plus SASL/SCRAM. Add Kafka OIDC only if it creates a useful learning outcome and is cleanly supported by the selected deployment.
+
+### Optional local DBX workbench
+
+Stage 11 also provides an opt-in, shared-infrastructure DBX Web workbench for
+local development. Terraform provisions it only when `dbx_enabled` is selected;
+the browser is reachable through loopback port-forwarding, while a version-
+pinned API adapter syncs available PostgreSQL, ClickHouse, Trino and Kafka
+connections from existing Kubernetes Secrets. See
+[ADR-033](adr/ADR-033-optional-dbx-development-workbench.md). This separate DBX
+login is not Keycloak SSO. Its upstream connection routes are internal and
+unstable, so image changes require adapter contract tests and live verification.
 
 **Exit criteria:** One user accesses React, Superset, Grafana, and the AI assistant through Keycloak. A viewer cannot call write APIs. Expired and incorrectly scoped tokens fail closed.
 
@@ -2568,15 +2582,16 @@ runbooks. See the [low-memory pipeline report](../tests/benchmarks/pipeline/2026
 and [ClickHouse query report](../tests/benchmarks/pipeline/2026-11-03-clickhouse-query.md).
 
 ```yaml
-current_milestone: stage-10-ai-assistant
-stage_status: Stage 10 AI operations assistant implemented on feature/stage-10-ai-assistant; pgvector hybrid RAG, a LangGraph orchestrator, read-only MCP tools and local llama.cpp models passed single-cluster live acceptance on the lean AI profile; awaiting PR review
-last_completed_task: Stage 10 lean-profile acceptance on 4 CPU / 10 GiB (analytics and AI, no streaming) indexed 57 documents (424 chunks), loaded synthetic fixtures and passed make ai-eval 21/21 with Recall@5 0.9, citation correctness 1.0 and zero authorization leaks; model-down fallback and a stable Terraform re-plan verified
-next_task: Merge Stage 10, then start Stage 11 with Keycloak replacing the local development identity
+current_milestone: stage-11-unified-identity
+stage_status: Stage 10 merged as PR 14; Stage 11 complete and verified locally on feature/stage-11-unified-identity, awaiting pull request review and merge
+last_completed_task: Existing-realm reconciliation, Go BFF code/S256 PKCE opaque sessions with refresh/logout, payment and AI resource authorization, Grafana/Superset SSO, and real signing-key rotation/expiry verified on rpp-dev-single without recreating the shared profile
+next_task: Open, review and merge the Stage 11 pull request; Stage 12 implementation remains deferred
 known_issues:
   - the Stage 10 lean profile used about 5.4 GiB of 10 GiB during evaluation; the chat model used about 1.25 GiB, ClickHouse about 0.7 GiB and the three AI services under 0.35 GiB together
   - CPU-only Qwen2.5-1.5B answers took p50 21 s and p95 103 s in the evaluation; the portal allows two concurrent questions and a 210-second timeout
   - first knowledge ingestion embedded 424 chunks in about 6 minutes on CPU; later runs skip unchanged content
-  - branch publication uses main's tooling, so Stage 10 dependency build contexts (ADR-031) publish only after merge
+  - Stage 11 realm startup import seeds only a new database; use make identity-sync to explicitly reconcile existing realms without resetting human passwords
+  - Stage 11 BFF sessions are bounded in-memory and require one replica; restarts sign users out; the optional DBX login remains independent of Keycloak and Argo CD stays disabled
   - Superset 6.1.0 registers /static/service-worker.js, which the pinned image does not ship; the browser logs a harmless 404 and the optional service worker is skipped
   - the Stage 9 single-cluster node used about 7.5 GiB of 11 GiB with streaming, analytics, lakehouse, risk and BI; Superset used about 280 MiB idle
   - embedded Superset loads off-screen charts lazily; charts below the iframe fold query only when scrolled into view
@@ -2597,6 +2612,8 @@ known_issues:
   - local Flink JobManager and MinIO are not HA; external sinks are at-least-once, and deduplication has a 24-hour processing-time TTL
   - Stage 5 scoped scanner exceptions retain official Flink UID/GID, Kubernetes health/namespace ownership and local Never images; exact paths expire 2027-01-01
 architecture_decisions:
+  - ADR-033 Optional in-cluster DBX workbench, version-pinned internal API adapter and Secret-backed connection provisioning
+  - ADR-032 Keycloak-managed users in dedicated PostgreSQL, Go BFF code+PKCE and explicit resource permissions; no initial LDAP
   - ADR-031 Catalog-declared library dependencies passed to image builds as named build contexts
   - ADR-030 Portal-signed Ed25519 per-audience assistant identity assertions until Keycloak
   - ADR-029 LangGraph operations assistant over pgvector RAG, read-only MCP tools and local llama.cpp models
@@ -2618,6 +2635,20 @@ architecture_decisions:
   - ADR-014 Stage 1 artifact publication and separate security checks
   - ADR-015 PostgreSQL-backed synthetic payments and idempotency
 verification:
+  - 2026-11-07 Stage 11 make ci passed, make security passed all 14 solution/module targets, make identity-integration passed three isolated real-provider tests, and all-file pre-commit hooks passed; make bi-verify MINIKUBE_PROFILE=rpp-dev-single passed 26 embedded-access checks
+  - 2026-11-07 the existing single profile had no knowledge_chunks table; make knowledge-ingest MINIKUBE_PROFILE=rpp-dev-single initialized 60 local corpus documents / 445 chunks and quarantined four unsafe chunks without retiring documents; subsequent make ai-eval MINIKUBE_PROFILE=rpp-dev-single passed 21/21 cases with recall@5 0.9, citation correctness 1.0, zero authorization leaks, p50 30.666 s and p95 100.738 s, including protected payment lookup and long-running refreshed OIDC sessions
+  - 2026-11-07 make identity-verify MINIKUBE_PROFILE=rpp-dev-single passed all 24 checks with real Keycloak; one viewer accessed React, Superset Gamma, Grafana Viewer and an assistant payment_metrics call without another SSO password; both BFF and direct payment API denied viewer writes, cross-resource replay and missing relay tokens failed closed, a new RSA signing kid and the retained old kid both verified, genuinely expired tokens failed closed, and logout required a fresh provider password
+  - 2026-11-07 guarded make dev-update MINIKUBE_PROFILE=rpp-dev-single rebuilt dirty identity/application sources and refreshed chart snapshots using the existing payment and lakehouse savepoint restore paths; smoke passed, streaming-inspect remained available and a read-only lakehouse SELECT succeeded; the user-owned profile was not stopped or recreated, and DBX 44224 / MinIO 19091 remained HTTP 200
+  - 2026-11-07 both payment-event-time-v1 and payment-lakehouse-v1 remained RUNNING and their Flink REST checkpoint metadata confirmed restoration from the original stage11-savepoints paths
+  - 2026-11-07 DBX runtime packaging pins Kafka 0.1.24, Trino 0.1.92 and Java 21 with verified checksums; seven provisioned profiles connect, SQL profiles execute SELECT, Kafka browser lists four topics and Trino browser executes SELECT without password prompt; isolated fresh non-root/read-only bootstrap and idempotent runtime installation passed; make ci passed; MinIO remains a separate console because pinned DBX has no S3 connector
+  - 2026-11-06 DBX browser target-mismatch reproduced from absent driver_profile; fixed explicit driver identities and revision-triggered sync Job replacement, verified browser-normalized saved-reference connects and SELECT 1 for PostgreSQL/ClickHouse; Trino driver and Kafka agent launch specification are missing from the pinned image and remain implementation blockers, despite saved profile presence
+  - 2026-11-06 rpp-dev-single (13312 MiB allocation) deployed streaming, analytics, lakehouse, BI and AI with application smoke passing; desktop Trino metadata initially failed because Polaris denied VIEW_LIST, now granted as read-only listing; live SHOW TABLES and information_schema list both payment tables, SELECT succeeds and reader CREATE remains denied; make ci passed
+  - 2026-11-06 native desktop access added through make access-local with explicit-context and supervised loopback forwards; optional DBX browser access is separately provisioned in-cluster
+  - 2026-11-06 dedicated profiles verified an authenticated PostgreSQL query through the desktop forward, authenticated TLS Kafka metadata advertising localhost and internal metadata retaining Kubernetes DNS, Apicurio HTTP, ClickHouse HTTP, MinIO S3 health and MinIO console; Trino/JDBC extension connections and the full combined run-local feature set remain unverified
+  - 2026-11-06 live certificate replacement exposed Terraform omitting a first unknown annotations-map update; broker config now has a plan-known checksum and TLS has a separate container revision, verified by a single-apply listener/certificate change, recovered internal clients, application smoke and a no-change re-plan
+  - 2026-11-06 Stage 11 foundation make ci, make security (all 14 targets) and all-file pre-commit hooks passed; the dedicated verification profile was stopped, not deleted
+  - 2026-11-06 Stage 11 foundation passed IDENTITY=1 make setup, Terraform build/lint, 10 provider unit tests and 3 isolated real-Keycloak tests covering code exchange, PKCE, code replay, inactive tokens and viewer/clerk roles
+  - 2026-11-06 fresh rpp-stage11-verify profile (4 CPUs/5120 MiB) deployed identity PostgreSQL and Keycloak; ingress discovery and browser login page verified, source-hashed runtime changed on a dirty-source edit and restored after rollback, dedicated stack recreated without deleting the profile, application smoke passed and initial re-plan had no changes
   - 2026-11-05 Stage 10 make ci, make security and pre-commit passed; ai-core pgvector integration verified hybrid and text-only retrieval
   - 2026-11-05 dedicated rpp-stage10-verify profile (4 CPUs/10240 MiB, analytics and AI without streaming) deployed with smoke passing; make knowledge-ingest, make ai-fixtures and make ai-eval passed 21/21 with zero leaks
   - 2026-11-05 live acceptance found shared portal identity values overriding the AI charts' verifier Secret; the charts now use assertionVerifier and a regression test renders them with the shared values

@@ -51,6 +51,11 @@ spec:
           image: "{{ include "payment-api.image" . }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
+            {{- if .Values.oidc.enabled }}
+            # The HTTP application, not the migration job, enforces the resource audience and permissions.
+            - {name: OIDC_ISSUER, value: {{ .Values.oidc.issuer | quote }}}
+            - {name: OIDC_INTERNAL_URL, value: {{ .Values.oidc.internalUrl | quote }}}
+            {{- end }}
             {{- include "payment-api.databaseEnv" . | nindent 12 }}
             {{- include "payment-api.telemetryEnv" . | nindent 12 }}
           ports:

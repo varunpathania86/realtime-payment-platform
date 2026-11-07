@@ -123,6 +123,38 @@ else
   bad "invalid AI pins in .tool-versions (restore ai-python, llama-cpp, llama-cpp-image-digest and pgvector)"
 fi
 flink_pin=$(pinned_version flink)
+if [[ "$(pinned_version keycloak)" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] &&
+  [[ "$(pinned_version keycloak-image-digest)" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+  ok "Keycloak $(pinned_version keycloak) identity image pin (built by local deployment)"
+else
+  bad "invalid identity pins (restore keycloak and keycloak-image-digest in .tool-versions)"
+fi
+if [[ "$(pinned_version dbx)" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] &&
+  [[ "$(pinned_version dbx-api-contract)" == "$(pinned_version dbx)" ]] &&
+  [[ "$(pinned_version dbx-image-digest)" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+  ok "DBX $(pinned_version dbx) API contract and image digest pin (optional local workbench)"
+else
+  bad "invalid DBX version/API contract/image digest pins in .tool-versions"
+fi
+for pin in dbx-agent-kafka-sha256 dbx-agent-trino-sha256 dbx-jre-sha256-amd64 dbx-jre-sha256-arm64; do
+  if [[ ! "$(pinned_version "$pin")" =~ ^[a-f0-9]{64}$ ]]; then
+    bad "invalid DBX runtime checksum pin $pin (restore .tool-versions)"
+  fi
+done
+if [ "${DBX:-0}" = 1 ]; then
+  if docker image inspect "$(bash "$REPO_ROOT/scripts/dbx-runtime.sh" image)" >/dev/null 2>&1; then
+    ok "DBX offline Kafka/Trino runtime package"
+  else
+    bad "DBX runtime package missing (run: DBX=1 make setup)"
+  fi
+fi
+if [ "${IDENTITY:-0}" = 1 ]; then
+  if docker image inspect "$(bash "$REPO_ROOT/scripts/identity-runtime.sh" image)" >/dev/null 2>&1; then
+    ok "optimized identity runtime"
+  else
+    bad "identity runtime missing (run: IDENTITY=1 make setup)"
+  fi
+fi
 if [ "${flink_pin%%-*}" != "$(pinned_version flink-python)" ]; then
   bad "Flink and PyFlink pins must match (restore .tool-versions and run STREAMING=1 make setup)"
 fi

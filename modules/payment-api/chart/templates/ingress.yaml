@@ -12,6 +12,16 @@ spec:
   rules:
     - http:
         paths:
+          {{- if .Values.oidc.enabled }}
+          # Only payment data needs browser session termination; health/version stay public for smoke.
+          - path: /api/payments
+            pathType: Prefix
+            backend:
+              service:
+                name: web-portal
+                port:
+                  name: http
+          {{- end }}
           - path: /api
             pathType: Prefix
             backend:

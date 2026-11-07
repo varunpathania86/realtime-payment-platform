@@ -63,6 +63,27 @@ TALISMAN_CONFIG = talisman_config(EMBED_ORIGINS)
 ENABLE_PROXY_FIX = True
 PUBLIC_ROLE_LIKE = None
 AUTH_USER_REGISTRATION = False
+if os.environ.get("OIDC_ISSUER"):
+    from flask_appbuilder.security.manager import AUTH_OAUTH
+
+    AUTH_TYPE = AUTH_OAUTH
+    AUTH_USER_REGISTRATION = True
+    AUTH_USER_REGISTRATION_ROLE = "Public"
+    AUTH_ROLES_SYNC_AT_LOGIN = True
+    AUTH_ROLES_MAPPING = {"Gamma": ["Gamma"], "Admin": ["Admin"]}
+    issuer = os.environ["OIDC_ISSUER"].rstrip("/")
+    internal = os.environ["OIDC_INTERNAL_URL"].rstrip("/")
+    OAUTH_PROVIDERS = [{
+        "name": "keycloak", "icon": "fa-key", "token_key": "access_token",
+        "remote_app": {
+            "client_id": "superset", "client_secret": os.environ["OIDC_CLIENT_SECRET"],
+            "client_kwargs": {"scope": "openid profile email", "code_challenge_method": "S256"},
+            "authorize_url": issuer + "/protocol/openid-connect/auth",
+            "access_token_url": internal + "/protocol/openid-connect/token",
+            "api_base_url": internal + "/protocol/openid-connect/",
+            "server_metadata_url": internal + "/.well-known/openid-configuration",
+        },
+    }]
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = "Lax"
 SHOW_STACKTRACE = False

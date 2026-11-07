@@ -2,6 +2,19 @@ variable "observability_enabled" {
   type    = bool
   default = false
 }
+variable "identity_enabled" {
+  type    = bool
+  default = false
+}
+variable "access_port" {
+  type    = number
+  default = 8080
+}
+resource "random_password" "grafana_oidc" {
+  count   = var.identity_enabled && var.observability_enabled ? 1 : 0
+  length  = 48
+  special = false
+}
 resource "random_password" "grafana" {
   length  = 32
   special = false
@@ -23,6 +36,13 @@ locals {
       images          = local.telemetry_images
       grafanaPassword = key == "a" ? random_password.grafana.result : ""
       brokers         = [for address in var.addresses : "${address}:30092"]
+      oidc = {
+        enabled      = key == "a" && var.identity_enabled
+        issuer       = "http://identity.localhost:${var.access_port}/realms/rpp"
+        internalUrl  = "http://identity-provider.security.svc.cluster.local:8080/realms/rpp"
+        rootUrl      = "http://grafana.localhost:${var.access_port}"
+        clientSecret = var.identity_enabled && var.observability_enabled ? random_password.grafana_oidc[0].result : ""
+      }
     }
   }
 }

@@ -24,6 +24,10 @@ func handler(files fs.FS, app http.Handler) http.Handler {
 			return http.ErrUseLastResponse
 		}}}
 	return instrumentPortal(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if p, ok := app.(*portal); ok && p.oidc != nil && strings.HasPrefix(r.URL.Path, "/api/payments") {
+			p.payments(w, r)
+			return
+		}
 		if strings.HasPrefix(r.URL.Path, "/telemetry/") {
 			proxy.serve(w, r)
 			return

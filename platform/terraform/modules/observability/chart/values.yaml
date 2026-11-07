@@ -4,3 +4,11 @@ backendAddress: ""
 brokers: []
 images: {}
 grafanaPassword: ""
+backendNames: [prometheus, alertmanager, loki, tempo, grafana]
+collectorEnabled: true
+oidc:
+  enabled: false
+  issuer: ""
+  internalUrl: ""
+  rootUrl: ""
+  clientSecret: ""
