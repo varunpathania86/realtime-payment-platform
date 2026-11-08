@@ -1,7 +1,7 @@
 # Observability chart
 
 Terraform owns this shared chart. The multi-cluster deployment installs all
-backends in cluster A and collectors in each cluster. Stage 11's single-profile
+backends in cluster 1 and collectors in each cluster. Stage 11's single-profile
 identity deployment reuses **only Grafana**, with `collectorEnabled: false` and
 `backendNames: [grafana]`; enabling full multi-cluster observability instead
 configures that deployment's existing Grafana client, not a duplicate stack.

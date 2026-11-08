@@ -1,6 +1,6 @@
 {
   "node": { "cpus": 4, "memory_mib": 6144 },
-  "nodes": { "a": { "cpus": 4, "memory_mib": 10240 } },
+  "nodes": { "1": { "cpus": 4, "memory_mib": 10240 } },
   "streaming": false,
   "analytics": true,
   "ai": true

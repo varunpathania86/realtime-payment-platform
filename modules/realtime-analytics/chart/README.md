@@ -72,7 +72,7 @@ synthetic fixtures for the assistant's tools.
 From the repository root:
 
 ```bash
-make dev-up DEV_CONFIG=templates/analytics-topology.json
+make dev-up MULTI_CLUSTER=3 DEV_CONFIG=templates/analytics-topology.json
 make -C modules/realtime-analytics test lint
 ```
 

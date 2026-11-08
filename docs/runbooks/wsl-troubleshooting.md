@@ -20,7 +20,8 @@ Local cluster and builds are unavailable. No data loss unless the disk is full d
 1. Name resolution and connectivity: `curl -sI https://github.com | head -1`. A failure points at DNS or VPN.
 2. Docker daemon: `docker info | head -5`. If it fails, start Docker Desktop or `sudo service docker start`.
 3. Disk usage inside WSL: `df -h /` and `docker system df`.
-4. Cluster state: `make dev-status DEV_PROFILE=<owned-base>`.
+4. Cluster state: `make dev-status` for `rpp`, or
+  `make dev-status MULTI_CLUSTER=3` for all three profiles.
 5. Location of the repo: `pwd` must start with `/home/`, not `/mnt/c`.
 
 ## Mitigation
@@ -28,9 +29,9 @@ Local cluster and builds are unavailable. No data loss unless the disk is full d
 - **DNS or VPN problems:** restart WSL from Windows with `wsl --shutdown`. If DNS stays broken, set `generateResolvConf = false` in `/etc/wsl.conf` and write a working nameserver to `/etc/resolv.conf`.
 - **Docker not reachable:** enable WSL integration in Docker Desktop for this distribution, or start the Docker Engine service.
 - **Disk pressure:** inspect Docker usage and remove only reviewed unused resources.
-  To deliberately recreate a disposable owned lab, run `make dev-down`, then
-  `make cluster-down`, then `make dev-up` with the same `DEV_PROFILE`.
-  This destroys its database/Kafka data; never use another developer's base.
+  To deliberately recreate a disposable environment, run `make dev-clean`, then
+  `make dev-up` (or add `MULTI_CLUSTER=3` to both commands for all three nodes).
+  This destroys its database/Kafka data; preserve any data you still need.
 - **Shrink the WSL disk:** run `wsl --shutdown`, then in Windows PowerShell run `Optimize-VHD -Path <path to ext4.vhdx> -Mode Full` (requires Hyper-V tools).
 - **Not enough memory:** raise limits in `%UserProfile%\.wslconfig` (`memory=`, `processors=`) and run `wsl --shutdown`.
   Configure node budgets using `DEV_CONFIG` as described in the
@@ -39,7 +40,7 @@ Local cluster and builds are unavailable. No data loss unless the disk is full d
 
 ## Verification
 
-`make doctor` passes and `make dev-status` shows all three nodes `Ready`.
+`make doctor` passes and `make dev-status MULTI_CLUSTER=3` shows all three nodes `Ready`.
 
 ## Prevention and follow-up
 

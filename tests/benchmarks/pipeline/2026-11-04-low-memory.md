@@ -93,12 +93,11 @@ If an owned three-cluster test base is explicitly approved for permanent data
 disposal, use its lifecycle in this order while its nodes are reachable:
 
 ```bash
-make dev-down DEV_PROFILE=rpp-stage6-perf
-make cluster-down DEV_PROFILE=rpp-stage6-perf
+make dev-clean MULTI_CLUSTER=3
 free -m
 ```
 
-These commands destroy application/database data and then delete nodes.
+This command destroys application/database data and then deletes nodes.
 They are **not prerequisites for a rerun**; prefer stopping unrelated owned
 workloads or reusing an existing test environment. Starting stopped nodes
 just to destroy them also consumes memory: do not do so on an unsafe host.
@@ -114,11 +113,12 @@ status, benchmark, and cleanup.
 On this host, the actual command:
 
 ```bash
-make streaming-benchmark-preflight DEV_PROFILE=rpp-stage6-perf DEV_CONFIG=templates/analytics-benchmark-topology.json
+make streaming-benchmark-preflight MULTI_CLUSTER=3 DEV_CONFIG=templates/analytics-benchmark-topology.json
 ```
 
 **Failed safely:** 11946 MiB available versus 14336 MiB required
-(A=6144, B/C=3072 each, plus 2048 MiB reserve). No clusters were started by
+(then A=6144, B/C=3072 each, plus 2048 MiB reserve; now numbered 1/2/3).
+No clusters were started by
 that attempt. The low-memory topology retains the same node caps, so it
 does not bypass that preflight. There is no three-cluster performance result.
 

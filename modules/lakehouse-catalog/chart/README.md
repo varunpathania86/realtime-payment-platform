@@ -74,7 +74,7 @@ From the repository root:
 
 ```bash
 make -C modules/lakehouse-catalog test lint
-make dev-up DEV_CONFIG=templates/lakehouse-topology.json
+make dev-up MULTI_CLUSTER=3 DEV_CONFIG=templates/lakehouse-topology.json
 ```
 
 There is no Ingress. Developers query through Trino (`make lakehouse-query`).

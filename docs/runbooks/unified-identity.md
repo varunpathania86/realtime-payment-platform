@@ -32,9 +32,9 @@ flowchart LR
 1. Check the explicitly selected profile, not the current kubectl context:
 
     ```bash
-    kubectl --context rpp-dev-single -n security get pods
-    kubectl --context rpp-dev-single -n apps get pods
-    kubectl --context rpp-dev-single -n telemetry get pods
+    kubectl --context rpp -n security get pods
+    kubectl --context rpp -n apps get pods
+    kubectl --context rpp -n telemetry get pods
     ```
 
 2. Check `/auth/config`: `oidc: true` means the password-based portal login is
@@ -53,9 +53,9 @@ the managed settings, clients, resource roles, groups and users explicitly:
 
 ```bash
 # Terminal 1: administrative paths are exposed only on loopback.
-make identity-access MINIKUBE_PROFILE=rpp-dev-single
+make identity-access
 # Terminal 2: repeatable; existing human passwords are never reset.
-make identity-sync MINIKUBE_PROFILE=rpp-dev-single
+make identity-sync
 ```
 
 New users receive the profile-specific initial password from the identity
@@ -73,7 +73,7 @@ a provider error is reported rather than silently claiming successful logout.
 
 ```bash
 make ci
-make identity-verify MINIKUBE_PROFILE=rpp-dev-single
+make identity-verify
 make security
 ```
 

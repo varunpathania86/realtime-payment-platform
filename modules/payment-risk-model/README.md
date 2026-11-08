@@ -109,7 +109,7 @@ JobManager pod's existing MinIO credentials; it does not need GitHub, GHCR,
 an active PI or access to a remote artifact service.
 
 ```bash
-make risk-publish MINIKUBE_PROFILE=rpp-a
+make risk-publish MULTI_CLUSTER=3 MINIKUBE_PROFILE=rpp-1
 ```
 
 The command verifies every local manifest checksum, uploads artifacts to
@@ -122,10 +122,10 @@ latencies vary even when training inputs are reproducible. A changed experiment
 needs a new explicitly versioned contract and registry prefix.
 
 For the public three-cluster workflow, first start with
-`make dev-up DEV_CONFIG=templates/streaming-topology.json`. Keep an ignored copy
+`make dev-up MULTI_CLUSTER=3 DEV_CONFIG=templates/streaming-topology.json`. Keep an ignored copy
 of that topology for changes, rather than editing the template. After publication:
 
-1. Run `make streaming-stop MINIKUBE_PROFILE=rpp-a` and retain its exact
+1. Run `make streaming-stop MULTI_CLUSTER=3 MINIKUBE_PROFILE=rpp-1` and retain its exact
     persistent savepoint URI.
 2. Add this object to the ignored topology, replacing the checksum with the
     **actual** `risk_package_sha256` printed by publication:
@@ -140,13 +140,13 @@ of that topology for changes, rather than editing the template. After publicatio
     ```
 
     This is an addition to the topology, not a standalone configuration;
-    `streaming` must remain `true`. `risk` is enabled only on A.
+    `streaming` must remain `true`. `risk` is enabled only on cluster 1.
 
 3. Export `STREAMING_RESTORE_PATH` to the retained URI and run
-    `make dev-update DEV_CONFIG=.local/risk-topology.json`.
-    Use the same `DEV_PROFILE` as the original deployment if not `rpp`.
-4. Run `make risk-verify MINIKUBE_PROFILE=rpp-a`, followed by
-    `make smoke MINIKUBE_PROFILE=rpp-a`.
+    `make dev-update MULTI_CLUSTER=3 DEV_CONFIG=.local/risk-topology.json`.
+    Use `MULTI_CLUSTER=3` for the fixed three-cluster topology.
+4. Run `make risk-verify MULTI_CLUSTER=3 MINIKUBE_PROFILE=rpp-1`, followed by
+    `make smoke MULTI_CLUSTER=3 MINIKUBE_PROFILE=rpp-1`.
 
 The verification uses unique synthetic accounts and current UTC timestamps.
 It checks original and revised predictions, shared original audit identity,

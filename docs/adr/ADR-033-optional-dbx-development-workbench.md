@@ -45,7 +45,7 @@ DBX cloud sync, remote AI providers or agent integrations.
   closed until these are updated and verified.
 - The generated DBX password is one shared local workbench login, not Keycloak
   SSO. There is no OIDC integration in this deployment.
-- The feature is opt-in and adds a 512 MiB cluster-A memory budget. The browser
+- The feature is opt-in and adds a 512 MiB cluster-1 memory budget. The browser
   port-forward binds to loopback; a Kubernetes Service remains ClusterIP.
 - Saved connections use existing source Secrets: PostgreSQL and Kafka always,
   ClickHouse when analytics is enabled, and Trino when the lakehouse is

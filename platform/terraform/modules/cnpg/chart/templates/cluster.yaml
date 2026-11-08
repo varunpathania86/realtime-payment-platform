@@ -1,3 +1,4 @@
+{{- /* Terraform's CNPG module installs this database cluster after its operator and TLS/application secrets. */ -}}
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
@@ -51,7 +52,8 @@ spec:
     promotionToken: {{ .Values.promotionToken | quote }}
     {{- end }}
     primary: {{ .Values.primary }}
-    source: {{ if eq .Values.primary .Values.name }}{{ if eq .Values.name "pg-a" }}pg-b{{ else }}pg-a{{ end }}{{ else }}{{ .Values.primary }}{{ end }}
+    {{- /* The primary must name a different external member as its source. */}}
+    source: {{ if eq .Values.primary .Values.name }}{{ if eq .Values.name "pg-1" }}pg-2{{ else }}pg-1{{ end }}{{ else }}{{ .Values.primary }}{{ end }}
   managed:
     roles:
       - name: payments

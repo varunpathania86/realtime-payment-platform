@@ -81,12 +81,14 @@ Open `http://localhost:8080`. The static server does not proxy the API, so stand
 execution shows a retryable error until ingress routes `/api` to the payment API.
 From the repository root, `make dev-up` deploys the environment, `make dev-update`
 rebuilds the local images, and `make smoke` checks the routed endpoints.
-New development bases run the stack in three independent clusters. The chart's
+The `MULTI_CLUSTER=3` topology runs the stack in three independent clusters. The chart's
 positive integer `replicaCount` defaults to one; use per-cluster
 `applications.web-portal` in `DEV_CONFIG` to change it independently of the API.
 See [topology sizing](../../docs/developer-setup.md#configuring-counts-and-benchmark-node-budgets).
-Use `MINIKUBE_PROFILE=<base>-b` with `make dev-access`/`make smoke` to select
-another member; lifecycle commands select the whole base using `DEV_PROFILE`.
+Use `make dev-up MULTI_CLUSTER=3`, then `MULTI_CLUSTER=3 MINIKUBE_PROFILE=rpp-2`
+with `make dev-access`/`make smoke`
+to select another member; lifecycle commands select all three profiles using
+`MULTI_CLUSTER=3`.
 
 ## Make targets
 

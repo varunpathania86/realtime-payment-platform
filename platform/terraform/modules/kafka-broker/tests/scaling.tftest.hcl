@@ -3,7 +3,7 @@ mock_provider "kubernetes" {}
 variables {
   image       = "apache/kafka:test"
   node_id     = 2
-  rack        = "b"
+  rack        = "2"
   address     = "192.0.2.2"
   voters      = "1@192.0.2.1:30093,2@192.0.2.2:30093,3@192.0.2.3:30093"
   password    = join("", ["synthetic", "-only"])
@@ -28,7 +28,7 @@ run "two_unique_brokers_one_controller" {
       length(kubernetes_stateful_set_v1.kafka) == 2 &&
       strcontains(kubernetes_secret_v1.config["0"].data["server.properties"], "node.id=2") &&
       strcontains(kubernetes_secret_v1.config["1"].data["server.properties"], "node.id=5") &&
-      strcontains(kubernetes_secret_v1.config["1"].data["server.properties"], "broker.rack=b") &&
+      strcontains(kubernetes_secret_v1.config["1"].data["server.properties"], "broker.rack=2") &&
       strcontains(kubernetes_secret_v1.config["1"].data["server.properties"], "process.roles=broker\n") &&
       strcontains(kubernetes_secret_v1.config["0"].data["server.properties"], "process.roles=broker,controller")
     )

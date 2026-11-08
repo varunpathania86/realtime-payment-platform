@@ -64,7 +64,7 @@ def discover(profile, runner=subprocess.check_output):
             raise RuntimeError("Kafka desktop Service exists but the broker does not advertise localhost")
         endpoints.append(Endpoint("Kafka", "data", "payments-kafka", 19092, int(match[1]), "SASL_SSL/SCRAM-SHA-512"))
     elif ("data", "payments-kafka") in services:
-        print("skip Kafka desktop: set kafka_host_port=19092 in the profile's events.tfvars.json and rerun make run-local",
+        print("skip Kafka desktop: set kafka_host_port=19092 in the profile's events.tfvars.json and rerun make dev-up",
             flush=True)
     if not endpoints:
         raise RuntimeError("no supported data services found in the selected profile")

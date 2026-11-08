@@ -91,7 +91,7 @@ Kubernetes terms and Helm syntax.
 From the repository root:
 
 ```bash
-make dev-up DEV_CONFIG=templates/streaming-topology.json
+make dev-up MULTI_CLUSTER=3 DEV_CONFIG=templates/streaming-topology.json
 make streaming-fixtures
 make streaming-inspect
 ```
@@ -102,7 +102,7 @@ development does not install this optional chart.
 ## Configuration
 
 Default `streaming.enabled: false` renders the Deployments with zero replicas
-and omits submission. Enabled local streaming runs one pod per role in cluster A.
+and omits submission. Enabled local streaming runs one pod per role in cluster 1.
 The roles use `Recreate`, not rolling replacement. Configuration checksums
 trigger pod replacement when the shared ConfigMap changes.
 

@@ -39,8 +39,8 @@ root Make targets run the CLI inside the pod.
 
 ```bash
 make -C modules/lakehouse-query build test lint
-make dev-up DEV_CONFIG=templates/lakehouse-topology.json
-make lakehouse-query SQL='SELECT currency, count(*) AS payments FROM payment_events GROUP BY 1'
+make dev-up MULTI_CLUSTER=3 DEV_CONFIG=templates/lakehouse-topology.json
+make lakehouse-query MULTI_CLUSTER=3 SQL='SELECT currency, count(*) AS payments FROM payment_events GROUP BY 1'
 ```
 
 ## Make targets

@@ -94,7 +94,9 @@ def running(jobs, name):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("fixtures", "inspect", "load", "savepoint", "stop", "guard"))
-    parser.add_argument("--profile", default=os.environ.get("MINIKUBE_PROFILE", os.environ.get("DEV_PROFILE", "rpp") + "-a"))
+    parser.add_argument("--profile", default=os.environ.get("MINIKUBE_PROFILE") or (
+        "rpp-1" if os.environ.get("MULTI_CLUSTER") == "3" else "rpp"
+    ))
     parser.add_argument("--images", type=Path, help="candidate image inventory for the pre-build guard")
     args = parser.parse_args()
     if not re.fullmatch(r"[a-z][a-z0-9-]{0,39}", args.profile):

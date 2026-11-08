@@ -10,10 +10,13 @@ import subprocess
 import sys
 import time
 
+if __package__:
+    from .topology_identity import DATABASE_MEMBERS as MEMBERS, database_primary, database_profiles, require_numbered_identity
+else:
+    from topology_identity import DATABASE_MEMBERS as MEMBERS, database_primary, database_profiles, require_numbered_identity
+
 
 ROOT = Path(__file__).resolve().parents[1]
-MEMBERS = ("pg-a", "pg-b", "pg-c")
-
 
 def save(path, data):
     temporary = path.with_suffix(".pending")
@@ -53,22 +56,36 @@ def recovery_state(profile, member):
 
 def transition(base, target):
     if not re.fullmatch(r"[a-z][a-z0-9-]{0,29}", base) or target not in MEMBERS:
-        raise ValueError("use DEV_PROFILE=<owned-base> DATABASE_TARGET=pg-a|pg-b|pg-c")
-    state = ROOT / ".local" / base
+        raise ValueError("use MULTI_CLUSTER=3 and DATABASE_TARGET=pg-1|pg-2|pg-3")
+    state = ROOT / ".local" / f"{base}-multi"
     if (state / "owned").read_text().strip() != base or not (state / "full-stack").is_file():
         raise ValueError("refusing topology without matching full-stack ownership")
+    require_numbered_identity(state)
     if (state / "database-fence.json").exists():
         raise ValueError("rebuild the fenced member before a planned switchover")
     journal_path = state / "database-transition.json"
     topology_path = state / "topology.tfvars.json"
     topology = json.loads(topology_path.read_text())
-    profiles = dict(zip(MEMBERS, topology["profiles"]))
+    profiles = database_profiles(base, topology)
+    old = database_primary(topology)
     if journal_path.exists():
         journal = json.loads(journal_path.read_text())
+        if (
+            not isinstance(journal, dict)
+            or journal.get("old") not in MEMBERS
+            or journal.get("target") not in MEMBERS
+            or journal["old"] == journal["target"]
+        ):
+            raise ValueError("invalid database transition identity; preserve the recovery journal")
+        if journal.get("phase") not in ("demote", "promote", "reconcile"):
+            raise ValueError("invalid database transition phase; preserve the recovery journal")
+        if journal["phase"] == "promote" and (
+            not isinstance(journal.get("token"), str) or not journal["token"].strip()
+        ):
+            raise ValueError("missing demotion token; preserve the recovery journal")
         if journal["target"] != target:
             raise ValueError("a different database transition is pending; resume its original target first")
     else:
-        old = topology.get("database_primary", "pg-a")
         if old == target:
             if recovery_state(profiles[target], target) != "f":
                 raise RuntimeError("declared primary is not writable; inspect CNPG before changing roles")

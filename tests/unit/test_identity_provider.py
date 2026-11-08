@@ -107,22 +107,22 @@ class IdentityPackagingTests(unittest.TestCase):
         self.assertEqual(env["OIDC_INTERNAL_URL"], "http://identity-provider:8080/realms/rpp")
         self.assertNotIn("OIDC_ISSUER", {item["name"] for item in pod["initContainers"][0]["env"]})
 
-    def test_identity_feature_is_opt_in_and_budgeted_on_cluster_a(self):
+    def test_identity_feature_is_opt_in_and_budgeted_on_cluster_1(self):
         settings = json.loads((ROOT / "templates/identity-topology.json").read_text())
         self.assertTrue(validate_topology(settings)["identity"])
         settings["identity"] = "true"
         with self.assertRaisesRegex(ValueError, "identity must be a boolean"):
             validate_topology(settings)
         settings["identity"] = True
-        settings["nodes"]["a"]["memory_mib"] = 5119
+        settings["nodes"]["1"]["memory_mib"] = 5119
         with self.assertRaisesRegex(ValueError, "5120 MiB"):
             validate_topology(settings)
         settings = json.loads((ROOT / "templates/ai-topology.json").read_text())
         settings["identity"] = True
-        settings["nodes"]["a"]["memory_mib"] = 10239
+        settings["nodes"]["1"]["memory_mib"] = 10239
         with self.assertRaisesRegex(ValueError, "10240 MiB"):
             validate_topology(settings)
-        self.assertIn('identity_enabled: ($key == "a" and ($config[0].identity // false))',
+        self.assertIn('identity_enabled: ($key == "1" and ($config[0].identity // false))',
                         (ROOT / "scripts/multi-cluster.sh").read_text())
 
     def test_chart_preserves_local_runtime_contract_and_does_not_expose_administration(self):

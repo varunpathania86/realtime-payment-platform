@@ -218,7 +218,7 @@ def main(argv=None):
     parser.add_argument("--profile", required=True)
     args = parser.parse_args(argv)
     if not PROFILE.fullmatch(args.profile):
-        sys.exit("ERROR: set MINIKUBE_PROFILE to an explicit local profile, for example rpp-a")
+        sys.exit("ERROR: set MINIKUBE_PROFILE to an explicit local profile, for example rpp-1")
     try:
         if args.command == "ingest":
             documents, job = ingest(args.profile)

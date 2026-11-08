@@ -35,8 +35,8 @@ flowchart LR
 ## Start the lean AI profile
 
 ```bash
-make dev-up DEV_CONFIG=templates/ai-topology.json   # analytics + ai, no Flink
-export MINIKUBE_PROFILE=rpp-a
+make dev-up MULTI_CLUSTER=3 DEV_CONFIG=templates/ai-topology.json   # analytics + ai, no Flink
+export MULTI_CLUSTER=3 MINIKUBE_PROFILE=rpp-1
 make knowledge-ingest   # bundle the corpus, embed and load it (first run waits for model download)
 make ai-fixtures        # synthetic ClickHouse payment facts and advisory predictions
 make ai-eval            # starter evaluation; report in .local/$MINIKUBE_PROFILE/ai-eval/

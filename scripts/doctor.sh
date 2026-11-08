@@ -69,12 +69,12 @@ for runtime in kafka apicurio otelcol prometheus alertmanager loki tempo grafana
   fi
 done
 
-if [ "${MULTI_CLUSTER:-0}" = 1 ]; then
+if [ "${MULTI_CLUSTER:-0}" = 3 ]; then
   if [ -r /proc/sys/fs/inotify/max_user_instances ] &&
     [ "$(cat /proc/sys/fs/inotify/max_user_instances)" -ge 1024 ]; then
     ok "multi-cluster host inotify instance limit"
   else
-    bad "multi-cluster needs fs.inotify.max_user_instances >= 1024 on the Docker host (run: MULTI_CLUSTER=1 make setup)"
+    bad "multi-cluster needs fs.inotify.max_user_instances >= 1024 on the Docker host (run: MULTI_CLUSTER=3 make setup)"
   fi
 fi
 

@@ -77,7 +77,7 @@ flowchart LR
 ```bash
 make -C platform/terraform build lint
 make identity-integration
-make identity-verify MINIKUBE_PROFILE=rpp-dev-single
+make identity-verify
 ```
 
 The integration target starts isolated, disposable Keycloak and PostgreSQL

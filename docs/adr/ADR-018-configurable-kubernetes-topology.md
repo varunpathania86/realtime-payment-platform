@@ -21,7 +21,8 @@ Expose per-cluster broker, CNPG and application counts in distribution-neutral
 Terraform/Helm inputs. Keep local node sizing, image loading and node lifecycle
 in the Minikube adapter, with persisted validated JSON configuration and small
 defaults. Replace the public `multi-*` targets and separate single-cluster
-workflow with `dev-*`, `db-*` and `cluster-down`.
+workflow with `dev-*` and `db-*`. The later unified lifecycle uses `dev-clean`
+for destructive removal.
 
 ```mermaid
 flowchart LR
@@ -66,6 +67,15 @@ Defaults remain two CPUs / 3072 MiB per local node and one of each workload.
 Larger node budgets and counts are opt-in and must be measured; raising node
 limits does not change per-container limits. The same-host lab is not physical
 HA or production capacity certification.
+
+The local Make interface uses `MULTI_CLUSTER=0` (default) for the single
+`rpp` profile and `MULTI_CLUSTER=3` for the fixed profiles `rpp-1`, `rpp-2`,
+and `rpp-3`. It does not create alternate profile families.
+Topology and node keys, Kafka racks and CNPG members use the same numbers;
+the database members are `pg-1`, `pg-2`, and `pg-3`. An identity marker makes
+the new workflow refuse older letter-identified state instead of applying a
+destructive rename. Preserve old state and follow the
+[legacy-state procedure](../developer-setup.md#protecting-a-legacy-topology).
 
 Kubernetes modules/charts remain portable; the existing Docker fence and
 Minikube rebuild are local-only recovery adapters. Future production deployments

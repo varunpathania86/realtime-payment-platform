@@ -28,11 +28,12 @@ HTTP metrics still include probes. Tempo has a 768 MiB container limit and
 
 ## Diagnosis
 
-Start `make dev-observability` (add `DEV_PROFILE=<base>` for another owned lab).
+Start `make dev-observability MULTI_CLUSTER=3`; it operates on the fixed
+three-cluster topology.
 Sign in as `admin`; retrieve the generated local password without committing it:
 
 ```bash
-kubectl --context rpp-a -n telemetry get secret grafana-admin \
+kubectl --context rpp-1 -n telemetry get secret grafana-admin \
   -o jsonpath='{.data.password}' | base64 --decode; echo
 ```
 
@@ -59,7 +60,7 @@ not reported as zero.
 Confirm the consumer group has members. Follow
 [event recovery](event-publication.md); do not reset offsets to skip effects.
 Kafka metrics use the Collector's Franz client feature gate, verified against
-the pinned Kafka 4 broker. They are collected once from cluster A using TLS/SCRAM, not once per
+the pinned Kafka 4 broker. They are collected once from cluster 1 using TLS/SCRAM, not once per
 collector. PostgreSQL server metrics use CNPG's native port 9187 exporter.
 
 ### Outbox backlog
@@ -86,11 +87,12 @@ production transport/authentication and HA need separate reviewed hardening.
 
 ## Verification
 
-Confirm all three collector pods are ready and cluster A's five backends are
+Confirm all three collector pods are ready and cluster 1's five backends are
 ready. Generate a synthetic payment, inspect its API/outbox/producer/consumer
 trace, query correlated JSON logs, and check metric exemplars. Confirm every
-alert annotation points to this runbook. Use an isolated lab for deliberate
-latency/dependency failures, never the shared development database.
+alert annotation points to this runbook. Use the fixed lab for deliberate
+latency/dependency failures only when its data is disposable; never disrupt
+the shared development database.
 
 ## Prevention and follow-up
 

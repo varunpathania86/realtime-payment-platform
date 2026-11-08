@@ -20,9 +20,12 @@ def services(*entries):
 
 class ResourceAccessTests(unittest.TestCase):
     def test_minio_access_forwards_only_console_in_explicit_profile(self):
-        for profile in ("rpp-dev-single", "my-profile"):
+        for profile, selector in (("rpp", []), ("rpp-2", ["MULTI_CLUSTER=3"])):
             result = subprocess.run(
-                ["make", "--no-print-directory", "-n", "minio-access", f"MINIKUBE_PROFILE={profile}"],
+                [
+                    "make", "--no-print-directory", "-n", "minio-access", *selector,
+                    f"MINIKUBE_PROFILE={profile}",
+                ],
                 cwd=ROOT, check=True, capture_output=True, text=True,
             )
             self.assertEqual(result.stdout.strip(),

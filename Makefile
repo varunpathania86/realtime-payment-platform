@@ -7,18 +7,43 @@ export PATH := $(HOME)/.local/bin:$(PATH)
 .PHONY: security security-solution security-module security-plan publication-login quality-report quality-module-report release-baseline
 .PHONY: dev-metrics dev-observability db-switchover db-failover db-rejoin
 .PHONY: identity-integration identity-sync identity-access identity-verify
-.PHONY: run-local stop-local clean-local access-local dbx-access dbx-status minio-access
+.PHONY: dev-clean access-local dbx-access dbx-status minio-access
 .PHONY: streaming-fixtures streaming-inspect streaming-load streaming-savepoint streaming-stop streaming-benchmark streaming-benchmark-preflight risk-publish risk-verify lakehouse-query lakehouse-verify lakehouse-maintain bi-verify knowledge-ingest ai-fixtures ai-eval
 
 # Use a system pre-commit if present, otherwise the one installed by `make setup`.
 VENV       := .venv
 PRE_COMMIT := $(or $(shell command -v pre-commit),$(VENV)/bin/pre-commit)
+MULTI_CLUSTER ?= 0
+# Sentinels preserve trailing whitespace so malformed selectors cannot take the wrong branch.
+ifneq (x$(MULTI_CLUSTER)x,x0x)
+ifneq (x$(MULTI_CLUSTER)x,x3x)
+$(error MULTI_CLUSTER must be 0 or 3)
+endif
+endif
+ifneq ($(strip $(DEV_PROFILE)),)
+$(error DEV_PROFILE is no longer supported; use MULTI_CLUSTER=3)
+endif
+ifneq ($(strip $(MINIKUBE_PROFILE)),)
+ifeq ($(MULTI_CLUSTER),0)
+ifneq ($(MINIKUBE_PROFILE),rpp)
+$(error MULTI_CLUSTER=0 supports only MINIKUBE_PROFILE=rpp)
+endif
+else
+ifneq ($(words $(MINIKUBE_PROFILE)),1)
+$(error MULTI_CLUSTER=3 accepts one MINIKUBE_PROFILE at a time)
+endif
+ifneq ($(filter $(MINIKUBE_PROFILE),rpp-1 rpp-2 rpp-3),$(MINIKUBE_PROFILE))
+$(error MULTI_CLUSTER=3 supports only MINIKUBE_PROFILE=rpp-1, rpp-2, or rpp-3)
+endif
+endif
+endif
+LOCAL_PROFILE = $(or $(MINIKUBE_PROFILE),$(if $(filter 3,$(MULTI_CLUSTER)),rpp-1,rpp))
 
 # A sub-project is any directory below these roots that contains a Makefile.
 PROJECT_ROOTS := apps packages streaming platform ml knowledge analytics contracts tests modules
 SUBPROJECTS   := $(sort $(patsubst %/Makefile,%,$(wildcard $(addsuffix /*/Makefile,$(PROJECT_ROOTS)))))
 
-.PHONY: help setup tools docker setup-agent agent-status remove-agent doctor validate-catalog test-catalog check-module publication-plan publish-module cluster-down projects build test lint fmt clean ci hooks version dev-up dev-update dev-access dev-status dev-down smoke
+.PHONY: help setup tools docker setup-agent agent-status remove-agent doctor validate-catalog test-catalog check-module publication-plan publish-module projects build test lint fmt clean ci hooks version dev-up dev-update dev-access dev-status dev-down smoke
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
@@ -63,13 +88,13 @@ identity-integration: ## Test real Keycloak code+PKCE and permissions in isolate
 	$(VENV)/bin/python tests/integration/identity_provider_check.py
 
 identity-access: ## Forward Keycloak administration to loopback only (leave this terminal running)
-	kubectl --context "$(or $(MINIKUBE_PROFILE),rpp-dev-single)" -n security port-forward --address 127.0.0.1 service/identity-provider "$(or $(IDENTITY_PORT),18081):8080"
+	kubectl --context "$(LOCAL_PROFILE)" -n security port-forward --address 127.0.0.1 service/identity-provider "$(or $(IDENTITY_PORT),18081):8080"
 
 identity-sync: ## Explicitly reconcile the managed realm on an existing identity database
-	$(VENV)/bin/python -m scripts.identity_reconcile --context "$(or $(MINIKUBE_PROFILE),rpp-dev-single)" --url "$(or $(IDENTITY_URL),http://127.0.0.1:18081)"
+	$(VENV)/bin/python -m scripts.identity_reconcile --context "$(LOCAL_PROFILE)" --url "$(or $(IDENTITY_URL),http://127.0.0.1:18081)"
 
 identity-verify: ## Verify live Keycloak SSO, resource authorization, logout, expiry and signing-key rotation
-	$(VENV)/bin/python -m scripts.identity_acceptance --profile "$(or $(MINIKUBE_PROFILE),rpp-dev-single)"
+	$(VENV)/bin/python -m scripts.identity_acceptance --profile "$(LOCAL_PROFILE)"
 
 validate-catalog: ## Validate solution, module, and release manifests against JSON Schemas
 	$(VENV)/bin/python scripts/module_catalog.py validate
@@ -110,118 +135,149 @@ release-baseline: ## Promote module/solution iteration, RC or stable artifacts (
 publication-login: ## Authenticate Helm to GHCR using the job token through stdin
 	@printf '%s' "$$GH_TOKEN" | helm registry login ghcr.io --username "$$GITHUB_ACTOR" --password-stdin
 
-run-local: ## Start one full development cluster (default rpp-dev-single, 6 CPUs, 16384 MiB; preserves saved features)
-	@MINIKUBE_PROFILE="$(or $(MINIKUBE_PROFILE),rpp-dev-single)" MINIKUBE_CPUS="$(or $(MINIKUBE_CPUS),6)" MINIKUBE_MEMORY="$(or $(MINIKUBE_MEMORY),16384)" bash scripts/run-local.sh
-
-stop-local: ## Stop the single-cluster profile, preserving its data (default rpp-dev-single)
-	@MINIKUBE_PROFILE="$(or $(MINIKUBE_PROFILE),rpp-dev-single)" bash scripts/run-local.sh stop
-
 access-local: ## Forward deployed data services to loopback ports for desktop clients (foreground; Ctrl-C stops)
-	$(VENV)/bin/python -m scripts.resource_access --profile "$(or $(MINIKUBE_PROFILE),rpp-dev-single)"
+	$(VENV)/bin/python -m scripts.resource_access --profile "$(LOCAL_PROFILE)"
 
 dbx-access: ## Forward optional in-cluster DBX to http://127.0.0.1:44224 (foreground; Ctrl-C stops)
-	@MINIKUBE_PROFILE="$(or $(MINIKUBE_PROFILE),rpp-dev-single)" DBX_LOCAL_PORT="$(or $(DBX_LOCAL_PORT),44224)" bash scripts/local-dev.sh dbx-access
+	@MINIKUBE_PROFILE="$(LOCAL_PROFILE)" DBX_LOCAL_PORT="$(or $(DBX_LOCAL_PORT),44224)" bash scripts/local-dev.sh dbx-access
 
 dbx-status: ## Check the selected profile's optional DBX rollout
-	@MINIKUBE_PROFILE="$(or $(MINIKUBE_PROFILE),rpp-dev-single)" bash scripts/local-dev.sh dbx-status
+	@MINIKUBE_PROFILE="$(LOCAL_PROFILE)" bash scripts/local-dev.sh dbx-status
 
 minio-access: ## Forward only the MinIO console to http://127.0.0.1:19091 (foreground; Ctrl-C stops)
-	kubectl --context "$(or $(MINIKUBE_PROFILE),rpp-dev-single)" -n data port-forward --address 127.0.0.1 service/minio 19091:9001
+	kubectl --context "$(LOCAL_PROFILE)" -n data port-forward --address 127.0.0.1 service/minio 19091:9001
 
-clean-local: ## DESTRUCTIVE: delete the selected single-cluster profile and its .local state (default rpp-dev-single)
-	@MINIKUBE_PROFILE="$(or $(MINIKUBE_PROFILE),rpp-dev-single)" bash scripts/run-local.sh clean
+dev-up: ## Start rpp, or rpp-1/2/3 with MULTI_CLUSTER=3
+	@if [ -n "$(DEV_CONFIG)" ] && [ "$(MULTI_CLUSTER)" != 3 ]; then \
+		echo "DEV_CONFIG requires MULTI_CLUSTER=3" >&2; exit 2; \
+	elif [ "$(MULTI_CLUSTER)" = 3 ] && [ -n "$(MINIKUBE_PROFILE)" ]; then \
+		echo "Do not select a single profile for a multi-cluster start" >&2; exit 2; \
+	elif [ "$(MULTI_CLUSTER)" = 3 ]; then bash scripts/multi-cluster.sh up; \
+	else MINIKUBE_PROFILE="$(LOCAL_PROFILE)" bash scripts/run-local.sh up; fi
 
-dev-up: ## Start rpp-a/b/c, or one explicit MINIKUBE_PROFILE
-	@if [ -n "$(MINIKUBE_PROFILE)" ]; then \
-		MINIKUBE_PROFILE="$(MINIKUBE_PROFILE)" bash scripts/local-dev.sh up; \
-	else bash scripts/multi-cluster.sh up; fi
+dev-update: ## Rebuild/load the default single cluster, or a selected topology
+	@if [ -n "$(DEV_CONFIG)" ] && [ "$(MULTI_CLUSTER)" != 3 ]; then \
+		echo "DEV_CONFIG requires MULTI_CLUSTER=3" >&2; exit 2; \
+	elif [ "$(MULTI_CLUSTER)" = 3 ] && [ -n "$(MINIKUBE_PROFILE)" ]; then \
+		echo "Do not select a single profile for a multi-cluster update" >&2; exit 2; \
+	elif [ "$(MULTI_CLUSTER)" = 3 ]; then \
+		bash scripts/multi-cluster.sh update; \
+	else MINIKUBE_PROFILE="$(LOCAL_PROFILE)" bash scripts/local-dev.sh update; fi
 
-dev-update: ## Rebuild/load applications (all active clusters, or one explicit MINIKUBE_PROFILE)
-	@if [ -n "$(MINIKUBE_PROFILE)" ]; then \
-		MINIKUBE_PROFILE="$(MINIKUBE_PROFILE)" bash scripts/local-dev.sh update; \
-	else bash scripts/multi-cluster.sh update; fi
-
-dev-status: ## Show cluster/container CPU, RAM, readiness, requests and limits
-	@bash scripts/multi-cluster.sh status
+dev-status: ## Show selected cluster readiness
+	@if [ "$(MULTI_CLUSTER)" = 3 ] && [ -n "$(MINIKUBE_PROFILE)" ]; then \
+		echo "Do not select a single profile for multi-cluster status" >&2; exit 2; \
+	elif [ "$(MULTI_CLUSTER)" = 3 ]; then \
+		bash scripts/multi-cluster.sh status; \
+	else MINIKUBE_PROFILE="$(LOCAL_PROFILE)" bash scripts/cluster.sh status && \
+		kubectl --context "$(LOCAL_PROFILE)" get pods -A; fi
 
 dev-metrics: ## Enable bundled metrics-server on the three owned clusters
+	@if [ "$(MULTI_CLUSTER)" != 3 ] || [ -n "$(MINIKUBE_PROFILE)" ]; then \
+		echo "dev-metrics requires MULTI_CLUSTER=3 without MINIKUBE_PROFILE" >&2; exit 2; \
+	fi
 	@bash scripts/multi-cluster.sh metrics
 
 dev-observability: ## Forward opt-in Grafana to http://127.0.0.1:3000 (foreground)
+	@if [ "$(MULTI_CLUSTER)" != 3 ] || [ -n "$(MINIKUBE_PROFILE)" ]; then \
+		echo "dev-observability requires MULTI_CLUSTER=3 without MINIKUBE_PROFILE" >&2; exit 2; \
+	fi
 	@bash scripts/multi-cluster.sh observability
 
 streaming-fixtures: ## Send deterministic synthetic processing events to the selected cluster
-	$(VENV)/bin/python scripts/streaming-control.py fixtures
+	MINIKUBE_PROFILE="$(LOCAL_PROFILE)" $(VENV)/bin/python scripts/streaming-control.py fixtures
 
 risk-publish: ## Publish immutable trained model artifacts to the explicitly selected profile's MinIO
-	$(VENV)/bin/python -m scripts.risk_model --profile "$(MINIKUBE_PROFILE)" --directory "$(or $(MODEL_DIRECTORY),.local/models/payment-risk/1.0.0)"
+	$(VENV)/bin/python -m scripts.risk_model --profile "$(LOCAL_PROFILE)" --directory "$(or $(MODEL_DIRECTORY),.local/models/payment-risk/1.0.0)"
 
 risk-verify: ## Verify advisory predictions, late-history revision and model telemetry on the selected profile
-	$(VENV)/bin/python -m scripts.risk_acceptance --profile "$(MINIKUBE_PROFILE)"
+	$(VENV)/bin/python -m scripts.risk_acceptance --profile "$(LOCAL_PROFILE)"
 
 bi-verify: ## Verify embedded BI access boundaries (viewer, denied clerk, guest-token scope, CSP) on the selected profile
-	$(VENV)/bin/python -m scripts.bi_acceptance --profile "$(MINIKUBE_PROFILE)"
+	$(VENV)/bin/python -m scripts.bi_acceptance --profile "$(LOCAL_PROFILE)"
 
 knowledge-ingest: ## Bundle the operations knowledge corpus and run one ingestion job on the selected profile
-	$(VENV)/bin/python -m scripts.ai_platform ingest --profile "$(MINIKUBE_PROFILE)"
+	$(VENV)/bin/python -m scripts.ai_platform ingest --profile "$(LOCAL_PROFILE)"
 
 ai-fixtures: ## Replace synthetic ClickHouse payment facts and advisory predictions for assistant tools
-	$(VENV)/bin/python -m scripts.ai_platform fixtures --profile "$(MINIKUBE_PROFILE)"
+	$(VENV)/bin/python -m scripts.ai_platform fixtures --profile "$(LOCAL_PROFILE)"
 
 ai-eval: ## Run the starter assistant evaluation through the portal; fails on authorization leaks
-	$(VENV)/bin/python -m scripts.ai_platform eval --profile "$(MINIKUBE_PROFILE)"
+	$(VENV)/bin/python -m scripts.ai_platform eval --profile "$(LOCAL_PROFILE)"
 
 # Raw value, single-quoted for the shell, so Iceberg names like "t$snapshots" and quotes survive.
 LAKEHOUSE_SQL = $(subst ','\'',$(value SQL))
 
 lakehouse-query: ## Run read-only Trino SQL against the lakehouse (SQL="SELECT ...")
 	@test -n '$(LAKEHOUSE_SQL)' || { echo "Set SQL, for example SQL='SELECT count(*) FROM payment_events'" >&2; exit 2; }
-	$(VENV)/bin/python scripts/lakehouse.py query '$(LAKEHOUSE_SQL)'
+	MINIKUBE_PROFILE="$(LOCAL_PROFILE)" $(VENV)/bin/python scripts/lakehouse.py query '$(LAKEHOUSE_SQL)'
 
 lakehouse-verify: ## Verify lakehouse rows, deduplication, time travel, read-only access and evolution
-	$(VENV)/bin/python scripts/lakehouse.py verify
+	MINIKUBE_PROFILE="$(LOCAL_PROFILE)" $(VENV)/bin/python scripts/lakehouse.py verify
 
 lakehouse-maintain: ## Compact files and expire snapshots/orphans (LAKEHOUSE_RETENTION, default 7d)
-	$(VENV)/bin/python scripts/lakehouse.py maintain --retention "$(or $(LAKEHOUSE_RETENTION),7d)"
+	MINIKUBE_PROFILE="$(LOCAL_PROFILE)" $(VENV)/bin/python scripts/lakehouse.py maintain --retention "$(or $(LAKEHOUSE_RETENTION),7d)"
 
 streaming-inspect: ## Inspect current compacted window results and too-late output
-	$(VENV)/bin/python scripts/streaming-control.py inspect
+	MINIKUBE_PROFILE="$(LOCAL_PROFILE)" $(VENV)/bin/python scripts/streaming-control.py inspect
 
 streaming-load: ## Produce bounded synthetic load for TaskManager recovery verification
-	$(VENV)/bin/python scripts/streaming-control.py load
+	MINIKUBE_PROFILE="$(LOCAL_PROFILE)" $(VENV)/bin/python scripts/streaming-control.py load
 
 streaming-benchmark-preflight: ## Check host memory before starting the three-cluster analytics benchmark
-	$(VENV)/bin/python -m scripts.streaming_benchmark --base "$(or $(DEV_PROFILE),rpp)" --preflight --config "$(or $(DEV_CONFIG),templates/analytics-benchmark-topology.json)"
+	@if [ "$(MULTI_CLUSTER)" != 3 ] || [ -n "$(MINIKUBE_PROFILE)" ]; then \
+		echo "streaming-benchmark-preflight requires MULTI_CLUSTER=3 without MINIKUBE_PROFILE" >&2; exit 2; \
+	fi
+	$(VENV)/bin/python -m scripts.streaming_benchmark --base rpp --preflight --config "$(or $(DEV_CONFIG),templates/analytics-benchmark-topology.json)"
 
 streaming-benchmark: ## Measure 50 events/s baseline and 100 events/s stress on three running clusters
-	$(VENV)/bin/python -m scripts.streaming_benchmark --base "$(or $(DEV_PROFILE),rpp)"
+	@if [ "$(MULTI_CLUSTER)" != 3 ] || [ -n "$(MINIKUBE_PROFILE)" ]; then \
+		echo "streaming-benchmark requires MULTI_CLUSTER=3 without MINIKUBE_PROFILE" >&2; exit 2; \
+	fi
+	$(VENV)/bin/python -m scripts.streaming_benchmark --base rpp
 
 streaming-savepoint: ## Create a persistent savepoint for the selected Flink job
-	$(VENV)/bin/python scripts/streaming-control.py savepoint
+	MINIKUBE_PROFILE="$(LOCAL_PROFILE)" $(VENV)/bin/python scripts/streaming-control.py savepoint
 
 streaming-stop: ## Stop the selected Flink job with a persistent savepoint (no drain)
-	$(VENV)/bin/python scripts/streaming-control.py stop
+	MINIKUBE_PROFILE="$(LOCAL_PROFILE)" $(VENV)/bin/python scripts/streaming-control.py stop
 
-db-switchover: ## Move the CNPG writer using demotion/promotion tokens (DATABASE_TARGET=pg-b)
+db-switchover: ## Move the CNPG writer using demotion/promotion tokens (DATABASE_TARGET=pg-2)
+	@if [ "$(MULTI_CLUSTER)" != 3 ] || [ -n "$(MINIKUBE_PROFILE)" ]; then \
+		echo "db-switchover requires MULTI_CLUSTER=3 without MINIKUBE_PROFILE" >&2; exit 2; \
+	fi
 	@bash scripts/multi-cluster.sh switchover
 
-db-failover: ## Fence the old primary and verify durable WAL before promotion (DATABASE_TARGET=pg-b)
+db-failover: ## Fence the old primary and verify durable WAL before promotion (DATABASE_TARGET=pg-2)
+	@if [ "$(MULTI_CLUSTER)" != 3 ] || [ -n "$(MINIKUBE_PROFILE)" ]; then \
+		echo "db-failover requires MULTI_CLUSTER=3 without MINIKUBE_PROFILE" >&2; exit 2; \
+	fi
 	@bash scripts/multi-cluster.sh failover
 
 db-rejoin: ## DESTRUCTIVE: recreate the fenced owned profile and clone the current database
+	@if [ "$(MULTI_CLUSTER)" != 3 ] || [ -n "$(MINIKUBE_PROFILE)" ]; then \
+		echo "db-rejoin requires MULTI_CLUSTER=3 without MINIKUBE_PROFILE" >&2; exit 2; \
+	fi
 	@bash scripts/multi-cluster.sh rejoin
 
-dev-down: ## DESTRUCTIVE: destroy the owned stack and all data, retaining cluster nodes
-	@bash scripts/multi-cluster.sh down
+dev-down: ## Stop the selected cluster(s), preserving data
+	@if [ "$(MULTI_CLUSTER)" = 3 ] && [ -n "$(MINIKUBE_PROFILE)" ]; then \
+		echo "Do not select a single profile for a multi-cluster stop" >&2; exit 2; \
+	elif [ "$(MULTI_CLUSTER)" = 3 ]; then bash scripts/multi-cluster.sh stop; \
+	else MINIKUBE_PROFILE="$(LOCAL_PROFILE)" bash scripts/run-local.sh stop; fi
 
-cluster-down: ## DESTRUCTIVE: delete three owned clusters after successful dev-down
-	@bash scripts/multi-cluster.sh cluster-down
+dev-clean: ## DESTRUCTIVE: delete the selected cluster(s) and their data
+	@if [ "$(MULTI_CLUSTER)" = 3 ] && [ -n "$(MINIKUBE_PROFILE)" ]; then \
+		echo "Do not select a single profile for multi-cluster cleanup" >&2; exit 2; \
+	elif [ "$(MULTI_CLUSTER)" = 3 ]; then \
+		bash scripts/multi-cluster.sh down && bash scripts/multi-cluster.sh cluster-down; \
+	else MINIKUBE_PROFILE="$(LOCAL_PROFILE)" bash scripts/run-local.sh clean; fi
 
 dev-access: ## Forward ingress to http://127.0.0.1:8080 (foreground; Ctrl-C stops)
-	@MINIKUBE_PROFILE="$${MINIKUBE_PROFILE:-$${DEV_PROFILE:-rpp}-a}" scripts/local-dev.sh access
+	@MINIKUBE_PROFILE="$(LOCAL_PROFILE)" scripts/local-dev.sh access
 
 smoke: ## Check API build identity and frontend through local ingress
-	@MINIKUBE_PROFILE="$${MINIKUBE_PROFILE:-$${DEV_PROFILE:-rpp}-a}" scripts/local-dev.sh smoke
+	@MINIKUBE_PROFILE="$(LOCAL_PROFILE)" scripts/local-dev.sh smoke
 
 projects: ## List discovered sub-projects
 	@if [ -z "$(SUBPROJECTS)" ]; then echo "(none yet)"; else printf '%s\n' $(SUBPROJECTS); fi

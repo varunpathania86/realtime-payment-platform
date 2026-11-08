@@ -8,6 +8,7 @@ import re
 import sys
 
 from scripts.database_switchover import save
+from scripts.topology_identity import CLUSTER_NUMBERS
 
 
 COUNTS = {"kafka_brokers", "postgres_instances", "relay", "consumer", "registry", "ingress"}
@@ -38,8 +39,8 @@ def validate(data):
     if memory < 3072:
         raise ValueError("node.memory_mib must be at least 3072 for the full-stack lab")
     clusters = data.get("clusters", {})
-    if not isinstance(clusters, dict) or set(clusters) - {"a", "b", "c"}:
-        raise ValueError("clusters accepts only a, b and c")
+    if not isinstance(clusters, dict) or set(clusters) - set(CLUSTER_NUMBERS):
+        raise ValueError("clusters accepts only 1, 2 and 3")
     for cluster, size in clusters.items():
         if not isinstance(size, dict) or set(size) - (COUNTS | {"applications"}):
             raise ValueError(f"unknown cluster sizing field in {cluster}")
@@ -69,8 +70,8 @@ def validate(data):
         result["runtime_profile"] = data["runtime_profile"]
     if "nodes" in data:
         nodes = data["nodes"]
-        if not isinstance(nodes, dict) or set(nodes) - {"a", "b", "c"}:
-            raise ValueError("nodes accepts only a, b and c budget overrides")
+        if not isinstance(nodes, dict) or set(nodes) - set(CLUSTER_NUMBERS):
+            raise ValueError("nodes accepts only 1, 2 and 3 budget overrides")
         result["nodes"] = {}
         for key, value in nodes.items():
             if not isinstance(value, dict):
@@ -85,33 +86,33 @@ def validate(data):
         raise ValueError("analytics requires streaming, or ai for the lean AI profile")
     if result.get("analytics", False):
         required_memory = 6144
-        cluster_a = result.get("nodes", {}).get("a", result["node"])
-        if cluster_a["cpus"] < 4 or cluster_a["memory_mib"] < 6144:
-            raise ValueError("analytics requires cluster A to have at least 4 CPUs and 6144 MiB")
+        cluster_1 = result.get("nodes", {}).get("1", result["node"])
+        if cluster_1["cpus"] < 4 or cluster_1["memory_mib"] < 6144:
+            raise ValueError("analytics requires cluster 1 to have at least 4 CPUs and 6144 MiB")
     if result.get("lakehouse", False):
         if not result.get("streaming", False):
             raise ValueError("lakehouse requires streaming to be enabled")
-        cluster_a = result.get("nodes", {}).get("a", result["node"])
-        # Polaris, Trino and the second Flink slot add about 2.5 GiB of limits on cluster A.
+        cluster_1 = result.get("nodes", {}).get("1", result["node"])
+        # Polaris, Trino and the second Flink slot add about 2.5 GiB of limits on cluster 1.
         minimum = 10240 if result.get("analytics", False) else 8192
         required_memory = max(required_memory, minimum)
-        if cluster_a["cpus"] < 4 or cluster_a["memory_mib"] < minimum:
-            raise ValueError(f"lakehouse requires cluster A to have at least 4 CPUs and {minimum} MiB")
+        if cluster_1["cpus"] < 4 or cluster_1["memory_mib"] < minimum:
+            raise ValueError(f"lakehouse requires cluster 1 to have at least 4 CPUs and {minimum} MiB")
     if result.get("bi", False):
         if not result.get("analytics", False):
             raise ValueError("bi requires analytics to be enabled")
-        cluster_a = result.get("nodes", {}).get("a", result["node"])
-        # Superset adds about 1 GiB of limits on cluster A on top of analytics (and the lakehouse).
+        cluster_1 = result.get("nodes", {}).get("1", result["node"])
+        # Superset adds about 1 GiB of limits on cluster 1 on top of analytics (and the lakehouse).
         minimum = 11264 if result.get("lakehouse", False) else 7168
         required_memory = max(required_memory, minimum)
-        if cluster_a["memory_mib"] < minimum:
-            raise ValueError(f"bi requires cluster A to have at least {minimum} MiB")
+        if cluster_1["memory_mib"] < minimum:
+            raise ValueError(f"bi requires cluster 1 to have at least {minimum} MiB")
     if result.get("ai", False):
         if not result.get("analytics", False):
             raise ValueError("ai requires analytics to be enabled")
-        cluster_a = result.get("nodes", {}).get("a", result["node"])
+        cluster_1 = result.get("nodes", {}).get("1", result["node"])
         # llama.cpp chat and embeddings, knowledge PostgreSQL, MinIO and three Python services add
-        # about 4 GiB of limits on cluster A; Flink, the lakehouse and Superset add their own.
+        # about 4 GiB of limits on cluster 1; Flink, the lakehouse and Superset add their own.
         minimum = 8192
         if result.get("streaming", False):
             minimum += 4096
@@ -120,19 +121,19 @@ def validate(data):
         if result.get("bi", False):
             minimum += 1024
         required_memory = max(required_memory, minimum)
-        if cluster_a["cpus"] < 4 or cluster_a["memory_mib"] < minimum:
-            raise ValueError(f"ai requires cluster A to have at least 4 CPUs and {minimum} MiB")
+        if cluster_1["cpus"] < 4 or cluster_1["memory_mib"] < minimum:
+            raise ValueError(f"ai requires cluster 1 to have at least 4 CPUs and {minimum} MiB")
     if result.get("identity", False):
-        cluster_a = result.get("nodes", {}).get("a", result["node"])
+        cluster_1 = result.get("nodes", {}).get("1", result["node"])
         minimum = required_memory + 2048
         required_memory = max(required_memory, minimum)
-        if cluster_a["memory_mib"] < minimum:
-            raise ValueError(f"identity requires cluster A to have at least {minimum} MiB")
+        if cluster_1["memory_mib"] < minimum:
+            raise ValueError(f"identity requires cluster 1 to have at least {minimum} MiB")
     if result.get("dbx", False):
-        cluster_a = result.get("nodes", {}).get("a", result["node"])
+        cluster_1 = result.get("nodes", {}).get("1", result["node"])
         minimum = required_memory + 512
-        if cluster_a["memory_mib"] < minimum:
-            raise ValueError(f"dbx requires cluster A to have at least {minimum} MiB")
+        if cluster_1["memory_mib"] < minimum:
+            raise ValueError(f"dbx requires cluster 1 to have at least {minimum} MiB")
     if "risk" in data:
         risk = data["risk"]
         if not isinstance(risk, dict) or set(risk) != {"package_key", "package_sha256"}:
@@ -159,7 +160,12 @@ def main():
         source = args.config or (destination if destination.exists() else None)
         settings = validate(json.loads(source.read_text()) if source else {})
         previous = json.loads(destination.read_text()) if destination.exists() else {"clusters": {}}
-        for cluster in ("a", "b", "c"):
+        if destination.exists():
+            try:
+                previous = validate(previous)
+            except ValueError as error:
+                raise ValueError(f"legacy or invalid persisted configuration; preserve it for review: {error}") from error
+        for cluster in CLUSTER_NUMBERS:
             old_count = previous.get("clusters", {}).get(cluster, {}).get("kafka_brokers", 1)
             new_count = settings["clusters"].get(cluster, {}).get("kafka_brokers", 1)
             if new_count < old_count and (args.state / "terraform.tfstate").exists():

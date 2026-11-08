@@ -62,8 +62,9 @@ From the repository root, `make dev-up` deploys the local environment,
 `make dev-update` rebuilds local images, and `make smoke` checks the routed endpoints.
 This provisions PostgreSQL, generates private profile-local credentials, and
 runs migrations before the API starts. Keep `make dev-access` running for ingress.
-New development bases run the stack in three independent clusters. Select a
-member for access/smoke with `MINIKUBE_PROFILE=<base>-a` (or `-b`/`-c`).
+The `MULTI_CLUSTER=3` topology runs the stack in three independent clusters. Select a
+member for access/smoke with `MULTI_CLUSTER=3 MINIKUBE_PROFILE=rpp-1`
+(or `rpp-2`/`rpp-3`).
 Set chart `replicaCount`, `events.relayReplicas` and `events.consumerReplicas`
 independently to positive integers; each defaults to one. The development
 `DEV_CONFIG` maps these to per-cluster `applications.payment-api`, `relay`

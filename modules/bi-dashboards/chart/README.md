@@ -74,7 +74,7 @@ From the repository root:
 
 ```bash
 make -C modules/bi-dashboards test lint
-make dev-up DEV_CONFIG=templates/bi-topology.json
+make dev-up MULTI_CLUSTER=3 DEV_CONFIG=templates/bi-topology.json
 ```
 
 ## Configuration

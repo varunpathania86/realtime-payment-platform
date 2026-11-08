@@ -63,7 +63,7 @@ base image version and digest in `.tool-versions`.
 ```bash
 make -C modules/bi-dashboards build test
 make -C modules/bi-dashboards integration   # builds the image; checks run offline
-make dev-up DEV_CONFIG=templates/bi-topology.json
+make dev-up MULTI_CLUSTER=3 DEV_CONFIG=templates/bi-topology.json
 make dev-access
 ```
 

@@ -20,18 +20,17 @@ unchanged payload, never a new key. No unbounded API retry loop runs.
 ## Diagnosis
 
 Use the explicit topology/context you deployed, not an implicit current context.
-Examples use the default `rpp` base. For another lab, pass `DEV_PROFILE=<base>`
-to Make and substitute its contexts below; existing labs are not renamed.
-The examples assume the global writer is in A; select its actual member after
+Examples use the fixed `rpp` three-cluster topology; select it with
+`MULTI_CLUSTER=3`. The examples assume the global writer is in cluster 1; select its actual member after
 promotion. CNPG can change the designated primary pod inside a cluster:
 
 ```bash
-make dev-status
-kubectl --context rpp-a -n postgres get clusters,pods,pvc,services
-POD=$(kubectl --context rpp-a -n postgres get cluster pg-a -o jsonpath='{.status.currentPrimary}')
-kubectl --context rpp-a -n postgres logs "$POD" -c postgres --tail=50
-kubectl --context rpp-a -n apps logs deployment/payment-api -c migrate
-kubectl --context rpp-a -n apps logs deployment/payment-api -c app
+make dev-status MULTI_CLUSTER=3
+kubectl --context rpp-1 -n postgres get clusters,pods,pvc,services
+POD=$(kubectl --context rpp-1 -n postgres get cluster pg-1 -o jsonpath='{.status.currentPrimary}')
+kubectl --context rpp-1 -n postgres logs "$POD" -c postgres --tail=50
+kubectl --context rpp-1 -n apps logs deployment/payment-api -c migrate
+kubectl --context rpp-1 -n apps logs deployment/payment-api -c app
 ```
 
 Kubernetes probes contact the pod directly, not through Traefik. Failed readiness
@@ -39,15 +38,15 @@ removes the pod from normal Service/ingress routing; it does not mean liveness
 failed or require an API restart. Inspect readiness and restart counts with:
 
 ```bash
-kubectl --context rpp-a -n apps get pods
-kubectl --context rpp-a -n apps get endpointslices \
+kubectl --context rpp-1 -n apps get pods
+kubectl --context rpp-1 -n apps get endpointslices \
   -l kubernetes.io/service-name=payment-api -o yaml
 ```
 
 To distinguish ingress availability from process health, temporarily bypass it:
 
 ```bash
-kubectl --context rpp-a -n apps port-forward \
+kubectl --context rpp-1 -n apps port-forward \
   deployment/payment-api 18081:8080
 ```
 
@@ -74,7 +73,7 @@ sensitive local credentials and must remain Git-ignored.
 Restore the database pod/storage. The API should recover readiness automatically;
 an API restart or rebuild is not required for a routine database outage.
 For configured instance counts, use `DEV_CONFIG` and `make dev-update
-DEV_PROFILE=<base>`. Do not scale operator-managed pods as a substitute for
+MULTI_CLUSTER=3`. Do not scale operator-managed pods as a substitute for
 changing the CNPG declaration. With neither remote standby available, commits
 wait in `SyncRep`; restore a remote peer rather than disabling synchronous
 durability. For primary loss, follow the
@@ -106,9 +105,9 @@ payment, and same-key POST replays its original ID, status, amount, and timestam
 
 ## Prevention and follow-up
 
-`make dev-update` preserves database state. `make dev-down` destroys Terraform
-namespaces and therefore deletes local payment data/PVCs; `make cluster-down`
-also destroys all data in that Minikube profile. Never use these as a routine
+`make dev-update` preserves database state. `make dev-clean` destroys Terraform
+namespaces and therefore deletes local payment data/PVCs; it also
+destroys all data in the selected Minikube profile(s). Never use this as a routine
 application restart or as a test against a shared profile.
 Losing the private credential file while retaining the database requires
 intentional credential recovery; do not silently generate a replacement.

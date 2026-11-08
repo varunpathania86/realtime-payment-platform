@@ -9,6 +9,7 @@ import sys
 import time
 
 from scripts.topology_config import validate
+from scripts.topology_identity import CLUSTER_NUMBERS, require_numbered_identity
 
 
 def memory_available_mib():
@@ -24,7 +25,7 @@ def preflight(settings, available):
         raise ValueError("pipeline benchmark requires analytics and streaming")
     budgets = {
         key: settings.get("nodes", {}).get(key, settings["node"])
-        for key in ("a", "b", "c")
+        for key in CLUSTER_NUMBERS
     }
     required = sum(node["memory_mib"] for node in budgets.values()) + 2048
     if available < required:
@@ -50,15 +51,16 @@ def main():
         return
     if memory_available_mib() < 2048:
         raise ValueError("less than 2048 MiB host memory available; refusing benchmark")
-    state = Path(".local") / args.base
+    state = Path(".local") / f"{args.base}-multi"
     if (state / "owned").read_text().strip() != args.base:
         raise ValueError("benchmark requires an explicitly owned three-cluster base")
+    require_numbered_identity(state)
     topology = validate(json.loads((state / "configuration.json").read_text()))
     if not topology.get("analytics"):
         raise ValueError("owned topology does not enable analytics")
     workloads = {}
     node_limits = {}
-    for member in ("a", "b", "c"):
+    for member in CLUSTER_NUMBERS:
         profile = args.base + "-" + member
         limits = subprocess.run(
             [
@@ -100,7 +102,7 @@ def main():
     source = Path("modules/stream-processor/benchmark.py").read_text()
     result = subprocess.run(
         [
-            "kubectl", "--context", args.base + "-a", "--request-timeout=15s", "-n", "apps",
+            "kubectl", "--context", args.base + "-1", "--request-timeout=15s", "-n", "apps",
             "exec", "-i", "deployment/stream-processor-jobmanager", "--",
             "env", "PYTHONPATH=/opt/job", "python", "-",
         ],

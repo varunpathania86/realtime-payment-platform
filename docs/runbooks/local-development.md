@@ -17,20 +17,21 @@ local application development.
 
 ## Diagnosis
 
-1. Run `make doctor`, then `make dev-status`. The default base is `rpp`;
-    optionally pass `DEV_PROFILE=<base>` consistently for another lab.
-    Access/smoke default to member A; select another with `MINIKUBE_PROFILE`.
+1. Run `make doctor`, then `make dev-status`. The default profile is `rpp`.
+    For the three-cluster lab pass `MULTI_CLUSTER=3`; access/smoke default to
+    member `rpp-1`, or select `rpp-2`/`rpp-3` with `MINIKUBE_PROFILE`.
 2. Inspect the affected deployment:
 
     ```bash
-    kubectl --context rpp-a -n apps describe deployment payment-api
-    kubectl --context rpp-a -n apps get pods
-    kubectl --context rpp-a -n apps logs deployment/payment-api
-    kubectl --context rpp-a -n platform logs deployment/traefik
+    kubectl --context rpp -n apps describe deployment payment-api
+    kubectl --context rpp -n apps get pods
+    kubectl --context rpp -n apps logs deployment/payment-api
+    kubectl --context rpp -n platform logs deployment/traefik
     ```
 
 3. `ErrImageNeverPull` means the image is not loaded into this profile. Run
-    `make dev-update DEV_PROFILE=<base>` to rebuild/load/deploy all active profiles.
+    `make dev-update` for the single profile or `make dev-update MULTI_CLUSTER=3`
+    to rebuild/load/deploy all three lab profiles.
 4. Smoke checks automatically use an available loopback port and can run while
     `make dev-access` stays open. For smoke forwarding errors, check cluster
     connectivity and the Traefik Service. Forwarding diagnostics are in
@@ -42,23 +43,23 @@ local application development.
     Initial downloads still need internet even though no publication is required.
 7. A cold multi-cluster start can report `etcdserver: request timed out` while
     installing ingress CRDs. Confirm the selected control plane is healthy,
-    retain all state, and retry `make dev-update DEV_PROFILE=<base>`.
+    retain all state, and retry `make dev-update MULTI_CLUSTER=3`.
     Isolated full-stack recreation recovered this way without manually
     installing releases, deleting state, or increasing node limits.
 
 ### Multi-cluster resource snapshots
 
-Run `make dev-status` for node and workload-container
+Run `make dev-status MULTI_CLUSTER=3` for node and workload-container
 CPU/RAM usage, requests/limits, readiness, and restarts. It targets the three
 owned contexts explicitly and does not change or restart workloads.
 `N/A` plus a warning/nonzero result means metrics are unavailable, not zero usage.
-For older labs, run `make dev-metrics` with the selected base override once and allow
+For older labs, run `make dev-metrics` once and allow
 about a minute for samples. If metrics remain unavailable:
 
 ```bash
-kubectl --context rpp-a --request-timeout=10s get apiservice v1beta1.metrics.k8s.io
-kubectl --context rpp-a --request-timeout=10s -n kube-system get pods -l k8s-app=metrics-server
-kubectl --context rpp-a --request-timeout=10s -n kube-system logs deployment/metrics-server --tail=30
+kubectl --context rpp-1 --request-timeout=10s get apiservice v1beta1.metrics.k8s.io
+kubectl --context rpp-1 --request-timeout=10s -n kube-system get pods -l k8s-app=metrics-server
+kubectl --context rpp-1 --request-timeout=10s -n kube-system logs deployment/metrics-server --tail=30
 ```
 
 Replace the context with the cluster named in the warning. Stopped nodes are
@@ -76,8 +77,9 @@ a competing metrics-server Helm release.
   Terraform refresh will detect missing resources.
 - To roll back an application edit, restore the intended source through normal
   version control, then run `make dev-update`; do not retag a release artifact.
-- Use `make dev-down` and `make cluster-down` only when intentionally destroying
-  that profile. Both are destructive; inspect the selected profile first.
+- `make dev-down` stops the selected environment without deleting data.
+  `make dev-clean` deletes the selected environment and its data; inspect the
+  selected target first.
 
 ## Verification
 
@@ -94,8 +96,8 @@ acceptance procedure, see the [developer guide](../developer-setup.md).
 
 Keep source-derived local image identities, explicit kubeconfig contexts,
 profile-specific state, probes, and smoke checks. Stage 2 now stores payments
-on a PostgreSQL PVC. `make dev-update` preserves data; `make dev-down` deletes
-the database namespace/PVC and all local payments. See
+on a PostgreSQL PVC. `make dev-update` preserves data; `make dev-clean` deletes
+the selected environment and its database data. See
 [database recovery](payment-database.md) before changing credentials, storage,
 or migration SQL. Do not repair a routine outage by deleting state or a PVC.
 Stage 3 also persists Kafka data and registry schema IDs; see

@@ -114,14 +114,14 @@ class FixtureTests(unittest.TestCase):
             return subprocess.CompletedProcess(command, 0, "", "")
 
         with mock.patch("subprocess.run", run):
-            self.assertEqual(ai_platform.load_fixtures("rpp-a"), (600, 300))
+            self.assertEqual(ai_platform.load_fixtures("rpp-1"), (600, 300))
         statements = [command[-1] for command, _ in calls]
         self.assertEqual(statements[0], "ALTER TABLE payment_facts DELETE WHERE source_dataset = "
                         "'synthetic-ai-fixtures' SETTINGS mutations_sync = 2")
         self.assertEqual(statements[1], "INSERT INTO payment_facts FORMAT JSONEachRow")
         self.assertEqual(len(calls[1][1].splitlines()), 600)
         self.assertIn("payment_risk_predictions", statements[2])
-        self.assertTrue(all(command[:3] == ["kubectl", "--context", "rpp-a"] for command, _ in calls))
+        self.assertTrue(all(command[:3] == ["kubectl", "--context", "rpp-1"] for command, _ in calls))
 
 
 class CommandTests(unittest.TestCase):
@@ -133,7 +133,7 @@ class CommandTests(unittest.TestCase):
     def test_targets_are_wired_through_make(self):
         makefile = (ai_platform.ROOT / "Makefile").read_text()
         for command in ("ingest", "fixtures", "eval"):
-            self.assertIn(f'-m scripts.ai_platform {command} --profile "$(MINIKUBE_PROFILE)"', makefile)
+            self.assertIn(f'-m scripts.ai_platform {command} --profile "$(LOCAL_PROFILE)"', makefile)
 
 
 if __name__ == "__main__":

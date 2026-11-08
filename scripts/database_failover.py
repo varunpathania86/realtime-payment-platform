@@ -11,6 +11,7 @@ import sys
 import time
 
 from scripts.database_switchover import MEMBERS, run, save
+from scripts.topology_identity import database_primary, database_profiles, require_numbered_identity
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -45,25 +46,35 @@ def standby_state(output):
 
 def failover(base, target):
     if not re.fullmatch(r"[a-z][a-z0-9-]{0,29}", base) or target not in MEMBERS:
-        raise ValueError("use DEV_PROFILE=<owned-base> DATABASE_TARGET=pg-a|pg-b|pg-c")
-    state = ROOT / ".local" / base
+        raise ValueError("use MULTI_CLUSTER=3 and DATABASE_TARGET=pg-1|pg-2|pg-3")
+    state = ROOT / ".local" / f"{base}-multi"
     if (state / "owned").read_text().strip() != base or not (state / "full-stack").is_file():
         raise ValueError("refusing topology without matching full-stack ownership")
+    require_numbered_identity(state)
     if (state / "database-transition.json").exists():
         raise ValueError("a planned switchover is pending; resume it before attempting failover")
     topology_path = state / "topology.tfvars.json"
     topology = json.loads(topology_path.read_text())
-    profiles = dict(zip(MEMBERS, topology["profiles"]))
+    profiles = database_profiles(base, topology)
+    old = database_primary(topology)
     fence_path = state / "database-fence.json"
     if fence_path.exists():
         journal = json.loads(fence_path.read_text())
+        if (
+            not isinstance(journal, dict)
+            or journal.get("old") not in MEMBERS
+            or journal.get("target") not in MEMBERS
+            or journal["old"] == journal["target"]
+        ):
+            raise ValueError("invalid fenced database identity; preserve the recovery journal")
+        if journal.get("phase") not in ("fence", "promote", "reconcile", "complete"):
+            raise ValueError("invalid failover phase; preserve the recovery journal and finish any rejoin")
         if journal["target"] != target:
             if journal["phase"] != "fence" or target == journal["old"]:
                 raise ValueError("a promotion is pending; resume the same target or rebuild the fenced member")
             journal["target"] = target
             save(fence_path, journal)
     else:
-        old = topology.get("database_primary", "pg-a")
         if old == target:
             raise ValueError("target is already the declared primary")
         journal = {"old": old, "target": target, "phase": "fence"}

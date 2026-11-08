@@ -74,7 +74,7 @@ Several forces shape the design:
   Keycloak token validation and doesn't extend it.
 - Changing a chart means updating the stored query context and re-capturing
   the fixture (see the [runbook](../runbooks/bi-dashboards.md)).
-- BI requires analytics and adds about 1 GiB of limits on cluster A. The
+- BI requires analytics and adds about 1 GiB of limits on cluster 1. The
   Iceberg history chart appears only when the lakehouse is enabled. Trino has
   no authentication until Stage 11.
 - Row-level security waits for a concrete tenant boundary.

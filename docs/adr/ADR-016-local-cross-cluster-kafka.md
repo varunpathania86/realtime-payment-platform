@@ -26,7 +26,7 @@ and a reusable broker module; Helm is not required for these direct resources.
 
 ```mermaid
 flowchart LR
-  subgraph A[Minikube A: 3072 MiB / 2 CPU]
+  subgraph Cluster1[Minikube cluster 1: 3072 MiB / 2 CPU]
     Apps[API / relay / consumer / portal]
     DB[(PostgreSQL)]
     Registry[Apicurio]
@@ -35,10 +35,10 @@ flowchart LR
     Apps --> Registry
     Apps --> K1
   end
-  subgraph B[Minikube B: 3072 MiB / 2 CPU]
+  subgraph Cluster2[Minikube cluster 2: 3072 MiB / 2 CPU]
     K2[Broker + controller 2]
   end
-  subgraph C[Minikube C: 3072 MiB / 2 CPU]
+  subgraph Cluster3[Minikube cluster 3: 3072 MiB / 2 CPU]
     K3[Broker + controller 3]
   end
   K1 <-->|Shared bridge / TLS NodePorts| K2
@@ -60,9 +60,10 @@ flowchart LR
 - This is one Kafka cluster across three Kubernetes clusters, not three Kafka
   clusters or cross-region replication. Every node still shares one host,
   power supply, disk, Docker daemon, and kernel; it is not physical HA.
-- Applications, PostgreSQL, ingress, and registry remain on A. Losing B or C can
-  exercise broker failover while keeping applications available. Losing A also
-  loses the application/database/registry, irrespective of Kafka quorum.
+- Applications, PostgreSQL, ingress, and registry remain on cluster 1. Losing
+  cluster 2 or 3 can exercise broker failover while keeping applications
+  available. Losing cluster 1 also loses the application/database/registry,
+  irrespective of Kafka quorum.
 - Fractional CPU requests are Kubernetes millicores, not fractional Minikube
   node allocations. Small pod budgets are learning baselines, not stress-test
   capacity guarantees; Java heap is smaller than the total memory limit.

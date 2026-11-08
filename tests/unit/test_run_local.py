@@ -36,8 +36,8 @@ class RunLocalTests(unittest.TestCase):
             root = Path(directory)
             result = self.run_local(root)
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn("up rpp-dev-single 6 16384", result.stdout)
-            settings = json.loads((root / ".local/rpp-dev-single/events.tfvars.json").read_text())
+            self.assertIn("up rpp 6 14336", result.stdout)
+            settings = json.loads((root / ".local/rpp/events.tfvars.json").read_text())
             self.assertEqual(settings, {
                 **{f"{feature}_enabled": True for feature in ("streaming", "analytics", "lakehouse", "bi", "ai")},
                 "kafka_host_port": 19092,
@@ -75,8 +75,8 @@ class RunLocalTests(unittest.TestCase):
             self.run_local(root)
             result = self.run_local(root, "stop")
             self.assertEqual(result.returncode, 0)
-            self.assertIn("minikube stop -p rpp-dev-single", result.stdout)
-            self.assertTrue((root / ".local/rpp-dev-single/events.tfvars.json").exists())
+            self.assertIn("minikube stop -p rpp", result.stdout)
+            self.assertTrue((root / ".local/rpp/events.tfvars.json").exists())
 
     def test_clean_removes_only_selected_profile_state(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -86,8 +86,8 @@ class RunLocalTests(unittest.TestCase):
             other.mkdir()
             result = self.run_local(root, "clean")
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn("minikube delete -p rpp-dev-single", result.stdout)
-            self.assertFalse((root / ".local/rpp-dev-single").exists())
+            self.assertIn("minikube delete -p rpp", result.stdout)
+            self.assertFalse((root / ".local/rpp").exists())
             self.assertTrue(other.exists())
 
     def test_failed_cluster_deletion_preserves_state(self):
@@ -96,7 +96,7 @@ class RunLocalTests(unittest.TestCase):
             self.run_local(root)
             result = self.run_local(root, "clean", TEST_EXIT="7")
             self.assertEqual(result.returncode, 7)
-            self.assertTrue((root / ".local/rpp-dev-single").exists())
+            self.assertTrue((root / ".local/rpp").exists())
 
     def test_clean_refuses_symlinked_state(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -104,8 +104,19 @@ class RunLocalTests(unittest.TestCase):
             (root / ".local").mkdir()
             target = root / "preserve"
             target.mkdir()
-            (root / ".local/rpp-dev-single").symlink_to(target, target_is_directory=True)
+            (root / ".local/rpp").symlink_to(target, target_is_directory=True)
             result = self.run_local(root, "clean")
             self.assertNotEqual(result.returncode, 0)
             self.assertNotIn("minikube delete", result.stdout)
             self.assertTrue(target.exists())
+
+    def test_clean_refuses_an_owned_lab_member(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            state = root / ".local/lab-multi"
+            state.mkdir(parents=True)
+            (state / "owned").write_text("lab\n")
+            result = self.run_local(root, "clean", MINIKUBE_PROFILE="lab-2")
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("dev-clean MULTI_CLUSTER=3", result.stderr)
+            self.assertNotIn("minikube delete", result.stdout)

@@ -37,11 +37,11 @@ the pinned ClickHouse image version; no host ClickHouse client is required.
 
 ```bash
 make -C modules/realtime-analytics build test lint
-make dev-up DEV_CONFIG=templates/analytics-topology.json
+make dev-up MULTI_CLUSTER=3 DEV_CONFIG=templates/analytics-topology.json
 ```
 
 Analytics is opt-in. The topology enables streaming and ClickHouse only in
-cluster A and requires a minimum 4 CPUs/6144 MiB there. Default payment-only
+cluster 1 and requires a minimum 4 CPUs/6144 MiB there. Default payment-only
 and streaming-only development do not select the ClickHouse image or chart.
 
 ## Make targets
