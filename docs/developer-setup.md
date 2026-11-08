@@ -24,6 +24,12 @@ for the folder map, reading order, deployment sequence and browser request path.
 
 Versions are pinned in [.tool-versions](../.tool-versions). `make setup` (or `make tools`) downloads kubectl, Minikube, Helm, Terraform, Go, jq, yq, Node.js, TFLint, and Trivy into `~/.local/bin` without sudo, verifying each download with SHA-256. Go is unpacked to `~/.local/go`; Node.js includes npm and lives in a versioned directory under `~/.local/`. Tools already at the pinned version are skipped, so the command is safe to repeat.
 
+The EditorConfig checker binary is also pinned in `.tool-versions`, installed
+by `make setup`/`make tools` and verified by `make doctor`. Its pre-commit hook
+uses that system binary instead of a Python wrapper that downloads another
+binary during hook installation. After updating an existing checkout, run
+`make tools TOOLS=editorconfig-checker` before running hooks.
+
 Make sure `~/.local/bin` is on your PATH:
 
 ```bash
@@ -46,6 +52,10 @@ Authentication is sent only to GitHub API requests, not release asset redirects
 or other download hosts. Both download paths require the same release SHA-256.
 Metadata failures or failure of both endpoints stop installation with an
 explicit error; checksum verification is never skipped.
+MinIO runtime preparation uses this shared downloader on the host, checks the
+repository-pinned binary checksum and supplies the verified binary to a
+temporary Docker build context. The Dockerfile rechecks the checksum; tokens
+are never passed into the build context or Docker build arguments.
 TFLint uses its bundled Terraform ruleset and root `.tflint.hcl`; no downloaded
 provider plugin is required. Trivy uses root `trivy.yaml` and may download an
 updated public checks bundle on first use. It scans locally; no source upload,

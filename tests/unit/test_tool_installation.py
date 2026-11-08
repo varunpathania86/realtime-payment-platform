@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import tarfile
 import tempfile
 import unittest
 
@@ -19,7 +20,7 @@ class ToolInstallationTests(unittest.TestCase):
         self.root = Path(self.directory.name)
         scripts = self.root / "scripts"
         scripts.mkdir()
-        for name in ("install-tools.sh", "lib.sh"):
+        for name in ("install-tools.sh", "lib.sh", "github-release.sh", "build-minio.sh"):
             shutil.copy(ROOT / "scripts" / name, scripts / name)
         (self.root / ".tool-versions").write_text("jq 1.8.2\n")
         self.bin = self.root / "bin"
@@ -66,15 +67,15 @@ shutil.copyfile(source, destination)
             "CURL_CALLS": str(self.calls), "ASSET": str(self.asset), "METADATA": str(self.metadata),
         }
 
-    def set_metadata(self, digest, asset_id=123):
+    def set_metadata(self, digest, asset_id=123, name=None):
         architecture = "amd64" if os.uname().machine == "x86_64" else "arm64"
         self.metadata.write_text(json.dumps({"assets": [{
-            "name": f"jq-linux-{architecture}", "digest": digest, "id": asset_id,
+            "name": name or f"jq-linux-{architecture}", "digest": digest, "id": asset_id,
         }]}))
 
-    def install(self, **environment):
+    def install(self, tool="jq", **environment):
         return subprocess.run(
-            ["bash", "scripts/install-tools.sh", "jq"], cwd=self.root,
+            ["bash", "scripts/install-tools.sh", tool], cwd=self.root,
             env={**self.environment, **environment}, capture_output=True, text=True, check=False,
         )
 
@@ -139,6 +140,84 @@ shutil.copyfile(source, destination)
                 self.assertIn("missing or invalid asset ID", result.stderr)
                 self.assertEqual(len(self.calls.read_text().splitlines()), 1)
                 self.assertFalse((self.bin / "jq").exists())
+
+    def test_editorconfig_hook_uses_setup_managed_verified_binary(self):
+        architecture = "amd64" if os.uname().machine == "x86_64" else "arm64"
+        asset_name = f"ec-linux-{architecture}"
+        binary = self.root / "ec"
+        binary.write_text("#!/bin/sh\necho 3.11.1\n")
+        archive = self.root / "ec.tar.gz"
+        with tarfile.open(archive, "w:gz") as bundle:
+            bundle.add(binary, arcname=f"bin/{asset_name}")
+        self.set_metadata(
+            "sha256:" + hashlib.sha256(archive.read_bytes()).hexdigest(),
+            name=f"{asset_name}.tar.gz",
+        )
+        (self.root / ".tool-versions").write_text("editorconfig-checker 3.11.1\n")
+        stub = self.bin / "editorconfig-checker"
+        stub.write_text("#!/bin/sh\necho 0.0.0\n")
+        stub.chmod(0o755)
+        result = self.install(tool="editorconfig-checker", ASSET=str(archive), ASSET_FAIL="1")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(stub.read_bytes(), binary.read_bytes())
+        result = self.install(tool="editorconfig-checker", ASSET=str(archive))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("ok       editorconfig-checker 3.11.1", result.stdout)
+        hook = next(
+            hook for repo in yaml.safe_load((ROOT / ".pre-commit-config.yaml").read_text())["repos"]
+            for hook in repo["hooks"] if hook["id"] == "editorconfig-checker"
+        )
+        self.assertEqual(hook["entry"], "editorconfig-checker")
+        self.assertEqual(hook["language"], "system")
+
+    def test_minio_build_checks_pinned_bytes_before_docker(self):
+        architecture = "amd64" if os.uname().machine == "x86_64" else "arm64"
+        version = "RELEASE.2025-04-22T22-12-26Z"
+        self.set_metadata("sha256:" + self.digest, name=f"minio.linux-{architecture}.{version}")
+        (self.root / ".tool-versions").write_text(
+            f"go 1.27.1\nminio {version}\nminio-sha256-{architecture} {self.digest}\n"
+        )
+        runtime = self.root / "platform/runtime/minio"
+        runtime.mkdir(parents=True)
+        shutil.copy(ROOT / "platform/runtime/minio/Dockerfile", runtime / "Dockerfile")
+        docker = self.mock_bin / "docker"
+        docker.write_text("""#!/usr/bin/env python3
+import hashlib
+import json
+import os
+from pathlib import Path
+import sys
+
+context = Path(sys.argv[-1])
+Path(os.environ["DOCKER_CALLS"]).write_text(json.dumps({
+    "args": sys.argv[1:],
+    "sha256": hashlib.sha256((context / "minio").read_bytes()).hexdigest(),
+    "dockerfile": (context / "Dockerfile").read_text(),
+}))
+""")
+        docker.chmod(0o755)
+        record = self.root / "docker-calls"
+        for pinned_digest in (self.digest, "a" * 64):
+            with self.subTest(pinned_digest=pinned_digest):
+                record.unlink(missing_ok=True)
+                (self.root / ".tool-versions").write_text(
+                    f"go 1.27.1\nminio {version}\nminio-sha256-{architecture} {pinned_digest}\n"
+                )
+                result = subprocess.run(
+                    ["bash", "scripts/build-minio.sh"], cwd=self.root,
+                    env={**self.environment, "ASSET_FAIL": "1", "DOCKER_CALLS": str(record)},
+                    capture_output=True, text=True, check=False,
+                )
+                if pinned_digest != self.digest:
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn("Checksum mismatch", result.stderr)
+                    self.assertFalse(record.exists())
+                else:
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    built = json.loads(record.read_text())
+                    self.assertEqual(built["sha256"], self.digest)
+                    self.assertIn("COPY minio /minio", built["dockerfile"])
+                    self.assertIn("sha256sum -c -", built["dockerfile"])
 
     def test_api_failure_stops_before_parsing_or_installing(self):
         result = self.install(API_FAIL="1")

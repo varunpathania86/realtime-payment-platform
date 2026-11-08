@@ -10,6 +10,7 @@ yq 4.54.1
 nodejs 22.22.1
 tflint 0.65.0
 trivy 0.76.1
+editorconfig-checker 3.11.1
 # Container image tag used by local PostgreSQL and integration tests (not a CLI).
 postgres 16.6-alpine
 # Shared local event infrastructure container tags (not host CLIs).
