@@ -40,9 +40,12 @@ For a focused installation use `make tools TOOLS="tflint trivy"`.
 GitHub release checksum lookups use `GH_TOKEN` (or `GITHUB_TOKEN`) when set;
 CI supplies its scoped job token to avoid anonymous API rate limits. Local setup
 still works without a token, subject to GitHub's anonymous rate limits.
-Authentication is sent only to the GitHub API metadata request, not release
-asset redirects or other download hosts. Metadata failures stop installation
-with an explicit error; checksum verification is never skipped.
+If a GitHub release download fails after retries, installation retries the same
+asset through the official GitHub asset API using its validated numeric ID.
+Authentication is sent only to GitHub API requests, not release asset redirects
+or other download hosts. Both download paths require the same release SHA-256.
+Metadata failures or failure of both endpoints stop installation with an
+explicit error; checksum verification is never skipped.
 TFLint uses its bundled Terraform ruleset and root `.tflint.hcl`; no downloaded
 provider plugin is required. Trivy uses root `trivy.yaml` and may download an
 updated public checks bundle on first use. It scans locally; no source upload,

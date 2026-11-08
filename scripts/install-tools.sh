@@ -19,8 +19,8 @@ verify() { # file expected-sha256
   echo "$2  $1" | sha256sum --check --status || { echo "Checksum mismatch for $(basename "$1")" >&2; exit 1; }
 }
 
-# SHA-256 of a GitHub release asset, from the GitHub API.
-github_digest() { # owner/repo tag asset
+# SHA-256 and numeric asset ID of a pinned GitHub release asset.
+github_asset_metadata() { # owner/repo tag asset
   local response="$TMP/github-release.json" token="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
   local headers=(-H "Accept: application/vnd.github+json")
   if [ -n "$token" ]; then
@@ -39,13 +39,36 @@ import sys
 try:
     with open(sys.argv[1], encoding="utf-8") as stream:
         assets = json.load(stream)["assets"]
-    digest = next(asset.get("digest") or "" for asset in assets if asset["name"] == sys.argv[2])
+    asset = next(asset for asset in assets if asset["name"] == sys.argv[2])
+    digest = asset.get("digest") or ""
     if not re.fullmatch(r"sha256:[a-fA-F0-9]{64}", digest):
         raise ValueError("missing or invalid SHA-256 digest")
+    asset_id = asset.get("id")
+    if isinstance(asset_id, bool) or not isinstance(asset_id, int) or asset_id < 1:
+        raise ValueError("missing or invalid asset ID")
 except (OSError, ValueError, KeyError, TypeError, StopIteration) as error:
     sys.exit(f"Invalid GitHub checksum metadata for {sys.argv[2]}: {error}")
-print(digest.removeprefix("sha256:"))
+print(digest.removeprefix("sha256:"), asset_id)
 PY
+}
+
+fetch_github_asset() { # owner/repo tag asset destination
+  local metadata digest asset_id token="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
+  metadata=$(github_asset_metadata "$1" "$2" "$3") || return 1
+  read -r digest asset_id <<< "$metadata"
+  if ! fetch "https://github.com/$1/releases/download/$2/$3" "$4"; then
+    echo "Release download failed for $1 $2 $3; retrying through the official GitHub asset API." >&2
+    local headers=(-H "Accept: application/octet-stream")
+    if [ -n "$token" ]; then
+      headers+=(-H "Authorization: Bearer $token")
+    fi
+    if ! curl -fsSL --retry 3 "${headers[@]}" \
+      -o "$4" "https://api.github.com/repos/$1/releases/assets/$asset_id"; then
+      echo "Cannot download $1 release $2 asset $3 through either official endpoint." >&2
+      return 1
+    fi
+  fi
+  verify "$4" "$digest"
 }
 
 install_kubectl() {
@@ -56,10 +79,8 @@ install_kubectl() {
 }
 
 install_minikube() {
-  local v=$1 asset="minikube-$OS-$ARCH" digest
-  fetch "https://github.com/kubernetes/minikube/releases/download/v$v/$asset" "$TMP/minikube"
-  digest=$(github_digest kubernetes/minikube "v$v" "$asset") || return 1
-  verify "$TMP/minikube" "$digest"
+  local v=$1 asset="minikube-$OS-$ARCH"
+  fetch_github_asset kubernetes/minikube "v$v" "$asset" "$TMP/minikube"
   install -m 0755 "$TMP/minikube" "$BIN_DIR/minikube"
 }
 
@@ -92,18 +113,14 @@ install_go() {
 }
 
 install_jq() {
-  local v=$1 asset="jq-$OS-$ARCH" digest
-  fetch "https://github.com/jqlang/jq/releases/download/jq-$v/$asset" "$TMP/jq"
-  digest=$(github_digest jqlang/jq "jq-$v" "$asset") || return 1
-  verify "$TMP/jq" "$digest"
+  local v=$1 asset="jq-$OS-$ARCH"
+  fetch_github_asset jqlang/jq "jq-$v" "$asset" "$TMP/jq"
   install -m 0755 "$TMP/jq" "$BIN_DIR/jq"
 }
 
 install_yq() {
-  local v=$1 asset="yq_${OS}_$ARCH" digest
-  fetch "https://github.com/mikefarah/yq/releases/download/v$v/$asset" "$TMP/yq"
-  digest=$(github_digest mikefarah/yq "v$v" "$asset") || return 1
-  verify "$TMP/yq" "$digest"
+  local v=$1 asset="yq_${OS}_$ARCH"
+  fetch_github_asset mikefarah/yq "v$v" "$asset" "$TMP/yq"
   install -m 0755 "$TMP/yq" "$BIN_DIR/yq"
 }
 
@@ -122,22 +139,18 @@ install_nodejs() {
 }
 
 install_tflint() {
-  local v=$1 f="tflint_${OS}_$ARCH.zip" base="https://github.com/terraform-linters/tflint/releases/download/v$1" digest
-  fetch "$base/$f" "$TMP/$f"
-  digest=$(github_digest terraform-linters/tflint "v$v" "$f") || return 1
-  verify "$TMP/$f" "$digest"
+  local v=$1 f="tflint_${OS}_$ARCH.zip"
+  fetch_github_asset terraform-linters/tflint "v$v" "$f" "$TMP/$f"
   python3 -c 'import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extract("tflint", sys.argv[2])' "$TMP/$f" "$TMP"
   install -m 0755 "$TMP/tflint" "$BIN_DIR/tflint"
 }
 
 install_trivy() {
-  local v=$1 trivy_arch=$ARCH digest
+  local v=$1 trivy_arch=$ARCH
   [ "$trivy_arch" != amd64 ] || trivy_arch=64bit
   [ "$trivy_arch" != arm64 ] || trivy_arch=ARM64
-  local f="trivy_${v}_Linux-${trivy_arch}.tar.gz" base="https://github.com/aquasecurity/trivy/releases/download/v$v"
-  fetch "$base/$f" "$TMP/$f"
-  digest=$(github_digest aquasecurity/trivy "v$v" "$f") || return 1
-  verify "$TMP/$f" "$digest"
+  local f="trivy_${v}_Linux-${trivy_arch}.tar.gz"
+  fetch_github_asset aquasecurity/trivy "v$v" "$f" "$TMP/$f"
   tar -xzf "$TMP/$f" -C "$TMP" trivy
   install -m 0755 "$TMP/trivy" "$BIN_DIR/trivy"
 }

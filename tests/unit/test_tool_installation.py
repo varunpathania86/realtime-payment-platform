@@ -46,10 +46,16 @@ with Path(os.environ["CURL_CALLS"]).open("a") as stream:
     stream.write(json.dumps(args) + "\\n")
 destination = args[args.index("-o") + 1]
 api = args[-1].startswith("https://api.github.com/")
-if api and os.environ.get("API_FAIL") == "1":
+asset_api = api and "/releases/assets/" in args[-1]
+if (api and not asset_api and os.environ.get("API_FAIL") == "1") or (
+    not api and os.environ.get("ASSET_FAIL") == "1"
+) or (asset_api and os.environ.get("ASSET_API_FAIL") == "1"):
     print("curl: (22) HTTP 403", file=sys.stderr)
     sys.exit(22)
-shutil.copyfile(os.environ["METADATA"] if api else os.environ["ASSET"], destination)
+source = os.environ["METADATA"] if api and not asset_api else os.environ["ASSET"]
+if asset_api:
+    source = os.environ.get("API_ASSET", source)
+shutil.copyfile(source, destination)
 """)
         curl.chmod(0o755)
         self.calls = self.root / "calls"
@@ -60,9 +66,11 @@ shutil.copyfile(os.environ["METADATA"] if api else os.environ["ASSET"], destinat
             "CURL_CALLS": str(self.calls), "ASSET": str(self.asset), "METADATA": str(self.metadata),
         }
 
-    def set_metadata(self, digest):
+    def set_metadata(self, digest, asset_id=123):
         architecture = "amd64" if os.uname().machine == "x86_64" else "arm64"
-        self.metadata.write_text(json.dumps({"assets": [{"name": f"jq-linux-{architecture}", "digest": digest}]}))
+        self.metadata.write_text(json.dumps({"assets": [{
+            "name": f"jq-linux-{architecture}", "digest": digest, "id": asset_id,
+        }]}))
 
     def install(self, **environment):
         return subprocess.run(
@@ -70,13 +78,13 @@ shutil.copyfile(os.environ["METADATA"] if api else os.environ["ASSET"], destinat
             env={**self.environment, **environment}, capture_output=True, text=True, check=False,
         )
 
-    def test_api_auth_is_scoped_to_metadata_and_install_remains_idempotent(self):
+    def test_api_auth_is_scoped_to_api_and_install_remains_idempotent(self):
         result = self.install(GH_TOKEN="test-token")
         self.assertEqual(result.returncode, 0, result.stderr)
         calls = [json.loads(line) for line in self.calls.read_text().splitlines()]
         self.assertEqual(len(calls), 2)
-        self.assertNotIn("Authorization: Bearer test-token", calls[0])
-        self.assertIn("Authorization: Bearer test-token", calls[1])
+        self.assertIn("Authorization: Bearer test-token", calls[0])
+        self.assertNotIn("Authorization: Bearer test-token", calls[1])
         self.assertEqual((self.bin / "jq").read_bytes(), self.asset.read_bytes())
         self.assertEqual(self.install(GH_TOKEN="test-token").returncode, 0)
         self.assertEqual(len(self.calls.read_text().splitlines()), 2)
@@ -88,8 +96,49 @@ shutil.copyfile(os.environ["METADATA"] if api else os.environ["ASSET"], destinat
                 self.calls.unlink(missing_ok=True)
                 result = self.install(GITHUB_TOKEN=token)
                 self.assertEqual(result.returncode, 0, result.stderr)
-                api = json.loads(self.calls.read_text().splitlines()[-1])
+                api = json.loads(self.calls.read_text().splitlines()[0])
                 self.assertEqual(any("Authorization:" in arg for arg in api), bool(token))
+
+    def test_release_failure_uses_verified_official_api_asset(self):
+        for token in ("", "test-token"):
+            with self.subTest(token=token):
+                (self.bin / "jq").unlink(missing_ok=True)
+                self.calls.unlink(missing_ok=True)
+                result = self.install(ASSET_FAIL="1", GH_TOKEN=token)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn("retrying through the official GitHub asset API", result.stderr)
+                calls = [json.loads(line) for line in self.calls.read_text().splitlines()]
+                self.assertEqual(len(calls), 3)
+                self.assertFalse(any("Authorization:" in arg for arg in calls[1]))
+                self.assertEqual(calls[2][-1], "https://api.github.com/repos/jqlang/jq/releases/assets/123")
+                self.assertIn("Accept: application/octet-stream", calls[2])
+                self.assertEqual(any("Authorization:" in arg for arg in calls[2]), bool(token))
+                self.assertEqual((self.bin / "jq").read_bytes(), self.asset.read_bytes())
+
+    def test_both_download_endpoints_failing_is_an_error(self):
+        result = self.install(ASSET_FAIL="1", ASSET_API_FAIL="1")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("through either official endpoint", result.stderr)
+        self.assertFalse((self.bin / "jq").exists())
+
+    def test_api_asset_checksum_mismatch_cannot_install(self):
+        wrong_asset = self.root / "wrong-asset"
+        wrong_asset.write_text("not the approved bytes")
+        result = self.install(ASSET_FAIL="1", API_ASSET=str(wrong_asset))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Checksum mismatch", result.stderr)
+        self.assertFalse((self.bin / "jq").exists())
+
+    def test_invalid_asset_ids_fail_before_download(self):
+        for asset_id in (None, True, 0, "123", "https://untrusted.example/asset"):
+            with self.subTest(asset_id=asset_id):
+                self.set_metadata("sha256:" + self.digest, asset_id=asset_id)
+                self.calls.unlink(missing_ok=True)
+                result = self.install()
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("missing or invalid asset ID", result.stderr)
+                self.assertEqual(len(self.calls.read_text().splitlines()), 1)
+                self.assertFalse((self.bin / "jq").exists())
 
     def test_api_failure_stops_before_parsing_or_installing(self):
         result = self.install(API_FAIL="1")
