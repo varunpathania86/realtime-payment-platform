@@ -1762,6 +1762,20 @@
       "reservedVersion": "0.0.1-it2-rv.1",
       "sourceCommit": "027d7e50a36c9f219039083a651056f36eb07faf",
       "targetVersion": "0.0.1"
+    },
+    {
+      "approvedImpact": "patch",
+      "branch": "main",
+      "chartRegistry": "oci://ghcr.io/varunpathania86/charts",
+      "counter": 1,
+      "integrated": true,
+      "iteration": 2,
+      "module": "payment-api",
+      "registry": "ghcr.io/varunpathania86",
+      "releaseLine": "main",
+      "reservedVersion": "0.0.1-it2-rv.1",
+      "sourceCommit": "027d7e50a36c9f219039083a651056f36eb07faf",
+      "targetVersion": "0.0.1"
     }
   ],
   "schemaVersion": 1
