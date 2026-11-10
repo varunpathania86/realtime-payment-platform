@@ -54,6 +54,33 @@ class LlmServingChartTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("exactly one replica", result.stderr)
 
+    def test_cpu_default_does_not_request_gpu_or_force_cuda(self):
+        deployment = next(item for item in resources() if item["kind"] == "Deployment")
+        for container in deployment["spec"]["template"]["spec"]["containers"]:
+            self.assertNotIn("--device", container["args"])
+            self.assertNotIn("--n-gpu-layers", container["args"])
+            for kind in ("requests", "limits"):
+                self.assertFalse(any(key.startswith("nvidia.com/") for key in container["resources"][kind]))
+
+    def test_both_servers_offload_to_explicit_shared_gpu_slots(self):
+        items = resources("--set", "gpu.enabled=true")
+        validate_chart(items)
+        deployment = next(item for item in items if item["kind"] == "Deployment")
+        pod = deployment["spec"]["template"]["spec"]
+        self.assertEqual(len(pod["containers"]), 2)
+        for container in pod["containers"]:
+            args = container["args"]
+            self.assertEqual(args[args.index("--device") + 1], "CUDA0")
+            self.assertEqual(args[args.index("--n-gpu-layers") + 1], "999")
+            self.assertIn({"name": "CUDA_CACHE_DISABLE", "value": "1"}, container["env"])
+            for kind in ("requests", "limits"):
+                self.assertEqual(container["resources"][kind]["nvidia.com/gpu.shared"], 1)
+            self.assertTrue(container["securityContext"]["readOnlyRootFilesystem"])
+        for container in pod["initContainers"]:
+            self.assertIn({"name": "NVIDIA_VISIBLE_DEVICES", "value": "void"}, container["env"])
+            for kind in ("requests", "limits"):
+                self.assertFalse(any(key.startswith("nvidia.com/") for key in container["resources"][kind]))
+
 
 class LlmServingBuildTests(unittest.TestCase):
     def test_dockerfile_defaults_match_pinned_llama_cpp(self):

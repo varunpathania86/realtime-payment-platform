@@ -1551,6 +1551,30 @@ Never expose the model server directly to users. In Stage 10 only the AI
 orchestrator calls it inside the cluster; Stage 12 puts the user-facing path
 behind the hardened Go AI Gateway.
 
+Local implementation also supports opt-in NVIDIA llama.cpp acceleration for
+both chat and embedding containers (`AI_GPU=1` for `rpp`, or `ai_gpu: true`
+on cluster 1 in an AI-enabled three-cluster configuration). CPU remains the
+default. A pinned CUDA image and Terraform-owned NVIDIA device plugin expose
+two explicitly time-sliced slots per physical GPU; this is neither GPU-memory
+isolation nor additional system RAM. See
+[developer setup](developer-setup.md#optional-nvidia-acceleration-for-ai) and
+[ADR-034](adr/ADR-034-shared-local-ai-gpu.md). Offline validation covers both
+rendering modes and prerequisites. On 2026-11-10, explicitly approved clean
+`rpp` recreation exposed two shared slots and ran chat (512 generated tokens)
+and embeddings (16 vectors, 768 dimensions) concurrently on the RTX A2000
+8 GiB, with about 1635 MiB combined GPU memory after initialization.
+Live validation also corrected vendor Helm affinity merging: the plugin
+explicitly matches the selected hostname rather than retaining default
+hardware-label requirements. Sustained throughput and a deliberate
+dirty-source GPU update remain unverified. Existing CPU-only profiles are
+refused rather than deleted automatically.
+The same recreated single-cluster run restored the retained checksum-pinned
+risk artifact into fresh MinIO, passed ingress smoke and AI evaluation
+(21/21, zero authorization leaks), and indexed 61 knowledge documents.
+Knowledge PostgreSQL's one-second exec probes caused repeated restarts under
+full-stack startup load; bounded startup grace and five-second probe timeouts
+resolved that failure.
+
 ### MCP tool boundary
 
 The platform hosts its own MCP server. The LangGraph agent is an MCP client;

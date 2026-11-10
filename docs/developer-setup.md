@@ -80,6 +80,100 @@ with its committed lockfile; its Makefile installs dependencies when needed.
 
 ## 2. One-time setup
 
+### Optional NVIDIA acceleration for AI
+
+CPU llama.cpp remains the default. GPU mode accelerates **both** chat and
+embeddings, not PostgreSQL, Kafka, Keycloak or other general services. GPU VRAM
+is not extra system RAM; existing node memory budgets still apply.
+
+The Docker host must already have a working NVIDIA driver and NVIDIA Container
+Toolkit runtime. On WSL2 the GPU driver belongs on Windows, not inside the
+distribution. Host `nvidia-smi` must respond and `docker info` must list the
+`nvidia` runtime. Setup does not replace host drivers, restart Docker/WSL,
+change security sysctls or delete existing profiles. Repair those host
+prerequisites first if the bounded checks fail.
+
+```bash
+AI_GPU=1 make setup     # cache the checksum-pinned NVIDIA device-plugin chart
+AI_GPU=1 make doctor    # bounded host-driver/runtime and existing-profile checks
+make dev-up AI_GPU=1    # save the choice and start a GPU-capable rpp node
+```
+
+For an existing profile, preserve all other fields in
+`.local/rpp/events.tfvars.json`; `ai_enabled` must be `true`. `AI_GPU=1` saves
+`ai_gpu_enabled: true` there, so subsequent `make dev-up`/`make dev-update`
+retain the selection. `AI_GPU=0` explicitly returns to the pinned CPU image.
+Only `0` and `1` are accepted. A CPU-only existing Minikube node is **refused**,
+never automatically deleted: its Docker device requests cannot be upgraded in
+place. Save state, database data, models and Flink savepoints before arranging
+an explicitly approved recreation. Neither a stopped profile nor
+`make dev-down` alone changes GPU passthrough.
+
+For three clusters, add `"ai_gpu": true` to your own copy of an AI-capable
+`DEV_CONFIG` (keep `"ai": true`) and use the normal
+`make dev-up MULTI_CLUSTER=3 DEV_CONFIG=...` workflow. Prepare the archive with
+`AI_GPU=1 make setup` first, without `MULTI_CLUSTER=3`. Only `rpp-1` receives the
+physical GPU; do not pass `AI_GPU` to the multi-cluster lifecycle.
+
+Minikube starts that node with `--container-runtime=docker --gpus=all`.
+Its built-in NVIDIA plugin is disabled; Terraform owns the sole configured
+NVIDIA device-plugin Helm release in `kube-system`. Explicit time slicing
+advertises two `nvidia.com/gpu.shared` allocations per physical GPU. Each
+llama.cpp container requests one slot, uses the digest-pinned CUDA image, and
+requires `CUDA0` with all model layers offloaded. The model-fetch init container
+does not allocate or expose a GPU. Application containers remain non-root with
+read-only filesystems; only the infrastructure plugin uses its upstream device
+access permissions.
+
+The upstream chart also creates an MPS helper DaemonSet, selected only by the
+`nvidia.com/mps.capable: "true"` node label. This workflow does not enable MPS
+or run feature discovery to set that label; do not add it manually. Component
+selectors are enabled to keep the two controllers disjoint, and host-PID
+access for the unused helper is disabled. Time slicing does not use MPS.
+
+Time slicing shares compute and GPU memory: there is **no VRAM isolation**,
+memory reservation or guarantee of double throughput. The small default models
+target an 8 GiB card, but concurrent VRAM use and throughput must be measured on
+the actual host. Neither Intel integrated graphics nor other non-NVIDIA GPUs
+are used by this CUDA path. First-use CUDA/plugin image downloads need internet;
+no publication, registry login or active PI is required.
+
+Verify actual offload rather than just a Running pod:
+
+```bash
+kubectl --context rpp get nodes -o 'custom-columns=NAME:.metadata.name,SHARED:.status.allocatable.nvidia\.com/gpu\.shared'
+kubectl --context rpp -n apps logs deployment/llm-serving -c chat
+kubectl --context rpp -n apps logs deployment/llm-serving -c embed
+make knowledge-ingest
+make ai-eval
+```
+
+Expect two allocatable slots on a single-GPU node and CUDA model-layer offload
+in **both** logs. Use `rpp-1` and the normal multi-cluster Make selectors for
+the three-cluster equivalent. A driver hang, allocation failure or CUDA
+initialization error is a failure, not a successful CPU fallback. Live GPU
+verification on 2026-11-10 recreated only the disposable `rpp` profile after
+explicit approval, preserving feature settings. Both servers ran concurrently
+on the RTX A2000 8 GiB: chat generated 512 tokens while embeddings returned
+16 vectors of 768 dimensions. Host `nvidia-smi` showed two llama-server
+processes and approximately 1635 MiB combined VRAM after initialization.
+This confirms functional GPU use, not sustained throughput or full-stack
+memory capacity.
+
+Knowledge PostgreSQL uses a bounded startup probe and five-second health-check
+timeouts. One-second exec probes caused repeated database restarts during the
+full-stack live run; an interrupted ingestion or failing retrieval evaluation
+must be retried only after the database stays healthy.
+After the probe correction, the live AI evaluation passed 21/21 cases with
+zero authorization leaks; knowledge ingestion covered 61 corpus documents.
+
+The initial host/container GPU checks hung inside WSL's GPU adapter lock even
+though Windows `nvidia-smi` worked. After saving work, terminating only the
+affected distribution and reopening it restored access; this did not reset or
+delete the distribution. A whole `wsl --shutdown` stops every distribution,
+so do not use it while other distributions have unsaved work or active jobs.
+No Windows driver reinstall was needed in this case.
+
 ### Optional Stage 7 model training
 
 ```bash

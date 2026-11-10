@@ -165,12 +165,21 @@ resource "kubernetes_stateful_set_v1" "knowledge_postgres" {
           }
           readiness_probe {
             exec { command = ["pg_isready", "-U", "rpp_knowledge_admin", "-d", "ai_knowledge"] }
-            period_seconds = 2
+            period_seconds  = 5
+            timeout_seconds = 5
+          }
+          startup_probe {
+            exec { command = ["pg_isready", "-U", "rpp_knowledge_admin", "-d", "ai_knowledge"] }
+            period_seconds    = 5
+            timeout_seconds   = 5
+            failure_threshold = 30
           }
           liveness_probe {
             exec { command = ["pg_isready", "-U", "rpp_knowledge_admin", "-d", "ai_knowledge"] }
             initial_delay_seconds = 15
             period_seconds        = 10
+            timeout_seconds       = 5
+            failure_threshold     = 6
           }
           volume_mount {
             name       = "data"

@@ -14,6 +14,18 @@ export PATH := $(HOME)/.local/bin:$(PATH)
 VENV       := .venv
 PRE_COMMIT := $(or $(shell command -v pre-commit),$(VENV)/bin/pre-commit)
 MULTI_CLUSTER ?= 0
+ifneq ($(origin AI_GPU),undefined)
+ifneq (x$(AI_GPU)x,x0x)
+ifneq (x$(AI_GPU)x,x1x)
+$(error AI_GPU must be 0 or 1)
+endif
+endif
+endif
+ifeq ($(MULTI_CLUSTER),3)
+ifneq ($(strip $(AI_GPU)),)
+$(error Use ai_gpu in DEV_CONFIG for MULTI_CLUSTER=3; AI_GPU selects the single-cluster AI workload)
+endif
+endif
 # Sentinels preserve trailing whitespace so malformed selectors cannot take the wrong branch.
 ifneq (x$(MULTI_CLUSTER)x,x0x)
 ifneq (x$(MULTI_CLUSTER)x,x3x)
@@ -62,6 +74,7 @@ setup: ## Set up the developer environment (see docs/developer-setup.md)
 	bash scripts/setup-streaming.sh
 	bash scripts/setup-risk.sh
 	bash scripts/ai-python.sh setup
+	bash scripts/setup-gpu.sh
 	bash scripts/identity-runtime.sh setup
 	bash scripts/dbx-runtime.sh setup
 	@$(MAKE) --no-print-directory doctor

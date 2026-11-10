@@ -4,6 +4,8 @@ set -euo pipefail
 # shellcheck source=scripts/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 export PATH="$BIN_DIR:$PATH"
+# shellcheck source=scripts/gpu.sh
+. "$(dirname "${BASH_SOURCE[0]}")/gpu.sh"
 cd "$REPO_ROOT"
 umask 077
 
@@ -158,12 +160,20 @@ start_profiles() {
       continue
     fi
     local options=()
+    if [ "$profile" = "${PROFILES[0]}" ] && jq -e '.ai_gpu == true' "$STATE/configuration.json" >/dev/null; then
+      gpu_prepare_chart
+      gpu_preflight "$profile"
+      options+=(--container-runtime=docker --gpus=all)
+    fi
     if [ ! -f "$MINIKUBE_ROOT/profiles/$profile/config.json" ]; then
       options+=("--static-ip=$prefix.$index")
     fi
     minikube start -p "$profile" --driver=docker --network="$NETWORK" \
       "${options[@]}" \
       --cpus="$NODE_CPUS" --memory="$NODE_MEMORY" --disk-size=20g --kubernetes-version="v$(pinned_version kubectl)"
+    if [ "$profile" = "${PROFILES[0]}" ] && jq -e '.ai_gpu == true' "$STATE/configuration.json" >/dev/null; then
+      minikube -p "$profile" addons disable nvidia-device-plugin
+    fi
     resize_profile "$profile"
     [ "$(minikube -p "$profile" ip)" = "$prefix.$index" ] ||
       { echo "Unexpected node address for $profile; refusing to change Kafka quorum identity" >&2; exit 1; }
@@ -266,7 +276,7 @@ deploy() {
     jq --arg key "$(member_for_profile "$profile")" --slurpfile workloads "$STATE/workloads.pending.json" \
       '. * $workloads[0][$key]' "$STATE/events.pending.json" > "$REPO_ROOT/.local/$profile/events.tfvars.json"
     jq --arg key "$(member_for_profile "$profile")" --slurpfile config "$STATE/configuration.json" \
-      '. + {streaming_enabled: ($key == "1" and ($config[0].streaming // false)), analytics_enabled: ($key == "1" and ($config[0].analytics // false)), lakehouse_enabled: ($key == "1" and ($config[0].lakehouse // false)), bi_enabled: ($key == "1" and ($config[0].bi // false)), ai_enabled: ($key == "1" and ($config[0].ai // false)), identity_enabled: ($key == "1" and ($config[0].identity // false)), dbx_enabled: ($key == "1" and ($config[0].dbx // false)), runtime_profile: ($config[0].runtime_profile // "standard"), risk_enabled: ($key == "1" and ($config[0].risk != null)), risk_package_key: ($config[0].risk.package_key // ""), risk_package_sha256: ($config[0].risk.package_sha256 // "")}' \
+      '. + {streaming_enabled: ($key == "1" and ($config[0].streaming // false)), analytics_enabled: ($key == "1" and ($config[0].analytics // false)), lakehouse_enabled: ($key == "1" and ($config[0].lakehouse // false)), bi_enabled: ($key == "1" and ($config[0].bi // false)), ai_enabled: ($key == "1" and ($config[0].ai // false)), ai_gpu_enabled: ($key == "1" and ($config[0].ai_gpu // false)), identity_enabled: ($key == "1" and ($config[0].identity // false)), dbx_enabled: ($key == "1" and ($config[0].dbx // false)), runtime_profile: ($config[0].runtime_profile // "standard"), risk_enabled: ($key == "1" and ($config[0].risk != null)), risk_package_key: ($config[0].risk.package_key // ""), risk_package_sha256: ($config[0].risk.package_sha256 // "")}' \
       "$REPO_ROOT/.local/$profile/events.tfvars.json" > "$REPO_ROOT/.local/$profile/streaming.pending.json"
     mv "$REPO_ROOT/.local/$profile/streaming.pending.json" "$REPO_ROOT/.local/$profile/events.tfvars.json"
     MINIKUBE_PROFILE="$profile" scripts/local-dev.sh update

@@ -1,4 +1,5 @@
 import copy
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -105,7 +106,7 @@ class LocalCommandTests(unittest.TestCase):
         self.addCleanup(self.directory.cleanup)
         self.root = Path(self.directory.name)
         (self.root / "scripts").mkdir()
-        for name in ("local-dev.sh", "lib.sh", "module_catalog.py", "smoke.py", "local_database.py",
+        for name in ("local-dev.sh", "gpu.sh", "lib.sh", "module_catalog.py", "smoke.py", "local_database.py",
                     "streaming-control.py"):
             shutil.copy(ROOT / "scripts" / name, self.root / "scripts" / name)
         shutil.copy(ROOT / ".tool-versions", self.root / ".tool-versions")
@@ -138,6 +139,10 @@ with open(os.environ["COMMAND_LOG"], "a") as log:
 if name == "docker" and os.environ.get("FAIL_BUILD"):
     print("deliberate build failure", file=sys.stderr)
     sys.exit(7)
+if name == "docker" and sys.argv[1:] == ["info", "--format", "{{json .Runtimes}}"]:
+    print('{"nvidia":{}}')
+if name == "docker" and sys.argv[1:3] == ["container", "inspect"]:
+    sys.exit(1)
 if name == "minikube" and os.environ.get("FAIL_LOAD"):
     print("deliberate image load failure", file=sys.stderr)
     sys.exit(8)
@@ -190,6 +195,57 @@ if name == "kubectl" and "port-forward" in sys.argv:
 
     def inventory(self):
         return json.loads((self.root / ".local" / "isolated" / "images.tfvars.json").read_text())
+
+    def test_gpu_build_is_opt_in_persisted_and_has_a_distinct_image_tag(self):
+        module = self.root / "modules/llm-serving"
+        shutil.copytree(self.source.parent, module)
+        (module / "module.yaml").write_text("name: llm-serving\ntype: library\n")
+        (self.root / "solution.yaml").write_text("modules: [llm-serving]\n")
+        (self.root / "scripts/build-minio.sh").write_text("#!/bin/sh\nexit 0\n")
+        driver = self.bin / "nvidia-smi"
+        driver.write_text("#!/bin/sh\necho 'RTX A2000, 8192 MiB'\n")
+        driver.chmod(0o755)
+        archive = self.root / ".local/tools/nvidia-device-plugin-0.20.1.tgz"
+        archive.parent.mkdir(parents=True)
+        archive.write_bytes(b"fixture chart")
+        pins = self.root / ".tool-versions"
+        old_checksum = next(line.split()[1] for line in pins.read_text().splitlines()
+                            if line.startswith("nvidia-device-plugin-chart-sha256 "))
+        pins.write_text(pins.read_text().replace(old_checksum, hashlib.sha256(archive.read_bytes()).hexdigest()))
+        settings = self.root / ".local/isolated/events.tfvars.json"
+        settings.parent.mkdir()
+        settings.write_text('{"ai_enabled":true}\n')
+        result = self.run_command("images", AI_GPU="0")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        cpu = self.inventory()["local_images"]["llm-serving"]
+        result = self.run_command("images", AI_GPU="1")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        gpu = self.inventory()["local_images"]["llm-serving"]
+        self.assertNotEqual(cpu, gpu)
+        self.assertTrue(json.loads(settings.read_text())["ai_gpu_enabled"])
+        commands = [json.loads(line) for line in self.log.read_text().splitlines()]
+        builds = [call for call in commands if call[:2] == ["docker", "build"]]
+        self.assertIn("LLAMA_CPP_VERSION=server-b12124", builds[0])
+        self.assertIn("LLAMA_CPP_VERSION=server-cuda-b12124", builds[1])
+        self.assertEqual(self.run_command("images").returncode, 0)
+        self.assertEqual(self.inventory()["local_images"]["llm-serving"], gpu)
+        self.assertEqual(self.run_command("images", AI_GPU="0").returncode, 0)
+        self.assertEqual(self.inventory()["local_images"]["llm-serving"], cpu)
+
+    def test_gpu_requires_ai_and_boolean_settings_before_building(self):
+        settings = self.root / ".local/isolated/events.tfvars.json"
+        settings.parent.mkdir(parents=True)
+        for data, variables in (
+            ({"ai_enabled": False}, {"AI_GPU": "1"}),
+            ({"ai_enabled": True, "ai_gpu_enabled": "true"}, {}),
+            ({"ai_enabled": False, "ai_gpu_enabled": True}, {}),
+            ({"ai_enabled": True}, {"AI_GPU": "yes"}),
+        ):
+            settings.write_text(json.dumps(data))
+            result = self.run_command("images", **variables)
+            self.assertNotEqual(result.returncode, 0, result.stdout)
+            self.assertIn("GPU", result.stderr.upper())
+            self.assertFalse(self.log.exists())
 
     def test_smoke_uses_assigned_port_without_interrupting_existing_listener(self):
         self.assertEqual(self.run_command("images").returncode, 0)
@@ -397,7 +453,7 @@ class MultiClusterCommandTests(unittest.TestCase):
         self.root = Path(self.directory.name)
         (self.root / "scripts").mkdir()
         for name in (
-            "multi-cluster.sh", "setup-multicluster.sh", "lib.sh", "topology_config.py",
+            "multi-cluster.sh", "setup-multicluster.sh", "gpu.sh", "lib.sh", "topology_config.py",
             "topology_identity.py", "database_switchover.py",
         ):
             shutil.copy(ROOT / "scripts" / name, self.root / "scripts" / name)
@@ -424,7 +480,11 @@ if name == "cat":
     else:
         os.execv("/bin/cat", ["/bin/cat", *args])
 elif name == "docker":
-    if args[0] == "inspect":
+    if args[0] == "info":
+        print('{"nvidia":{}}')
+    elif args[:2] == ["container", "inspect"]:
+        sys.exit(1)
+    elif args[0] == "inspect":
         print(args[1])
     elif args[:2] == ["network", "create"]:
         network.touch()
@@ -450,7 +510,7 @@ elif name == "terraform":
     if "output" in args:
         print('{"1":{},"2":{},"3":{}}' if "workload_vars" in args else '{"external_kafka":{"brokers":"test"}}')
 """
-        for name in ("docker", "minikube", "terraform", "kubectl", "cat", "sudo"):
+        for name in ("docker", "minikube", "terraform", "kubectl", "cat", "sudo", "nvidia-smi"):
             path = self.bin / name
             path.write_text(fake)
             path.chmod(0o755)
@@ -467,6 +527,29 @@ elif name == "terraform":
 
     def calls(self):
         return [json.loads(line) for line in (self.root / "commands.jsonl").read_text().splitlines()]
+
+    def test_only_cluster_1_gets_gpu_passthrough_and_builtin_plugin_is_disabled(self):
+        config = json.loads((ROOT / "templates/ai-topology.json").read_text())
+        config["ai_gpu"] = True
+        source = self.root / "gpu-topology.json"
+        source.write_text(json.dumps(config))
+        archive = self.root / ".local/tools/nvidia-device-plugin-0.20.1.tgz"
+        archive.parent.mkdir(parents=True)
+        archive.write_bytes(b"fixture chart")
+        versions = self.root / ".tool-versions"
+        checksum = next(line.split()[1] for line in versions.read_text().splitlines()
+                        if line.startswith("nvidia-device-plugin-chart-sha256 "))
+        versions.write_text(versions.read_text().replace(checksum, hashlib.sha256(archive.read_bytes()).hexdigest()))
+        result = self.run_command("up", DEV_CONFIG=str(source))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        starts = [call for call in self.calls() if call[:2] == ["minikube", "start"]]
+        self.assertEqual(len(starts), 3)
+        self.assertIn("--gpus=all", starts[0])
+        self.assertIn("--container-runtime=docker", starts[0])
+        for call in starts[1:]:
+            self.assertNotIn("--gpus=all", call)
+        disables = [call for call in self.calls() if "addons" in call and "disable" in call]
+        self.assertEqual(disables, [["minikube", "-p", "rpp-1", "addons", "disable", "nvidia-device-plugin"]])
 
     def test_legacy_identity_refuses_mutating_topology_commands(self):
         state = self.root / ".local/rpp-multi"

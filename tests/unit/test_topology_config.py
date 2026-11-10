@@ -11,6 +11,19 @@ from scripts.module_catalog import ROOT
 
 
 class TopologyConfigurationTests(unittest.TestCase):
+    def test_ai_gpu_requires_ai_and_preserves_cpu_default(self):
+        config = json.loads((ROOT / "templates/ai-topology.json").read_text())
+        self.assertNotIn("ai_gpu", validate(config))
+        self.assertTrue(validate({**config, "ai_gpu": True})["ai_gpu"])
+        self.assertFalse(validate({**config, "ai_gpu": False})["ai_gpu"])
+        for invalid in (
+            {**config, "ai_gpu": True, "ai": False},
+            {**config, "ai_gpu": "true"},
+            {"ai_gpu": True},
+        ):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                validate(invalid)
+
     def test_numbered_cluster_keys_are_canonical(self):
         sizes = {number: {"kafka_brokers": int(number)} for number in ("1", "2", "3")}
         nodes = {number: {"cpus": int(number), "memory_mib": 3072} for number in ("1", "2", "3")}

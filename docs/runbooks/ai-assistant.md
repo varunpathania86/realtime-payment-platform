@@ -58,6 +58,15 @@ kubectl --context "$MINIKUBE_PROFILE" -n apps get secret web-portal-identity \
 
 ## Symptoms
 
+For optional NVIDIA acceleration, follow
+[GPU setup and verification](../developer-setup.md#optional-nvidia-acceleration-for-ai).
+Check for two allocatable `nvidia.com/gpu.shared` slots and CUDA offload in
+both llama.cpp container logs. Host-driver hangs must be resolved outside the
+cluster before retrying. Do not delete an existing CPU-only profile without
+preserving database data, models and streaming savepoints; stop/start cannot
+add missing Docker GPU device requests. Shared slots have no VRAM isolation,
+so simultaneous model initialization can still run out of GPU memory.
+
 - The panel shows "The assistant is busy", "timed out" or
   "temporarily unavailable".
 - Answers have the `fallback` badge, with no model-generated text.

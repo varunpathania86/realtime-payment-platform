@@ -41,6 +41,7 @@ All design documentation lives here, written in Markdown with Mermaid diagrams. 
 | [adr/ADR-031-catalog-dependency-build-contexts.md](adr/ADR-031-catalog-dependency-build-contexts.md) | Catalog-declared library dependencies passed to image builds as named build contexts |
 | [adr/ADR-032-keycloak-identity-and-bff.md](adr/ADR-032-keycloak-identity-and-bff.md) | Keycloak-managed users in dedicated PostgreSQL, Go BFF code+PKCE and explicit resource permissions; no initial LDAP |
 | [adr/ADR-033-optional-dbx-development-workbench.md](adr/ADR-033-optional-dbx-development-workbench.md) | Optional in-cluster DBX, version-pinned internal API adapter, Secret-backed connections and loopback access |
+| [adr/ADR-034-shared-local-ai-gpu.md](adr/ADR-034-shared-local-ai-gpu.md) | Opt-in CUDA llama.cpp, two scheduler-accounted time-sliced slots, CPU default and host-driver failure boundaries |
 | [runbooks/flink-recovery.md](runbooks/flink-recovery.md) | Synthetic fixtures, lateness, persistent checkpoints and savepoint/restore |
 | [runbooks/realtime-analytics.md](runbooks/realtime-analytics.md) | ClickHouse readiness, sink recovery, replacement queries and failure boundaries |
 | [runbooks/lakehouse.md](runbooks/lakehouse.md) | Polaris/Trino diagnosis, Iceberg maintenance, evolution and savepoint-safe toggling |

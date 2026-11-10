@@ -23,11 +23,11 @@ def positive_integer(value, name):
 def validate(data):
     if not isinstance(data, dict) or set(data) - {
         "node", "clusters", "nodes", "observability", "streaming", "analytics", "lakehouse", "bi", "ai",
-        "runtime_profile", "risk", "identity", "dbx",
+        "runtime_profile", "risk", "identity", "dbx", "ai_gpu",
     }:
         raise ValueError(
             "configuration accepts only node, nodes, clusters, observability, streaming, analytics, lakehouse, "
-            "bi, ai, identity, dbx, runtime_profile and risk"
+            "bi, ai, ai_gpu, identity, dbx, runtime_profile and risk"
         )
     node = data.get("node", {})
     if not isinstance(node, dict) or set(node) - {"cpus", "memory_mib"}:
@@ -77,11 +77,13 @@ def validate(data):
             if not isinstance(value, dict):
                 raise ValueError(f"nodes.{key} must be a node budget object")
             result["nodes"][key] = validate({"node": {**result["node"], **value}})["node"]
-    for feature in ("observability", "streaming", "analytics", "lakehouse", "bi", "ai", "identity", "dbx"):
+    for feature in ("observability", "streaming", "analytics", "lakehouse", "bi", "ai", "ai_gpu", "identity", "dbx"):
         if feature in data:
             if not isinstance(data[feature], bool):
                 raise ValueError(f"{feature} must be a boolean")
             result[feature] = data[feature]
+    if result.get("ai_gpu", False) and not result.get("ai", False):
+        raise ValueError("ai_gpu requires ai")
     if result.get("analytics", False) and not (result.get("streaming", False) or result.get("ai", False)):
         raise ValueError("analytics requires streaming, or ai for the lean AI profile")
     if result.get("analytics", False):

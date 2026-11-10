@@ -7,6 +7,9 @@ local:
   feature: ai
 # One pod owns the ReadWriteOnce models volume; scale-out would need a shared volume or per-pod copies.
 replicaCount: 1
+# Both containers request one shared slot; Terraform advertises two per physical GPU.
+gpu:
+  enabled: false
 # Models download once into this volume and are re-verified (size + SHA-256) on every start.
 modelStorage:
   size: 2Gi

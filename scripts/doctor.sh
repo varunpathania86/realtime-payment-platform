@@ -175,6 +175,23 @@ if [ "${AI:-0}" = 1 ]; then
   fi
 fi
 
+cuda_build=$(pinned_version llama-cpp)
+if [[ "$(pinned_version llama-cpp-cuda)" != "server-cuda-${cuda_build#server-}" ]] ||
+  [[ ! "$(pinned_version llama-cpp-cuda-image-digest)" =~ ^sha256:[a-f0-9]{64}$ ]] ||
+  [[ ! "$(pinned_version nvidia-device-plugin)" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] ||
+  [[ ! "$(pinned_version nvidia-device-plugin-chart-sha256)" =~ ^[a-f0-9]{64}$ ]]; then
+  bad "invalid CUDA/plugin pins; restore .tool-versions"
+fi
+if [ "${AI_GPU:-0}" = 1 ]; then
+  # shellcheck source=scripts/gpu.sh
+  . "$(dirname "${BASH_SOURCE[0]}")/gpu.sh"
+  if gpu_prepare_chart && gpu_preflight "${MINIKUBE_PROFILE:-rpp}"; then
+    ok "NVIDIA GPU prerequisites and verified time-slicing chart"
+  else
+    bad "GPU prerequisites unavailable; repair host GPU/Docker access, run AI_GPU=1 make setup, and preserve existing profile data before recreating a CPU-only node"
+  fi
+fi
+
 if [ "${RISK_MODEL:-0}" = 1 ]; then
   if docker image inspect "rpp-tools/payment-risk:$(pinned_version risk-python)" >/dev/null 2>&1; then
     ok "risk training runtime $(pinned_version risk-python)"

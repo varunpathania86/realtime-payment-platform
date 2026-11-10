@@ -11,6 +11,8 @@ build: ## Validate the local Terraform environment
 
 test: ## Render application charts and test Kafka and numbered topology plans
 	../../scripts/local-dev.sh charts
+	TF_DATA_DIR=$(abspath ../../.local/rpp/terraform) terraform -chdir=environments/local init -backend=false -input=false
+	TF_DATA_DIR=$(abspath ../../.local/rpp/terraform) terraform -chdir=environments/local test
 	terraform -chdir=modules/kafka-broker init -backend=false -input=false
 	terraform -chdir=modules/kafka-broker test
 	TF_DATA_DIR=$(abspath ../../.local/rpp-multi/terraform) terraform -chdir=environments/kafka-multicluster init -backend=false -input=false

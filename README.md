@@ -123,6 +123,11 @@ approves payments. `templates/ai-topology.json` enables a lean profile, and
 [ADR-030](docs/adr/ADR-030-assistant-identity-assertions.md) and the
 [assistant runbook](docs/runbooks/ai-assistant.md).
 
+Optional [NVIDIA AI acceleration](docs/developer-setup.md#optional-nvidia-acceleration-for-ai)
+uses `make dev-up AI_GPU=1` for both chat and embeddings with explicit GPU time
+slicing; CPU remains the default. GPU VRAM cannot replace system RAM. Both
+servers have been exercised concurrently on the development RTX A2000 8 GiB.
+
 Stage 11 is in progress: [Keycloak identity infrastructure](platform/terraform/modules/identity/chart/README.md)
 uses its own PostgreSQL database for synthetic users, with no LDAP requirement.
 [ADR-032](docs/adr/ADR-032-keycloak-identity-and-bff.md) records the selected
