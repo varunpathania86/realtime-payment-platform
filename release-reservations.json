@@ -1757,6 +1757,25 @@
       "integrated": true,
       "iteration": 2,
       "module": "llm-serving",
+      "publication": {
+        "approvedImpact": "patch",
+        "branch": "main",
+        "chart": {
+          "digest": "sha256:9e33c3b7dba7c3ee7ab1a919c994e0dd40a030c9e2121c99b50b9c375378a6ec",
+          "repository": "ghcr.io/varunpathania86/charts/llm-serving",
+          "version": "0.0.1-it2-rv.1"
+        },
+        "digest": "sha256:91a6fb1cb55a2b78ad83a6da1d8d69f865b9206a17cb2ed02ddda0a778a8e3ed",
+        "module": "llm-serving",
+        "provenance": "ghcr.io/varunpathania86/llm-serving@sha256:91a6fb1cb55a2b78ad83a6da1d8d69f865b9206a17cb2ed02ddda0a778a8e3ed",
+        "repository": "ghcr.io/varunpathania86/llm-serving",
+        "sbom": "ghcr.io/varunpathania86/llm-serving@sha256:91a6fb1cb55a2b78ad83a6da1d8d69f865b9206a17cb2ed02ddda0a778a8e3ed",
+        "schemaVersion": 1,
+        "sourceCommit": "027d7e50a36c9f219039083a651056f36eb07faf",
+        "testRun": "https://github.com/varunpathania86/realtime-payment-platform/actions/runs/42826105283",
+        "version": "0.0.1-it2-rv.1",
+        "workflowRun": "https://github.com/varunpathania86/realtime-payment-platform/actions/runs/42826974107"
+      },
       "registry": "ghcr.io/varunpathania86",
       "releaseLine": "main",
       "reservedVersion": "0.0.1-it2-rv.1",
