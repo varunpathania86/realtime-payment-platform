@@ -17,9 +17,9 @@ additional backends.
 ## Decision
 
 Deploy one OpenTelemetry Collector per Kubernetes cluster and use shared
-Prometheus, Alertmanager, Loki, Tempo and Grafana backends **in cluster A**.
-The opt-in topology reserves 5120 MiB/3 CPUs for A and 3072 MiB/2 CPUs for
-B/C; these are low-load learning budgets, not capacity certification.
+Prometheus, Alertmanager, Loki, Tempo and Grafana backends **in cluster 1**.
+The opt-in topology reserves 5120 MiB/3 CPUs for cluster 1 and 3072 MiB/2 CPUs
+for clusters 2/3; these are low-load learning budgets, not capacity certification.
 The solution-owned `telemetry` namespace avoids conflicting ownership with
 existing application-foundation namespaces. Keep collector
 endpoints, resource budgets and placement explicit and portable to real
@@ -28,10 +28,10 @@ validation; one shared local stack is not highly available.
 
 ```mermaid
 flowchart LR
-  A["Cluster A: portal, API, workers, infrastructure"] --> CA["Collector A"]
-  B["Cluster B: portal, API, workers, infrastructure"] --> CB["Collector B"]
-  C["Cluster C: portal, API, workers, infrastructure"] --> CC["Collector C"]
-  CA & CB & CC --> Shared["Cluster A: shared telemetry backends"]
+  Cluster1["Cluster 1: portal, API, workers, infrastructure"] --> Collector1["Collector 1"]
+  Cluster2["Cluster 2: portal, API, workers, infrastructure"] --> Collector2["Collector 2"]
+  Cluster3["Cluster 3: portal, API, workers, infrastructure"] --> Collector3["Collector 3"]
+  Collector1 & Collector2 & Collector3 --> Shared["Cluster 1: shared telemetry backends"]
   Shared --> Prom["Prometheus + Alertmanager"]
   Shared --> Loki["Loki: structured logs"]
   Shared --> Tempo["Tempo: traces"]

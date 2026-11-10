@@ -31,10 +31,15 @@ function AssistantPanel() {
 export function AnalyticsPage() {
   const [state, setState] = useState<AnalyticsState>({ kind: "loading" });
   const [busy, setBusy] = useState(false);
+  const [oidc, setOIDC] = useState(false);
   const mountRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
+    fetch("/auth/config", { credentials: "same-origin", cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        if (response.ok) setOIDC(((await response.json()) as { oidc?: boolean }).oidc === true);
+      }).catch(() => {});
     loadSession(fetch, controller.signal).then(
       (session) => setState(session ? { kind: "signed-in", session } : { kind: "signed-out" }),
       (error: unknown) => {
@@ -84,6 +89,7 @@ export function AnalyticsPage() {
     <AnalyticsView
       state={state}
       busy={busy}
+      oidc={oidc}
       mountRef={mountRef}
       assistant={<AssistantPanel />}
       onSignIn={(username, password) => run(async () => ({ kind: "signed-in", session: await signIn(username, password) }))}

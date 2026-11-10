@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-[ "${MULTI_CLUSTER:-0}" = 1 ] || exit 0
+[ "${MULTI_CLUSTER:-0}" = 3 ] || exit 0
 if [ ! -r /proc/sys/fs/inotify/max_user_instances ]; then
   echo "Configure fs.inotify.max_user_instances >= 1024 on the Linux Docker host; see docs/developer-setup.md" >&2
   exit 1

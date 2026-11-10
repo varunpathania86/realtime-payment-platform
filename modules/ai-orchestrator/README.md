@@ -11,6 +11,13 @@ permissions and never makes authorization or numeric decisions. The graph never
 touches a database; every document and data row comes through the
 [assistant-tools](../assistant-tools/README.md) MCP server.
 
+With Stage 11 identity enabled, the API verifies Keycloak RS256 signatures,
+the exact issuer, `ai-orchestrator` audience, expiry, `openid` scope and
+resource-specific `ai:invoke`. MCP and payment lookup receive distinct,
+same-subject tokens. The payment token lives only in request-local context,
+not graph state or model input. The identity-disabled development issuer
+remains a compatibility path; configured OIDC never falls back to it.
+
 ```mermaid
 flowchart TD
     A["authenticate"] --> B["authorize (ai:invoke)"] --> C["classify_intent"]
@@ -38,7 +45,8 @@ flowchart TD
 | Header | Purpose |
 |---|---|
 | `Authorization: Bearer <assertion>` | Ed25519 assertion for audience `ai-orchestrator`, minted by the web-portal BFF |
-| `X-Assistant-Tools-Assertion` | Assertion for audience `assistant-tools`; same subject and tenant; relayed to MCP |
+| `X-Assistant-Tools-Assertion` | Keycloak token for audience `assistant-tools`; same subject and tenant; relayed to MCP |
+| `X-Assistant-Payment-Token` | Optional same-subject `payment-api` token for the payment lookup tool, never exposed to the model |
 | `X-Request-ID` | Optional correlation ID, forwarded to MCP and written to audit logs |
 
 The response has `status` (`answered`, `fallback`, `denied` or `rejected`),
@@ -49,7 +57,7 @@ HTTP 401 with `status: unauthenticated`.
 
 ## Safety design
 
-- Assertions are verified in FastAPI before the graph runs. Permission checks
+- Keycloak access tokens (or identity-disabled development assertions) are verified in FastAPI before the graph runs. Permission checks
   are set lookups in code, before retrieval and before every tool call; the
   MCP server checks them again.
 - The relayed tools assertion is passed in the LangGraph run config, never in

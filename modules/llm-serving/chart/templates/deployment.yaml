@@ -4,7 +4,9 @@ One pod with two llama.cpp servers sharing the models volume from pvc.yaml:
 - `chat` serves the instruction model's OpenAI-compatible API on 8080 (ai-orchestrator);
 - `embed` serves embeddings on 8081 (operations-knowledge ingestion and assistant-tools search).
 service.yaml exposes each server separately. Recreate avoids two pods contending for the
-ReadWriteOnce volume during upgrades. See ../README.md.
+ReadWriteOnce volume during upgrades. Optional gpu.enabled needs the CUDA image and
+Terraform-owned time-slicing plugin; each server consumes one shared slot, never the init.
+See ../README.md.
 */}}
 {{- if ne (int .Values.replicaCount) 1 }}
 {{- fail "llm-serving supports exactly one replica: the models volume is ReadWriteOnce" }}
@@ -34,6 +36,10 @@ spec:
         - name: fetch-models
           image: {{ include "llm-serving.image" . | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- if .Values.gpu.enabled }}
+          env:
+            - {name: NVIDIA_VISIBLE_DEVICES, value: void}
+          {{- end }}
           command: ["sh", "-ec"]
           args:
             - |
@@ -67,8 +73,18 @@ spec:
             - {{ .Values.chat.parallel | quote }}
             # Chat templates from the GGUF metadata; needed for structured JSON-schema output.
             - --jinja
+            {{- if .Values.gpu.enabled }}
+            - --device
+            - CUDA0
+            - --n-gpu-layers
+            - "999"
+            {{- end }}
           ports:
             - {name: chat, containerPort: 8080}
+          {{- if .Values.gpu.enabled }}
+          env:
+            - {name: CUDA_CACHE_DISABLE, value: "1"}
+          {{- end }}
           readinessProbe:
             httpGet: {path: /health, port: chat}
             periodSeconds: 5
@@ -78,7 +94,12 @@ spec:
             periodSeconds: 20
             failureThreshold: 6
           resources:
-            {{- toYaml .Values.chat.resources | nindent 12 }}
+            {{- $chatResources := deepCopy .Values.chat.resources }}
+            {{- if .Values.gpu.enabled }}
+            {{- $_ := set $chatResources.limits "nvidia.com/gpu.shared" 1 }}
+            {{- $_ := set $chatResources.requests "nvidia.com/gpu.shared" 1 }}
+            {{- end }}
+            {{- toYaml $chatResources | nindent 12 }}
           securityContext:
             {{- include "llm-serving.securityContext" . | nindent 12 }}
           volumeMounts:
@@ -105,8 +126,18 @@ spec:
             - {{ .Values.embed.threads | quote }}
             - --parallel
             - "1"
+            {{- if .Values.gpu.enabled }}
+            - --device
+            - CUDA0
+            - --n-gpu-layers
+            - "999"
+            {{- end }}
           ports:
             - {name: embed, containerPort: 8081}
+          {{- if .Values.gpu.enabled }}
+          env:
+            - {name: CUDA_CACHE_DISABLE, value: "1"}
+          {{- end }}
           readinessProbe:
             httpGet: {path: /health, port: embed}
             periodSeconds: 5
@@ -116,7 +147,12 @@ spec:
             periodSeconds: 20
             failureThreshold: 6
           resources:
-            {{- toYaml .Values.embed.resources | nindent 12 }}
+            {{- $embedResources := deepCopy .Values.embed.resources }}
+            {{- if .Values.gpu.enabled }}
+            {{- $_ := set $embedResources.limits "nvidia.com/gpu.shared" 1 }}
+            {{- $_ := set $embedResources.requests "nvidia.com/gpu.shared" 1 }}
+            {{- end }}
+            {{- toYaml $embedResources | nindent 12 }}
           securityContext:
             {{- include "llm-serving.securityContext" . | nindent 12 }}
           volumeMounts:

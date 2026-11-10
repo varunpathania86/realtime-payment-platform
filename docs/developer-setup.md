@@ -24,6 +24,12 @@ for the folder map, reading order, deployment sequence and browser request path.
 
 Versions are pinned in [.tool-versions](../.tool-versions). `make setup` (or `make tools`) downloads kubectl, Minikube, Helm, Terraform, Go, jq, yq, Node.js, TFLint, and Trivy into `~/.local/bin` without sudo, verifying each download with SHA-256. Go is unpacked to `~/.local/go`; Node.js includes npm and lives in a versioned directory under `~/.local/`. Tools already at the pinned version are skipped, so the command is safe to repeat.
 
+The EditorConfig checker binary is also pinned in `.tool-versions`, installed
+by `make setup`/`make tools` and verified by `make doctor`. Its pre-commit hook
+uses that system binary instead of a Python wrapper that downloads another
+binary during hook installation. After updating an existing checkout, run
+`make tools TOOLS=editorconfig-checker` before running hooks.
+
 Make sure `~/.local/bin` is on your PATH:
 
 ```bash
@@ -40,9 +46,16 @@ For a focused installation use `make tools TOOLS="tflint trivy"`.
 GitHub release checksum lookups use `GH_TOKEN` (or `GITHUB_TOKEN`) when set;
 CI supplies its scoped job token to avoid anonymous API rate limits. Local setup
 still works without a token, subject to GitHub's anonymous rate limits.
-Authentication is sent only to the GitHub API metadata request, not release
-asset redirects or other download hosts. Metadata failures stop installation
-with an explicit error; checksum verification is never skipped.
+If a GitHub release download fails after retries, installation retries the same
+asset through the official GitHub asset API using its validated numeric ID.
+Authentication is sent only to GitHub API requests, not release asset redirects
+or other download hosts. Both download paths require the same release SHA-256.
+Metadata failures or failure of both endpoints stop installation with an
+explicit error; checksum verification is never skipped.
+MinIO runtime preparation uses this shared downloader on the host, checks the
+repository-pinned binary checksum and supplies the verified binary to a
+temporary Docker build context. The Dockerfile rechecks the checksum; tokens
+are never passed into the build context or Docker build arguments.
 TFLint uses its bundled Terraform ruleset and root `.tflint.hcl`; no downloaded
 provider plugin is required. Trivy uses root `trivy.yaml` and may download an
 updated public checks bundle on first use. It scans locally; no source upload,
@@ -66,6 +79,100 @@ with its committed lockfile; its Makefile installs dependencies when needed.
 `make doctor` checks Node.js and npm along with the other required tools.
 
 ## 2. One-time setup
+
+### Optional NVIDIA acceleration for AI
+
+CPU llama.cpp remains the default. GPU mode accelerates **both** chat and
+embeddings, not PostgreSQL, Kafka, Keycloak or other general services. GPU VRAM
+is not extra system RAM; existing node memory budgets still apply.
+
+The Docker host must already have a working NVIDIA driver and NVIDIA Container
+Toolkit runtime. On WSL2 the GPU driver belongs on Windows, not inside the
+distribution. Host `nvidia-smi` must respond and `docker info` must list the
+`nvidia` runtime. Setup does not replace host drivers, restart Docker/WSL,
+change security sysctls or delete existing profiles. Repair those host
+prerequisites first if the bounded checks fail.
+
+```bash
+AI_GPU=1 make setup     # cache the checksum-pinned NVIDIA device-plugin chart
+AI_GPU=1 make doctor    # bounded host-driver/runtime and existing-profile checks
+make dev-up AI_GPU=1    # save the choice and start a GPU-capable rpp node
+```
+
+For an existing profile, preserve all other fields in
+`.local/rpp/events.tfvars.json`; `ai_enabled` must be `true`. `AI_GPU=1` saves
+`ai_gpu_enabled: true` there, so subsequent `make dev-up`/`make dev-update`
+retain the selection. `AI_GPU=0` explicitly returns to the pinned CPU image.
+Only `0` and `1` are accepted. A CPU-only existing Minikube node is **refused**,
+never automatically deleted: its Docker device requests cannot be upgraded in
+place. Save state, database data, models and Flink savepoints before arranging
+an explicitly approved recreation. Neither a stopped profile nor
+`make dev-down` alone changes GPU passthrough.
+
+For three clusters, add `"ai_gpu": true` to your own copy of an AI-capable
+`DEV_CONFIG` (keep `"ai": true`) and use the normal
+`make dev-up MULTI_CLUSTER=3 DEV_CONFIG=...` workflow. Prepare the archive with
+`AI_GPU=1 make setup` first, without `MULTI_CLUSTER=3`. Only `rpp-1` receives the
+physical GPU; do not pass `AI_GPU` to the multi-cluster lifecycle.
+
+Minikube starts that node with `--container-runtime=docker --gpus=all`.
+Its built-in NVIDIA plugin is disabled; Terraform owns the sole configured
+NVIDIA device-plugin Helm release in `kube-system`. Explicit time slicing
+advertises two `nvidia.com/gpu.shared` allocations per physical GPU. Each
+llama.cpp container requests one slot, uses the digest-pinned CUDA image, and
+requires `CUDA0` with all model layers offloaded. The model-fetch init container
+does not allocate or expose a GPU. Application containers remain non-root with
+read-only filesystems; only the infrastructure plugin uses its upstream device
+access permissions.
+
+The upstream chart also creates an MPS helper DaemonSet, selected only by the
+`nvidia.com/mps.capable: "true"` node label. This workflow does not enable MPS
+or run feature discovery to set that label; do not add it manually. Component
+selectors are enabled to keep the two controllers disjoint, and host-PID
+access for the unused helper is disabled. Time slicing does not use MPS.
+
+Time slicing shares compute and GPU memory: there is **no VRAM isolation**,
+memory reservation or guarantee of double throughput. The small default models
+target an 8 GiB card, but concurrent VRAM use and throughput must be measured on
+the actual host. Neither Intel integrated graphics nor other non-NVIDIA GPUs
+are used by this CUDA path. First-use CUDA/plugin image downloads need internet;
+no publication, registry login or active PI is required.
+
+Verify actual offload rather than just a Running pod:
+
+```bash
+kubectl --context rpp get nodes -o 'custom-columns=NAME:.metadata.name,SHARED:.status.allocatable.nvidia\.com/gpu\.shared'
+kubectl --context rpp -n apps logs deployment/llm-serving -c chat
+kubectl --context rpp -n apps logs deployment/llm-serving -c embed
+make knowledge-ingest
+make ai-eval
+```
+
+Expect two allocatable slots on a single-GPU node and CUDA model-layer offload
+in **both** logs. Use `rpp-1` and the normal multi-cluster Make selectors for
+the three-cluster equivalent. A driver hang, allocation failure or CUDA
+initialization error is a failure, not a successful CPU fallback. Live GPU
+verification on 2026-11-10 recreated only the disposable `rpp` profile after
+explicit approval, preserving feature settings. Both servers ran concurrently
+on the RTX A2000 8 GiB: chat generated 512 tokens while embeddings returned
+16 vectors of 768 dimensions. Host `nvidia-smi` showed two llama-server
+processes and approximately 1635 MiB combined VRAM after initialization.
+This confirms functional GPU use, not sustained throughput or full-stack
+memory capacity.
+
+Knowledge PostgreSQL uses a bounded startup probe and five-second health-check
+timeouts. One-second exec probes caused repeated database restarts during the
+full-stack live run; an interrupted ingestion or failing retrieval evaluation
+must be retried only after the database stays healthy.
+After the probe correction, the live AI evaluation passed 21/21 cases with
+zero authorization leaks; knowledge ingestion covered 61 corpus documents.
+
+The initial host/container GPU checks hung inside WSL's GPU adapter lock even
+though Windows `nvidia-smi` worked. After saving work, terminating only the
+affected distribution and reopening it restored access; this did not reset or
+delete the distribution. A whole `wsl --shutdown` stops every distribution,
+so do not use it while other distributions have unsaved work or active jobs.
+No Windows driver reinstall was needed in this case.
 
 ### Optional Stage 7 model training
 
@@ -94,67 +201,74 @@ Ordinary unit tests remain offline; do not start extra clusters for training.
 
 ### Single-cluster risk validation
 
-The public `make dev-up` workflow still provisions three clusters; it does not
-silently shrink topology when memory is insufficient. On the maintainer's
-resource-constrained host, Stage 7 uses the existing internal single-cluster
-diagnostic path, as Stage 6 did. This is not three-cluster HA acceptance.
-
-Stop only **owned** unused profiles before starting; stopped nodes already
-consume no running RAM. Do not terminate Vmmem or delete unrelated profiles.
-Use a new, explicit profile and retain at least 2 GiB available host reserve.
-No ClickHouse or observability backends are needed for this scoring check.
+The opt-in `make dev-up MULTI_CLUSTER=3` workflow provisions three clusters; it does not
+silently shrink topology when memory is insufficient. The following uses the
+default `rpp` single cluster and is not three-cluster HA acceptance. Retain
+at least 2 GiB available host reserve and preserve existing profile settings.
 
 1. Prepare runtimes and run local correctness checks:
 
     ```bash
     STREAMING=1 RISK_MODEL=1 make setup
     make ci
-    make -C modules/payment-risk-model integration
+    # Only for a new, unpublished artifact; training replaces its output files.
+    make -C modules/payment-risk-model train
     ```
 
-2. Create `.local/rpp-stage7-verify/events.tfvars.json` with:
-
-    ```json
-    {
-      "streaming_enabled": true,
-      "runtime_profile": "low-memory"
-    }
-    ```
-
-3. Start only this dedicated 4-CPU/6144-MiB profile:
+    Reuse the same generated directory for retries. Do not retrain a published
+    version and expect its immutable registry path to accept different bytes.
+2. Start the default single cluster. New default settings enable streaming;
+    existing settings are preserved and must also have streaming enabled.
+    Publish the model and stop the running jobs with savepoints:
 
     ```bash
-    MINIKUBE_PROFILE=rpp-stage7-verify MINIKUBE_CPUS=4 MINIKUBE_MEMORY=6144 \
-      bash scripts/local-dev.sh up
-    make risk-publish MINIKUBE_PROFILE=rpp-stage7-verify
-    make streaming-stop MINIKUBE_PROFILE=rpp-stage7-verify
+    make dev-up
+    make risk-publish
+    make streaming-stop
     ```
 
-4. Retain the printed savepoint URI. Add `risk_enabled: true`,
-    `risk_package_key: "payment-risk/1.0.0/payment_risk.zip"` and
-    `risk_package_sha256` containing the **actual publication checksum** to
-    the same JSON file. These Terraform variable names differ from the
-    public multi-cluster topology's `risk` object; do not mix the two schemas.
-5. Export `STREAMING_RESTORE_PATH` to the exact returned URI, then:
+3. Retain the payment savepoint URI and the `LAKEHOUSE_RESTORE_PATH` line if
+    printed. Add the `risk_enabled`, `risk_package_key` and
+    `risk_package_sha256` values printed by publication to the existing
+    `.local/rpp/events.tfvars.json`, preserving all other settings. These
+    Terraform variable names differ from the public multi-cluster topology's
+    `risk` object; do not mix the two schemas.
+4. Export the exact returned payment path:
 
     ```bash
-    MINIKUBE_PROFILE=rpp-stage7-verify bash scripts/local-dev.sh update
-    make risk-verify MINIKUBE_PROFILE=rpp-stage7-verify
-    make smoke MINIKUBE_PROFILE=rpp-stage7-verify
+    export STREAMING_RESTORE_PATH='<payment savepoint URI>'
+    ```
+
+    If a lakehouse path was printed, export it as well:
+
+    ```bash
+    export LAKEHOUSE_RESTORE_PATH='<lakehouse savepoint URI>'
+    ```
+
+    Then update and verify:
+
+    ```bash
+    make dev-update
+    unset STREAMING_RESTORE_PATH LAKEHOUSE_RESTORE_PATH
+    make risk-verify
+    make smoke
     ```
 
     The source-content image update remains local; no publication workflow,
     model server, PI clock or GHCR login is involved. Keep the generated
     model directory unchanged for identical publication retries.
-6. Further dirty-source updates require another `make streaming-stop` and
-    the new URI. To reclaim memory without destroying evidence:
+5. Further stateful image or configuration changes require another
+    `make streaming-stop` and the new paths. To reclaim memory while
+    preserving those recovery paths:
 
     ```bash
-    minikube stop -p rpp-stage7-verify
+    make streaming-stop
+    make dev-down
     ```
 
 This leaves profile-specific Terraform state, MinIO artifacts and savepoints
-on disk. Only remove the dedicated profile/data after explicitly choosing
+on disk. Supply the newly printed paths to a later `make dev-up` when
+restarting the jobs. Only remove the profile/data after explicitly choosing
 to discard them; do not use the three-cluster cleanup against other profiles.
 
 ### Optional Stage 5 streaming runtime
@@ -171,8 +285,8 @@ official Docker/Quay image tags are no longer available. This is the community
 server, not a switch to an enterprise service. Runtime build scripts are
 idempotent and reuse Docker's cache; first-use downloads require internet.
 
-Use `make dev-up DEV_CONFIG=templates/streaming-topology.json` to opt in:
-only A runs Flink and a persistent 5 GiB MinIO volume. Normal local image builds
+Use `make dev-up MULTI_CLUSTER=3 DEV_CONFIG=templates/streaming-topology.json` to opt in:
+only cluster 1 runs Flink and a persistent 5 GiB MinIO volume. Normal local image builds
 skip optional chart features that are not enabled, so payment-only development
 does not download/build Flink. CI still discovers and validates every packaged
 module. Feature selection uses chart metadata, never descriptive module types.
@@ -186,8 +300,8 @@ The [Flink guide](../modules/stream-processor/README.md) and
 
 For the bounded 50 events/s baseline and 100 events/s stress test, follow the
 [pipeline benchmark guide](../modules/stream-processor/README.md#bounded-pipeline-benchmark).
-Its compact topology uses A=4 CPUs/6144 MiB, B/C=2 CPUs/3072 MiB each. Run
-`make streaming-benchmark-preflight DEV_PROFILE=rpp-stage6-perf` first;
+Its compact topology uses cluster 1=4 CPUs/6144 MiB and clusters 2/3=2 CPUs/3072 MiB each. Run
+`make streaming-benchmark-preflight MULTI_CLUSTER=3` first;
 it requires 14336 MiB available host memory before any nodes are started.
 Do not bypass a failed preflight on a resource-constrained shared machine.
 Cluster startup is outside the under-seven-minute measured benchmark.
@@ -196,7 +310,7 @@ For coordinated Flink process/container tuning, the opt-in
 low-memory` while retaining the same node minimums. Preflight still applies:
 
 ```bash
-make streaming-benchmark-preflight DEV_PROFILE=rpp-stage6-perf DEV_CONFIG=templates/analytics-low-memory-topology.json
+make streaming-benchmark-preflight MULTI_CLUSTER=3 DEV_CONFIG=templates/analytics-low-memory-topology.json
 ```
 
 Reducing Pod requests is not a reduction in actual application usage. The
@@ -207,10 +321,10 @@ For independent servers, see the
 [failure boundaries](runbooks/realtime-analytics.md#three-cluster-resources-and-failure-boundaries);
 the local Minikube Docker network is not a multi-server deployment adapter.
 
-Use `make dev-up DEV_CONFIG=templates/analytics-topology.json` to enable
-streaming and ClickHouse in cluster A. The example budgets A at 4 CPUs/8192 MiB
+Use `make dev-up MULTI_CLUSTER=3 DEV_CONFIG=templates/analytics-topology.json` to enable
+streaming and ClickHouse in cluster 1. The example budgets cluster 1 at 4 CPUs/8192 MiB
 and other clusters at 4 CPUs/6144 MiB; analytics requires at least 4 CPUs and
-6144 MiB on A. This builds the locally pinned ClickHouse image and creates a
+6144 MiB on cluster 1. This builds the locally pinned ClickHouse image and creates a
 profile-local 8 GiB persistent volume and generated Secret. Normal payment-only
 or streaming-only development does not build or deploy ClickHouse.
 
@@ -219,13 +333,13 @@ tables and benchmark. To benchmark a running profile, forward the internal
 service in one terminal:
 
 ```bash
-kubectl --context rpp-a -n apps port-forward --address 127.0.0.1 service/realtime-analytics 8123:8123
+kubectl --context rpp-1 -n apps port-forward --address 127.0.0.1 service/realtime-analytics 8123:8123
 ```
 
 In another terminal, pass the password only through the process environment:
 
 ```bash
-export CLICKHOUSE_PASSWORD="$(kubectl --context rpp-a -n apps get secret realtime-analytics \
+export CLICKHOUSE_PASSWORD="$(kubectl --context rpp-1 -n apps get secret realtime-analytics \
   -o jsonpath='{.data.password}' | base64 --decode)"
 CLICKHOUSE_URL=http://127.0.0.1:8123 make -C modules/realtime-analytics benchmark
 unset CLICKHOUSE_PASSWORD
@@ -241,69 +355,68 @@ recorded host/configuration, not a production capacity claim.
 `STREAMING=1 make setup` also downloads the Iceberg Flink runtime, Iceberg
 AWS bundle and Hadoop client JARs into the local Flink image, each verified
 against the SHA-256 pinned in `.tool-versions`. Polaris and Trino are pinned
-container images built by `make dev-images`; no host Java or Trino CLI is
-required. `make doctor` checks the pins.
+container images used by `make dev-up` and `make dev-update`; no host Java or
+Trino CLI is required. `make doctor` checks the pins.
 
-Use `make dev-up DEV_CONFIG=templates/lakehouse-topology.json` to enable
+Use `make dev-up MULTI_CLUSTER=3 DEV_CONFIG=templates/lakehouse-topology.json` to enable
 streaming, the [Polaris catalog](../modules/lakehouse-catalog/README.md),
 [Trino](../modules/lakehouse-query/README.md) and the Flink lakehouse writer
-in cluster A. The lakehouse requires streaming and at least 4 CPUs/8192 MiB
-on A, or 10240 MiB together with analytics. It uses the profile-local
+in cluster 1. The lakehouse requires streaming and at least 4 CPUs/8192 MiB
+on cluster 1, or 10240 MiB together with analytics. It uses the profile-local
 PostgreSQL for catalog metadata and cannot be combined with the full-stack
 external database.
 
-On a resource-constrained host, verify with one dedicated profile (stop only
-owned unused profiles first; keep at least 2 GiB host memory free):
+The default single-cluster settings enable streaming and the lakehouse.
+Existing `rpp` settings are preserved; if either feature is disabled, enable
+it in `.local/rpp/events.tfvars.json` without removing the other settings and
+follow the savepoint instructions below before applying the change. Keep at
+least 2 GiB host memory free:
 
 ```bash
-mkdir -p .local/rpp-stage8-verify
-printf '{"streaming_enabled": true, "lakehouse_enabled": true}\n' > .local/rpp-stage8-verify/events.tfvars.json
-MINIKUBE_PROFILE=rpp-stage8-verify MINIKUBE_CPUS=4 MINIKUBE_MEMORY=8192 bash scripts/local-dev.sh up
-make streaming-fixtures MINIKUBE_PROFILE=rpp-stage8-verify
-make lakehouse-verify MINIKUBE_PROFILE=rpp-stage8-verify
-make lakehouse-query MINIKUBE_PROFILE=rpp-stage8-verify SQL='SELECT currency, count(*) AS n FROM payment_events GROUP BY 1'
-make lakehouse-maintain MINIKUBE_PROFILE=rpp-stage8-verify
-minikube stop -p rpp-stage8-verify
+make dev-up
+make streaming-fixtures
+make lakehouse-verify
+make lakehouse-query SQL='SELECT currency, count(*) AS n FROM payment_events GROUP BY 1'
+make lakehouse-maintain    # optional: compacts files and expires eligible snapshots
 ```
 
-Enabling or disabling the lakehouse on a running profile restarts the Flink
-session cluster: run `make streaming-stop` first and pass both printed
-savepoints as `STREAMING_RESTORE_PATH` and `LAKEHOUSE_RESTORE_PATH`. The
-[lakehouse runbook](runbooks/lakehouse.md) covers diagnosis,
+Enabling or disabling the lakehouse restarts the Flink session cluster. If
+Flink is already running, run `make streaming-stop` first and pass its payment
+savepoint as `STREAMING_RESTORE_PATH`, plus `LAKEHOUSE_RESTORE_PATH` when
+printed. The [lakehouse runbook](runbooks/lakehouse.md) covers diagnosis,
 maintenance and evolution.
 
 ### Optional Stage 9 Superset BI
 
 [Superset](../modules/bi-dashboards/README.md) is a container image pinned by
 version and digest in `.tool-versions` (`superset` and
-`superset-image-digest`). `make dev-images` builds it, and `make doctor`
-checks the pins. You don't need to install Superset on the host.
+`superset-image-digest`). The local development workflow uses it, and
+`make doctor` checks the pins. You don't need to install Superset on the host.
 
-`make dev-up DEV_CONFIG=templates/bi-topology.json` enables streaming,
-analytics, the lakehouse and BI in cluster A. BI requires analytics, and
-cluster A needs at least 7168 MiB, or 11264 MiB with the lakehouse. Superset
+`make dev-up MULTI_CLUSTER=3 DEV_CONFIG=templates/bi-topology.json` enables streaming,
+analytics, the lakehouse and BI in cluster 1. BI requires analytics, and
+cluster 1 needs at least 7168 MiB, or 11264 MiB with the lakehouse. Superset
 stores its metadata in the profile-local PostgreSQL, so BI can't be combined
 with the full-stack external database.
 
-To verify on one dedicated profile:
+The default `rpp` feature settings include BI and its dependencies. Existing
+settings are preserved; enable missing features without overwriting the file
+and follow the savepoint instructions above for stateful changes. To verify:
 
 ```bash
-PROFILE=rpp-stage9-verify
-mkdir -p ".local/$PROFILE"
-printf '{"streaming_enabled": true, "analytics_enabled": true, "lakehouse_enabled": true, "bi_enabled": true}\n' \
-  > ".local/$PROFILE/events.tfvars.json"
-MINIKUBE_PROFILE="$PROFILE" MINIKUBE_CPUS=4 MINIKUBE_MEMORY=11264 bash scripts/local-dev.sh up
-make streaming-fixtures MINIKUBE_PROFILE="$PROFILE"
-make bi-verify MINIKUBE_PROFILE="$PROFILE"
-make dev-access MINIKUBE_PROFILE="$PROFILE"   # http://localhost:8080/analytics
-minikube stop -p "$PROFILE"
+make dev-up
+make streaming-fixtures
+make bi-verify
+make dev-access   # separate terminal; http://localhost:8080/analytics
 ```
 
 Sign in as `ops-viewer`. `payments-clerk` is the denied example. Both are
-synthetic local development users (ADR-025) with generated per-profile
-passwords; the [BI runbook](runbooks/bi-dashboards.md) shows how to read
-them. The browser origins allowed to embed Superset come from `LOCAL_PORT`
-during `dev-up`/`dev-update`, so browse with the same port.
+synthetic local development users with generated per-profile passwords. Use
+the Keycloak credentials when identity is enabled; the identity-disabled
+passwords are separate. See [local accounts](#local-accounts-and-credentials)
+and the [BI runbook](runbooks/bi-dashboards.md). The browser origins allowed
+to embed Superset come from `LOCAL_PORT` during `dev-up`/`dev-update`, so
+browse with the same port.
 
 ### Optional Stage 10 AI operations assistant
 
@@ -315,30 +428,221 @@ Python runtime (`ai-python`), the llama.cpp server (`llama-cpp` plus
 once with `AI=1 make setup`. You don't need a host Python AI stack, a GPU or
 any hosted model API.
 
-`make dev-up DEV_CONFIG=templates/ai-topology.json` starts the lean profile:
-analytics and the assistant without streaming, so cluster A needs about
+`make dev-up MULTI_CLUSTER=3 DEV_CONFIG=templates/ai-topology.json` starts the lean profile:
+analytics and the assistant without streaming, so cluster 1 needs about
 10 GiB. The assistant requires analytics. The first start downloads the
 pinned GGUF models (about 1.2 GB) into a persistent volume, so it needs
 internet access once.
 
-To verify on one dedicated profile:
+The default `rpp` feature settings include analytics and AI. Existing settings
+are preserved; enable missing features without overwriting the file. To verify:
 
 ```bash
-PROFILE=rpp-stage10-verify
-mkdir -p ".local/$PROFILE"
-printf '{"streaming_enabled": false, "analytics_enabled": true, "ai_enabled": true}\n' \
-  > ".local/$PROFILE/events.tfvars.json"
-MINIKUBE_PROFILE="$PROFILE" MINIKUBE_CPUS=4 MINIKUBE_MEMORY=10240 bash scripts/local-dev.sh up
-make knowledge-ingest MINIKUBE_PROFILE="$PROFILE"   # index the operations corpus
-make ai-fixtures MINIKUBE_PROFILE="$PROFILE"        # deterministic synthetic analytics rows
-make ai-eval MINIKUBE_PROFILE="$PROFILE"            # writes .local/$PROFILE/ai-eval/report.md
-make dev-access MINIKUBE_PROFILE="$PROFILE"         # http://localhost:8080/analytics
-minikube stop -p "$PROFILE"
+make dev-up
+make knowledge-ingest   # index the operations corpus
+make ai-fixtures        # replace synthetic analytics rows
+make ai-eval            # writes .local/rpp/ai-eval/report.md
+make dev-access         # separate terminal; http://localhost:8080/analytics
 ```
 
 `ai-eval` fails on leaked secrets or a broken authorization or injection
 case. Answer quality is reported, not enforced, because a small local model
 varies.
+
+### Stage 11 unified identity
+
+Identity uses Keycloak-managed synthetic users in a dedicated PostgreSQL
+database, **not LDAP**. See [ADR-032](adr/ADR-032-keycloak-identity-and-bff.md).
+The provider is shared infrastructure; it does not add a catalog module.
+
+Keycloak and its upstream image digest are pinned as `keycloak` and
+`keycloak-image-digest` in `.tool-versions`. The optimized runtime is built
+through `IDENTITY=1 make setup` and checked by `IDENTITY=1 make doctor`.
+No host Java, LDAP server or Keycloak CLI installation is required.
+
+```bash
+IDENTITY=1 make setup
+make identity-integration
+```
+
+The integration check uses isolated disposable containers and generated test
+credentials. First-use image downloads need internet; no publication,
+registry login or GitHub Actions run is required.
+
+`templates/identity-topology.json` enables the provider in cluster 1 with
+5120 MiB. Identity adds a 2048 MiB budget to the existing feature minimums;
+combining it with AI needs at least 10240 MiB on cluster 1. For the default
+single cluster, run `make dev-up` first if its settings file does not exist.
+Add `"identity_enabled": true` to `.local/rpp/events.tfvars.json` without
+removing the other settings, then reconcile and open the portal:
+
+```bash
+make dev-up
+make dev-access   # separate terminal
+# OIDC discovery: http://identity.localhost:8080/realms/rpp/.well-known/openid-configuration
+```
+
+`dev-up`/`dev-update` operate on the selected topology: `rpp` by default, or
+`rpp-1`/`rpp-2`/`rpp-3` with `MULTI_CLUSTER=3`. Only these fixed profiles are
+supported by the public Make workflow.
+Never stop, delete or resize somebody else's profile. A stateful streaming
+image change still requires `make streaming-stop` and both printed restore
+paths before `make dev-update MINIKUBE_PROFILE=...`; identity does not bypass
+the savepoint guard.
+
+The initial realm seed imports only into a new identity database. Startup does
+not overwrite an existing realm. See the [chart guide](../platform/terraform/modules/identity/chart/README.md)
+for storage, ingress and seed lifecycle. Enabling identity replaces the portal
+password form with Keycloak Authorization Code + S256 PKCE. The Go BFF keeps
+OAuth tokens server-side behind opaque HttpOnly sessions, refreshes them and
+exchanges separate payment, orchestrator and MCP audience tokens. Each API
+verifies its own resource roles. Superset and Grafana use interactive OIDC;
+Argo CD is only a disabled, reserved client.
+
+Existing databases require explicit realm upgrades:
+
+```bash
+make identity-access   # dedicated loopback admin forward
+make identity-sync     # another terminal; repeatable
+make identity-verify   # full AI/BI profile required
+```
+
+The sync preserves existing human passwords, creates missing users, reconciles
+declared client/group/user role mappings and does not delete unrelated
+identities. Do not assume pod restart reimports an existing realm.
+The BFF currently uses one replica with bounded in-memory sessions; restarting
+it signs users out. Identity-disabled development remains available, but
+configured and unavailable OIDC never falls back to the development password.
+See the [identity runbook](runbooks/unified-identity.md).
+
+The initial dedicated-profile check used about 2.8 GiB of its 5 GiB budget
+with the base application stack and identity provider idle. This is not a
+measurement of the later combined AI/BI/SSO stack.
+
+## Local accounts and credentials
+
+All accounts are synthetic local-development accounts. Most credentials are
+generated per profile; payment database credentials follow the selected local
+or external database configuration. The
+Stage 11 Keycloak identities sign in to the portal, Superset and Grafana when
+identity is enabled. The identity-disabled development passwords are separate;
+identical usernames do not imply identical passwords.
+
+### Password retrieval helpers
+
+Select a running profile with the required features, then define these helpers
+in your terminal. `secret_value` decodes one exact Secret key; `portal_password`
+extracts one user from the portal's JSON credential map. The commands in the
+tables below use these helpers, not additional installed tools.
+
+```bash
+PROFILE=rpp
+secret_value() {
+  kubectl --context "$PROFILE" -n "$1" get secret "$2" -o json |
+    jq -er --arg key "$3" '.data[$key] | select(. != null) | @base64d'
+}
+portal_password() {
+  secret_value apps web-portal-identity dev-users |
+    jq -er --arg user "$1" '.[$user].password'
+}
+```
+
+### Human logins and application service accounts
+
+| Module | Username | Description | Roles | How to get password |
+|---|---|---|---|---|
+| `web-portal` (React; identity disabled, BI or AI enabled) | `ops-viewer` | Development-only portal login for dashboards and assistant | `bi:view`, `ai:invoke`, `knowledge:read`, `analytics:read` | `portal_password ops-viewer` |
+| `web-portal` (React; identity disabled, BI or AI enabled) | `payments-clerk` | Development-only assistant payment lookup; no dashboard | `ai:invoke`, `payments:read` | `portal_password payments-clerk` |
+| `web-portal` (React; identity disabled, BI or AI enabled) | `ops-engineer` | Development-only restricted incident knowledge | `bi:view`, `ai:invoke`, `knowledge:read`, `knowledge:restricted`, `analytics:read`, `payments:read` | `portal_password ops-engineer` |
+| `bi-dashboards` (Superset; BI enabled) | `admin` | Local administration API account; interactive humans use Keycloak when identity is enabled | Superset `Admin` | `secret_value apps bi-dashboards admin-password` |
+| `bi-dashboards` (Superset; BI enabled) | `rpp_guest_token_issuer` | Backend service account, not a human login | Least-privilege guest-token issuance | `secret_value apps bi-dashboards token-issuer-password` |
+| DBX infrastructure (DBX enabled) | No username; shared access password | Browser login to the development database workbench; separate from Keycloak | Access to provisioned connections; underlying database permissions still apply | `secret_value apps dbx-workbench password` |
+| Shared MinIO infrastructure (streaming or AI enabled) | `rpp-streaming` | Browser login to the separate MinIO console | Local MinIO root administrator; same credential as the S3 service account | `secret_value apps streaming-storage secret-key` |
+| Observability infrastructure (Grafana; identity or observability enabled) | `admin` | Local break-glass administrator; humans use Keycloak SSO when identity is enabled | Grafana server administrator | `secret_value telemetry grafana-admin password` |
+| Identity infrastructure (Keycloak realm `rpp`; identity enabled) | `ops-viewer` | Portal, Superset and Grafana SSO human identity | `viewer` group: payment read, dashboard, non-restricted knowledge, analytics and assistant access; Grafana `Viewer`, Superset `Gamma`, reserved Argo CD `readonly` | `secret_value security identity-provider VIEWER_PASSWORD` |
+| Identity infrastructure (Keycloak realm `rpp`; identity enabled) | `payments-clerk` | Seeded human identity without knowledge or dashboard access | Explicit payment read/write, assistant invocation and payment lookup | `secret_value security identity-provider CLERK_PASSWORD` |
+| Identity infrastructure (Keycloak realm `rpp`; identity enabled) | `ops-engineer` | Seeded developer identity with restricted knowledge access | `developer` group plus `knowledge:restricted`: payment read/write, dashboard, analytics and assistant access; Grafana `Editor`, Superset `Gamma`, reserved Argo CD `readonly` | `secret_value security identity-provider ENGINEER_PASSWORD` |
+| Identity infrastructure (Keycloak administration; identity enabled) | `bootstrap-admin` | Bootstrap provider administrator, not an application user | Keycloak administration in the `master` realm | `secret_value security identity-provider KC_BOOTSTRAP_ADMIN_PASSWORD` |
+
+### Database, storage and catalog service accounts
+
+These are machine credentials, not browser logins. Read-only application
+readers are distinct from administrators and writers. Optional accounts exist
+only when their corresponding features are enabled.
+
+| Module | Username | Description | Roles | How to get password |
+|---|---|---|---|---|
+| `payment-api` / payment PostgreSQL | `payments` | Database login for the API, migration and outbox workers | Payment database access; bootstrap superuser in the default single-cluster database | `secret_value data payments-postgres POSTGRES_PASSWORD` |
+| Shared Kafka infrastructure | `payments` | SASL/SCRAM service identity for payment event clients | Kafka producer/consumer authentication | `secret_value apps payment-api-events KAFKA_PASSWORD` |
+| Shared MinIO infrastructure (streaming or AI enabled) | `rpp-streaming` | Object storage access for state, lakehouse and knowledge originals | Local MinIO root account | `secret_value apps streaming-storage secret-key` |
+| `realtime-analytics` (ClickHouse; analytics enabled) | `rpp_analytics` | Local analytics administrator and ingestion account | Schema management and writes | `secret_value apps realtime-analytics password` |
+| `bi-dashboards` / ClickHouse (BI enabled) | `rpp_bi_reader` | Superset analytics reader | SELECT-only analytics access | `secret_value apps realtime-analytics bi-reader-password` |
+| `assistant-tools` / ClickHouse (AI enabled) | `rpp_ai_reader` | Assistant analytics reader | SELECT-only analytics access | `secret_value apps realtime-analytics ai-reader-password` |
+| `bi-dashboards` / PostgreSQL (BI enabled) | `superset` | Superset metadata database owner | Owns database `superset` | `secret_value data superset-database password` |
+| `lakehouse-catalog` / PostgreSQL (lakehouse enabled) | `polaris` | Polaris metadata database owner | Owns database `polaris` and its catalog schema | `secret_value data polaris-database password` |
+| `lakehouse-catalog` (Polaris; lakehouse enabled) | `root` principal; generated client ID | Catalog bootstrap administrator | Polaris bootstrap administration | `secret_value apps lakehouse-catalog root-client-secret`; client ID: `secret_value apps lakehouse-catalog root-client-id` |
+| `stream-processor` / Polaris (lakehouse enabled) | `writer` principal; generated client ID | Flink Iceberg writer | Catalog/table write access | `secret_value apps lakehouse-writer client-secret`; client ID: `secret_value apps lakehouse-writer client-id` |
+| `lakehouse-query` / Polaris (lakehouse enabled) | `reader` principal; generated client ID | Trino read-only catalog identity | Catalog/table read access | `secret_value apps lakehouse-query reader-credential` returns `client-id:client-secret` |
+| `lakehouse-query` / Polaris (lakehouse enabled) | `maintainer` principal; generated client ID | Trino maintenance identity | Iceberg maintenance/write access | `secret_value apps lakehouse-query maintainer-credential` returns `client-id:client-secret` |
+| AI knowledge PostgreSQL (AI enabled) | `rpp_knowledge_admin` | Knowledge database bootstrap administrator | Database administration and pgvector extension setup | `secret_value data knowledge-postgres POSTGRES_PASSWORD` |
+| `operations-knowledge` / PostgreSQL (AI enabled) | `rpp_knowledge_writer` | Ingestion/schema owner | Knowledge schema creation and data writes | `secret_value apps knowledge-database writer-password` |
+| `assistant-tools` / PostgreSQL (AI enabled) | `rpp_knowledge_reader` | Knowledge retrieval service identity | Read-only knowledge access | `secret_value apps knowledge-database reader-password` |
+| Identity PostgreSQL (identity enabled) | `keycloak` | Dedicated provider database login | Owns Keycloak database; bootstrap superuser in the local identity database | `secret_value data identity-postgres POSTGRES_PASSWORD` |
+
+Other components such as llama.cpp, Flink, Prometheus, Loki and Tempo do not
+have separately provisioned username/password logins in the current local
+deployment. Argo CD is not deployed; its disabled Keycloak client is a reserved
+configuration, not a usable account.
+
+The Keycloak `analyst` and `platform-admin` groups also exist, but no default
+human user belongs to them. Application permissions in the Keycloak rows
+describe the realm configuration, not completed application enforcement.
+Portal dashboard viewers use scoped guest tokens; they do not need separate
+Superset accounts.
+
+Select the profile that actually runs the relevant feature. It must be
+running, and your Kubernetes credentials must permit reading its Secrets.
+These commands print passwords to your terminal: do not paste their output
+into issues, logs, screenshots or commits.
+
+Existing React portal passwords:
+
+```bash
+PROFILE=rpp   # or select rpp-1 with MULTI_CLUSTER=3
+kubectl --context "$PROFILE" -n apps get secret web-portal-identity \
+  -o jsonpath='{.data.dev-users}' | base64 -d | jq 'map_values(.password)'
+```
+
+Superset passwords (requires a BI-enabled profile):
+
+```bash
+PROFILE=rpp   # or select rpp-1 with MULTI_CLUSTER=3
+# Human administrator: admin
+kubectl --context "$PROFILE" -n apps get secret bi-dashboards \
+  -o jsonpath='{.data.admin-password}' | base64 -d; echo
+# Backend service account: rpp_guest_token_issuer
+kubectl --context "$PROFILE" -n apps get secret bi-dashboards \
+  -o jsonpath='{.data.token-issuer-password}' | base64 -d; echo
+```
+
+Keycloak initial passwords:
+
+```bash
+PROFILE=rpp   # or select rpp-1 with MULTI_CLUSTER=3
+kubectl --context "$PROFILE" -n security get secret identity-provider -o json |
+  jq '.data | {
+    "ops-viewer": (.VIEWER_PASSWORD | @base64d),
+    "payments-clerk": (.CLERK_PASSWORD | @base64d),
+    "ops-engineer": (.ENGINEER_PASSWORD | @base64d),
+    "bootstrap-admin": (.KC_BOOTSTRAP_ADMIN_PASSWORD | @base64d)
+  }'
+```
+
+The Keycloak Secret records **initial seed/bootstrap passwords**. If a
+password is subsequently changed in Keycloak, that Secret does not show the
+new password, and restarting the provider does not reset it. Administration
+is not exposed through the public identity Ingress; use an explicit
+loopback-only port forward when administration is necessary.
 
 ### Clone and initialize
 
@@ -371,17 +675,17 @@ make setup
 | `make tools` | Install or update the pinned tools |
 | `make docker` | Install Docker Engine if missing (needs sudo) |
 | `make setup-agent` | Optional: register this machine as a self-hosted runner for the Deploy workflow ([runbook](runbooks/self-hosted-runner.md), including the dedicated WSL instance steps) |
-| `make cluster-down` | Delete the three owned nodes/network after `dev-down` (destructive) |
-| `make dev-up` | Start three full-stack clusters, build/load images, provision and smoke-test |
-| `make dev-update` | Apply configured budgets/counts and rebuild/load applications across active clusters |
+| `make dev-clean` | Delete the selected cluster(s) and their data (destructive) |
+| `make dev-up` | Start the default single cluster, build/load images, provision and smoke-test |
+| `make dev-update` | Rebuild/load applications into the default single cluster |
 | `make dev-access` | Forward local ingress to loopback port 8080 until Ctrl-C |
-| `make dev-status` | Show all three nodes and workload CPU/RAM, readiness and requests/limits |
+| `make dev-status` | Show the default single cluster's node and pod readiness |
 | `make dev-metrics` | Enable the bundled metrics-server in all three clusters |
-| `make db-switchover DATABASE_TARGET=pg-b` | Planned token-based move of the global database writer |
-| `make db-failover DATABASE_TARGET=pg-b` | Fence the old local node and verify WAL before promotion |
+| `make db-switchover MULTI_CLUSTER=3 DATABASE_TARGET=pg-2` | Planned token-based move of the global database writer |
+| `make db-failover MULTI_CLUSTER=3 DATABASE_TARGET=pg-2` | Fence the old local node and verify WAL before promotion |
 | `make db-rejoin` | Rebuild the fenced former-primary profile (destructive) |
 | `make smoke` | Verify ingress, API build identity, readiness, and the React entry page |
-| `make dev-down` | Destroy Terraform-managed local resources, preserving Minikube (destructive) |
+| `make dev-down` | Stop the selected cluster(s), preserving their data |
 | `make ci` | Lint, test, and build; same as the Build workflow |
 | `make quality-report` | Run `make ci`, retaining Markdown results and full text logs |
 | `make quality-module-report MODULE_NAME=payment-api` | Run the module quality contract with Markdown/log output |
@@ -433,6 +737,327 @@ Same-repository PR checks no longer test GitHub's synthetic merge commit; update
 the branch from its target when you need to verify the combined source.
 
 ## 4. Local application development
+
+### Single-cluster end-to-end development
+
+```bash
+make dev-up
+make dev-access                                # separate terminal; http://localhost:8080
+make dev-down                                  # preserve data for the next run
+make dev-clean                                 # DESTRUCTIVE: delete profile and profile-local state
+```
+
+`dev-up` defaults to one profile named `rpp`, 6 CPUs and
+14336 MiB (14 GiB) of cluster memory. On first use it enables streaming,
+ClickHouse, the Iceberg lakehouse, Superset BI and the AI assistant. It builds and loads
+local images, applies Terraform and runs the existing smoke check without
+GitHub Actions or registry publication. Subsequent runs preserve the profile's
+saved feature settings in `.local/rpp/events.tfvars.json`.
+It does not automatically produce payment traffic or ingest knowledge.
+
+A low-load run with Keycloak, DBX and risk also enabled used about 9.5 GiB
+inside the 14 GiB cluster during CPU knowledge ingestion. At the time, the
+15.5 GiB host had about 5 GiB available and 3.6 GiB of its 4 GiB swap in use.
+This is not a capacity guarantee. The host needs additional memory beyond the
+cluster limit for Docker, the OS and development tools; a 16 GiB machine has
+little headroom. Keycloak and DBX remain opt-in, and risk inference requires a
+separately published model artifact.
+
+```bash
+# Override the single-cluster memory budget when needed.
+make dev-up MINIKUBE_MEMORY=16384
+
+# After changing application sources on the default single-cluster profile:
+make dev-update
+make smoke
+
+# Prepare the assistant corpus, then generate synthetic pipeline traffic:
+make knowledge-ingest
+make streaming-fixtures
+```
+
+`dev-down` only stops the selected cluster. `dev-clean` deletes that
+Minikube profile (including its volumes) and its `.local/<profile>` directory,
+including Terraform state, saved feature settings and local reports. It does
+not delete other profiles, host Docker images, shared tool caches or trained
+model artifacts outside that directory. A failed cluster deletion preserves
+the state directory. Cleanup refuses symlinked state paths and fenced profiles.
+For the three-cluster workflow use `MULTI_CLUSTER=3` with the same
+commands. `dev-down` stops all three nodes; `dev-clean` destroys their resources
+and data before deleting the nodes/network. All nodes must be running for
+Terraform cleanup; a stopped lab must be started again before cleaning.
+Multi-cluster cleanup retains `.local/rpp-multi/` and per-member working/state
+directories; those may still contain credentials and must not be shared.
+Stopping running Flink workloads is not a savepoint: follow the
+[Flink recovery runbook](runbooks/flink-recovery.md) when stateful recovery
+matters. Stopped verification profiles are preserved.
+
+### Protecting a legacy topology
+
+The current three-cluster identities are `1`, `2`, and `3` throughout:
+profiles `rpp-1`/`rpp-2`/`rpp-3`, Kafka racks `1`/`2`/`3`, configuration
+keys `"1"`/`"2"`/`"3"`, and database members `pg-1`/`pg-2`/`pg-3`.
+The initial writer is `pg-1`; promotion can change the writer.
+
+An existing letter-identified topology is **not** migrated in place: renaming
+Terraform modules, Kafka racks and CNPG resources can replace stateful resources.
+Numbered start, update, recovery, benchmark and cleanup commands refuse an owned
+topology without the `numbered-v1` identity marker. The single-cluster workflow
+also refuses the older multi-cluster ownership marker in `.local/rpp/`.
+New labs also refuse unowned topology metadata or a symlinked state directory;
+an unused Terraform provider cache alone does not prevent a new lab.
+Do not create or alter markers to bypass these checks, delete state, or apply the
+new Terraform configuration directly to the old state.
+
+1. Preserve all old profiles, Terraform state and recovery journals. They may
+    contain credentials; keep any backups private. If data must be retained,
+    continue with the previous code until a separate migration is planned; no
+    data-preserving automatic migration is implemented.
+2. If the old lab's data is explicitly disposable, use the previous code and
+    its documented workflow to finish recovery and clean that lab. Verify its
+    managed resources, profiles and network are gone before proceeding.
+3. Securely archive the old ownership/state directories after teardown,
+    including `.local/rpp-multi/` and its member directories if present.
+    Archive `.local/rpp/` **only** if it is the old multi-cluster state with
+    its `owned` marker; it may instead be a separate single-cluster environment.
+    Then create the numbered lab with `make dev-up MULTI_CLUSTER=3`.
+
+### Optional in-cluster DBX workbench
+
+#### Browser URLs and login credentials
+
+These commands use the default running `rpp` profile and do not require the
+password helper functions from the account table. For a numbered lab member,
+set `PROFILE` accordingly for the `kubectl` commands and add
+`MULTI_CLUSTER=3 MINIKUBE_PROFILE=<member>` to the Make commands.
+
+```bash
+PROFILE=rpp
+```
+
+| Browser interface | URL | Username | Password source |
+|---|---|---|---|
+| DBX workbench | `http://127.0.0.1:44224` | None; enter the shared access password | `apps/dbx-workbench`, key `password` |
+| MinIO console | `http://127.0.0.1:19091` | `rpp-streaming` | `apps/streaming-storage`, key `secret-key` |
+
+Start DBX browser access in one terminal and leave it running:
+
+```bash
+make dbx-access
+```
+
+In another terminal, retrieve the DBX password:
+
+```bash
+kubectl --context "$PROFILE" -n apps get secret dbx-workbench \
+  -o jsonpath='{.data.password}' | base64 --decode
+printf '\n'
+```
+
+DBX uses this one web-login password; saved database usernames/passwords and
+Kafka credentials remain server-side. The DBX password is **not** the MinIO
+password and is not a Keycloak login.
+
+MinIO is a separate web interface, not a connection inside DBX. Start its
+console access in another terminal and leave that command running:
+
+```bash
+make minio-access
+```
+
+Then retrieve the MinIO password (also its S3 secret key):
+
+```bash
+printf 'MinIO username: rpp-streaming\n'
+kubectl --context "$PROFILE" -n apps get secret streaming-storage \
+  -o jsonpath='{.data.secret-key}' | base64 --decode
+printf '\n'
+```
+
+Enter `rpp-streaming` and the decoded value at the MinIO console URL, not at
+the S3 API endpoint (`http://127.0.0.1:19090`). MinIO's root account is
+privileged; do not delete application buckets or modify their contents during
+normal inspection.
+
+Both forwards bind only to loopback. Ctrl-C closes the corresponding forward
+without stopping the cluster. Restart browser access after pod replacement.
+`make minio-access` forwards only the console, not the S3 API or databases.
+DBX uses internal Services; the broad `make access-local` command is needed
+only when deliberately using native desktop clients, not for DBX or MinIO
+console access.
+Credentials are generated per profile and may change after cleanup/recreation;
+retrieve them again rather than relying on an old copied password. These
+commands deliberately display secrets in your local terminal: do not paste
+their output into documentation, commits, screenshots or shared logs.
+
+#### Setup, provisioning and security boundaries
+
+DBX's pinned connection picker/driver manifest does not provide an S3/MinIO
+profile. MinIO is object storage, not a PostgreSQL database or Kafka service,
+and cannot be added as a working DBX connection by renaming a profile.
+Use the existing MinIO console at `http://127.0.0.1:19091` while
+`make minio-access` runs; its username is `rpp-streaming` and its credential is
+listed in the local accounts table. A unified browser endpoint for that
+separate console requires an additional routing integration; it is not
+provided by DBX itself.
+
+Saved DBX connections are distinct from the databases/schemas expanded under
+them. The payment server contains application-owned metadata databases, while
+knowledge uses its own PostgreSQL server. Provisioning uses separate logins
+for Superset, Polaris and the knowledge reader rather than treating the payment
+administrator as the identity for every database. ClickHouse inspection
+prefers its application reader account when BI or AI is enabled.
+
+Saved profiles must include the browser's `driver_profile` identity; otherwise
+password-viewer protection rejects connections as a changed target. The
+provisioner includes this field and reruns its completed sync Job when adapter
+or credential revisions change. Reload the browser after synchronization.
+PostgreSQL, ClickHouse and Trino queries and Kafka topic listing have been
+verified through DBX. The upstream image does not bundle those Kafka/Trino
+runtimes; the deployment installs checksum-verified, pinned Kafka and Trino
+agents plus Java 21 through an init container and DBX's runtime APIs.
+Trino saves its passwordless configuration so the browser does not prompt for
+an unnecessary password. Do not disable credential protection or enter
+replacement credentials to bypass a target check.
+
+The optional DBX Web workbench runs inside the selected Minikube cluster and
+preloads connections from the platform's existing Kubernetes Secrets. It is
+shared local infrastructure, not a product module. The workbench is disabled
+unless `dbx_enabled: true` is added to the selected profile's
+`.local/<profile>/events.tfvars.json`; preserve all other saved settings. Then
+reconcile the already-running single-cluster profile with:
+
+```bash
+make dev-up
+```
+
+For multi-cluster topology configuration, use `dbx: true`; the workbench is
+installed only on cluster 1. The configuration validator budgets an additional
+512 MiB for DBX.
+
+Forward the web UI only to loopback:
+
+```bash
+make dbx-access
+# Open http://127.0.0.1:44224 in a browser; Ctrl-C stops only this forward.
+make dbx-status
+```
+
+DBX has its own single shared web password; this is not yet a Keycloak SSO
+client. Retrieve the profile-generated login password only when needed:
+
+```bash
+kubectl --context rpp -n apps get secret dbx-workbench \
+  -o jsonpath='{.data.password}' | base64 --decode
+```
+
+The Secret is never emitted by setup, Terraform outputs, provisioning logs or
+smoke checks. DBX's saved-password viewer is disabled. Its data and encryption
+key are stored in the workbench PVC; the server starts as UID 10001 with a
+read-only root filesystem and writable data/runtime-temp mounts only. Browser access has
+no Ingress, NodePort or host bind except the explicit loopback port-forward.
+
+The workbench uses the Apache-2.0 DBX Web image pinned by version and OCI index
+digest in `.tool-versions`. Provisioning uses the DBX Web API's connection
+list/save routes through a deliberately version-coupled adapter. Upstream marks
+these routes internal and unstable, so the exact API contract version is also
+pinned; changing the DBX image requires updating the adapter contract tests and
+passing local API/credential verification. The adapter authenticates to DBX,
+upserts stable connection IDs, verifies saved IDs/types, never deletes other
+connections, rejects non-cluster API URLs/redirects and suppresses response
+bodies from errors. It writes no DBX private storage.
+
+PostgreSQL and Kafka login details are sourced from the existing application
+Secrets; ClickHouse is added when analytics is enabled, and Trino when the
+lakehouse is enabled. Connections use in-cluster Service DNS. Credentials stay
+inside Kubernetes/DBX server storage, and the profiles are configured read-only.
+No DBX cloud sync, remote AI provider or external AI agent integration is configured; do
+not enable remote sync or send payment data to hosted tools. The DBX image
+defaults to root, so its non-root startup and writable directories are checked
+before deployment.
+
+### Optional native database and desktop resource access
+
+#### Manual connection setup
+
+After starting the single-cluster solution, leave this command running in a
+separate terminal:
+
+```bash
+make access-local
+# For a selected member of a running three-cluster lab:
+make access-local MULTI_CLUSTER=3 MINIKUBE_PROFILE=rpp-1
+```
+
+It discovers deployed data Services in the explicitly selected Kubernetes
+context and opens loopback-only forwards. Features not deployed are reported
+as skipped. Startup failures, occupied ports and failed forwards are errors,
+not successful connection reports. Ctrl-C closes only the command's own
+forwards; it does not stop the cluster. Restart it after cluster recreation or
+pod replacement. Browser application access remains `make dev-access`.
+
+For clients running on the developer machine, use the settings below where
+DBX is disabled or where a native client is specifically needed. Trino is an
+HTTP service; a forwarded endpoint does not by itself install a driver.
+
+| Resource | Host / local port | Connection settings | Credential retrieval |
+|---|---|---|---|
+| Payment PostgreSQL | `127.0.0.1:15432` | PostgreSQL, database `payments`, user `payments`; local TLS disabled | `secret_value data payments-postgres POSTGRES_PASSWORD` |
+| Superset metadata | `127.0.0.1:15432` | PostgreSQL, database/user `superset`; BI must be enabled | `secret_value data superset-database password` |
+| Polaris metadata | `127.0.0.1:15432` | PostgreSQL, database/user `polaris`; lakehouse must be enabled | `secret_value data polaris-database password` |
+| AI knowledge PostgreSQL | `127.0.0.1:15433` | PostgreSQL, database `ai_knowledge`, user `rpp_knowledge_reader` for inspection | `secret_value apps knowledge-database reader-password` |
+| Keycloak PostgreSQL | `127.0.0.1:15434` | PostgreSQL, database/user `keycloak`; identity must be enabled | `secret_value data identity-postgres POSTGRES_PASSWORD` |
+| ClickHouse | HTTP `127.0.0.1:18123`; native `127.0.0.1:19000` | Database `analytics`, user `rpp_analytics`; prefer `rpp_bi_reader` or `rpp_ai_reader` for read-only inspection when enabled | `secret_value apps realtime-analytics password`; reader keys are in the account table |
+| Trino | `http://127.0.0.1:18080` | Catalog `lakehouse`, schema `payments`; a nonempty client username such as `developer`, no password in the current local configuration | No HTTP authentication is configured; `lakehouse` is read-only, but `lakehouse_admin` allows maintenance writes |
+| MinIO S3 API | `http://127.0.0.1:19090` | Access key `rpp-streaming`, region `us-east-1`, path-style access, local HTTP | `secret_value apps streaming-storage secret-key` |
+| MinIO console | `http://127.0.0.1:19091` | Browser login with username `rpp-streaming` | Same MinIO secret key |
+| Kafka | `localhost:19092` by default | `SASL_SSL`, `SCRAM-SHA-512`, username `payments`, trusted CA file, hostname verification enabled | `secret_value apps payment-api-events KAFKA_PASSWORD` |
+| Polaris catalog API | `http://127.0.0.1:18181` | Iceberg REST/OAuth API, not a SQL database; use catalog reader credentials | See the Polaris principal rows in the account table |
+| Apicurio schema registry | `http://127.0.0.1:18081` | HTTP API, e.g. `/apis/registry/v3/system/info`; no local user login | No password in the current local configuration |
+
+`secret_value` is defined in [Local accounts and credentials](#local-accounts-and-credentials).
+Do not edit Superset, Polaris, Keycloak or knowledge metadata directly during
+normal application development. Their owning applications manage schema and
+state. These connections are for inspection; administrator credentials can
+modify or destroy data.
+
+#### Kafka desktop listener and certificate
+
+New default `make dev-up` profiles enable `kafka_host_port: 19092` automatically.
+For an existing single-cluster profile, add `"kafka_host_port": 19092` to its
+saved `.local/<profile>/events.tfvars.json`, retaining every other setting,
+then run `make dev-up` before `make access-local`.
+This changes the broker configuration and certificate and restarts the broker;
+allow internal clients time to reconnect.
+
+The desktop listener is separate from the internal
+`payments-kafka.data.svc.cluster.local:9092` listener. It advertises
+`localhost:<kafka_host_port>` so metadata remains reachable from desktop
+clients, uses the existing SCRAM credentials and TLS, and has localhost and
+loopback certificate SANs. No external NodePort or unauthenticated listener is
+created. Zero (the Terraform default outside the default `dev-up`) disables this
+single-broker desktop listener. The multi-cluster Kafka configuration is not
+changed.
+
+Export the **public CA certificate**, not a private key:
+
+```bash
+PROFILE=rpp
+mkdir -p ".local/$PROFILE/access"
+secret_value apps payment-api-events ca.pem > ".local/$PROFILE/access/kafka-ca.pem"
+```
+
+Select that file as the Kafka connector's CA certificate; keep certificate and
+hostname verification enabled. Do not use the internal listener as the desktop
+bootstrap address. If you change `kafka_host_port`, `access-local` reads the
+actual advertised port; configure the extension with that same port and avoid
+the other reserved ports in the table. Re-export the CA after certificate
+rotation.
+
+The forwards run where VS Code's extension host runs. In Remote SSH or WSL,
+install/run the extension on that host, or explicitly forward the required
+ports to your desktop. `127.0.0.1` in another machine's extension host is not
+the development machine.
 
 Stage 0 prepares the workstation and cluster lifecycle. Stage 1 supplies the
 first runnable applications and the local edit/build/deploy/test loop.
@@ -512,8 +1137,8 @@ workflow.
 Losing the private credential file with existing database state is an explicit
 recovery error, not an automatic password reset. Terraform state also contains
 local secrets and must never be committed or shared.
-`make dev-down` deletes all three profiles' namespaces and PVCs/data.
-`make cluster-down` deletes their nodes/network. Do not use teardown as a restart.
+`make dev-clean MULTI_CLUSTER=3` deletes all three profiles' namespaces,
+PVCs/data and nodes/network. Do not use cleanup as a restart.
 
 ```bash
 make -C modules/payment-api build
@@ -545,21 +1170,22 @@ profile; manual scaling is Terraform drift and is restored by a subsequent apply
 ### Stage 4: opt-in shared observability
 
 The regular local workflow remains monitoring-independent. To enable per-cluster
-Collectors and shared backends in cluster A, use an explicit configuration:
+Collectors and shared backends in cluster 1, use an explicit configuration:
 
 ```bash
-make dev-up DEV_CONFIG=templates/observability-topology.json
-make dev-observability
+make dev-up MULTI_CLUSTER=3 DEV_CONFIG=templates/observability-topology.json
+make dev-observability MULTI_CLUSTER=3
 ```
 
-The example selects **5120 MiB/3 CPUs for A, 3072 MiB/2 CPUs for B/C**
+The example selects **5120 MiB/3 CPUs for cluster 1, 3072 MiB/2 CPUs for clusters 2/3**
 (11264 MiB total node budgets, plus host/build overhead). Copy and review it
 before applying to an existing lab: `dev-up`/`dev-update` persist the configuration
 and apply the chosen Docker node budgets. Merely pulling source changes does not
 enable monitoring or resize nodes. `node` remains the common default; `nodes`
-contains optional `a`/`b`/`c` overrides. `observability` defaults to false.
+contains optional `"1"`/`"2"`/`"3"` overrides. `observability` defaults to false.
 Retain your existing `clusters` workload counts when composing a config.
-Use `DEV_PROFILE=<unused-base>` for an isolated lab and preserve unrelated profiles.
+The selector only supports the fixed `rpp` or `rpp-1`/`rpp-2`/`rpp-3`
+profiles; do not create an alternate topology base.
 
 Containers for Collector, Prometheus, Alertmanager, Loki, Tempo and Grafana are
 pinned in `.tool-versions`, checked by `make doctor`, and pulled by the Terraform
@@ -569,10 +1195,10 @@ avoiding a cold-start image-pull storm competing with the payment foundation.
 `make setup` installs the existing Docker/Kubernetes/Helm/Terraform toolchains;
 Go/npm libraries come from the module manifests. First deployment requires
 image/package downloads. Five local 2 GiB PVCs persist telemetry independently
-of payments; `dev-down` destroys the owned telemetry stack too.
+of payments; `dev-clean MULTI_CLUSTER=3` destroys the owned telemetry stack too.
 
 Grafana is forwarded on loopback only (default port 3000, override `GRAFANA_PORT`).
-`make dev-status` also includes the opt-in `telemetry` namespace, with actual
+`make dev-status MULTI_CLUSTER=3` also includes the opt-in `telemetry` namespace, with actual
 container CPU/RAM samples and configured requests/limits.
 See the [observability runbook](runbooks/observability.md) for credentials,
 latency-to-trace-to-log navigation, alerts, retention, and local-only network
@@ -602,8 +1228,8 @@ Do not delete state or regenerate credentials while preserving Kafka data.
 After creating a payment through the existing HTTP endpoint, inspect publication:
 
 ```bash
-POD=$(kubectl --context rpp-a -n postgres get cluster pg-a -o jsonpath='{.status.currentPrimary}')
-kubectl --context rpp-a -n postgres exec "$POD" -c postgres -- \
+POD=$(kubectl --context rpp-1 -n postgres get cluster pg-1 -o jsonpath='{.status.currentPrimary}')
+kubectl --context rpp-1 -n postgres exec "$POD" -c postgres -- \
   psql -U postgres -d payments -c \
   'SELECT state, count(*) FROM payment_outbox GROUP BY state; SELECT count(*) AS receipts FROM payment_event_receipts;'
 ```
@@ -624,7 +1250,7 @@ Run `make -C modules/event-contracts test` for offline backward compatibility.
 Publication failures use bounded retries and durable SQL dead letters, not
 infinite application retries. See [event recovery](runbooks/event-publication.md)
 before requeueing an event. `dev-update` preserves PostgreSQL, Kafka, registry
-IDs, and receipts; `dev-down` destroys their namespaces/PVCs and data.
+IDs, and receipts; `dev-clean MULTI_CLUSTER=3` destroys their namespaces/PVCs and data.
 
 ### Stage 3: optional three-cluster Kafka lab
 
@@ -646,11 +1272,11 @@ instance limit of 128, causing kubelet to fail with `inotify_init: too many open
 files`. Optional setup configures at least 1024, with sudo authentication:
 
 ```bash
-MULTI_CLUSTER=1 make setup
-MULTI_CLUSTER=1 make doctor
-make dev-up
-make dev-status
-make dev-access LOCAL_PORT=18080
+MULTI_CLUSTER=3 make setup
+MULTI_CLUSTER=3 make doctor
+make dev-up MULTI_CLUSTER=3
+make dev-status MULTI_CLUSTER=3
+make dev-access MULTI_CLUSTER=3 MINIKUBE_PROFILE=rpp-1 LOCAL_PORT=18080
 ```
 
 The optional setup writes `/etc/sysctl.d/90-rpp-multicluster.conf` only when the
@@ -661,7 +1287,7 @@ same WSL distribution for a local Engine). Remote/Docker Desktop hosts need thei
 own kernel configuration; changing an unrelated client kernel is insufficient.
 Normal `make setup` does not change this shared-host setting.
 
-`dev-up` reserves `<base>-a`, `<base>-b`, and `<base>-c` plus an owned Docker
+`dev-up MULTI_CLUSTER=3` reserves `rpp-1`, `rpp-2`, and `rpp-3` plus an owned Docker
 network; it refuses existing unowned names. Distinct static node IPs are essential:
 Minikube otherwise tries the same default address for independent profiles on
 the shared network. Kafka uses TLS broker NodePort 30092 and mutually
@@ -671,7 +1297,7 @@ networks or bypass certificate verification.
 Terraform directly owns each broker StatefulSet, Service, Secret, and 1 GiB PVC
 in namespace `kafka`. One private multi-cluster state uses three explicit provider
 contexts. In the legacy placement, apps/PostgreSQL/Apicurio use the local
-Terraform root on A; the full stack deploys apps/registry on every member with
+Terraform root on cluster 1; the full stack deploys apps/registry on every member with
 distributed CNPG. Clients receive all configured broker addresses. No Kafka Helm chart, operator,
 new host CLI, GHCR login, or publication workflow is required.
 
@@ -684,17 +1310,18 @@ The broker JVM heap is 128-256 MiB; non-heap/native memory also counts against t
 512 MiB limit. These are conservative starting budgets,
 not guaranteed minimums or throughput targets. In low-load verification after
 publication/failover, broker cgroup memory was about 340-393 MiB; whole-node usage
-was about 1.73 GiB on A and 0.93-0.99 GiB on B/C. Docker inspection confirmed
+was about 1.73 GiB on cluster 1 and 0.93-0.99 GiB on clusters 2/3
+(then named A/B/C). Docker inspection confirmed
 3221225472-byte memory caps and 2000000000 NanoCPU quotas on every node, including
 after clean recreation. These observations are not stress-test results.
-Application/DB/registry budgets
-remain in their existing charts/Terraform. A holds those workloads as well as a
-broker; B and C hold only brokers plus their Kubernetes system workloads.
+Application/DB/registry budgets remain in their existing charts/Terraform. In this
+historical Kafka-only placement, cluster 1 holds those workloads as well as a
+broker; clusters 2 and 3 hold only brokers plus their Kubernetes system workloads.
 Stress tests, instrumentation, and metric dashboards follow in Stage 4.
 
 #### Resource status tables
 
-`dev-status` now prints two Docker-style snapshot tables:
+`dev-status MULTI_CLUSTER=3` prints two Docker-style snapshot tables:
 
 - **Cluster nodes:** running/stopped state, actual Docker CPU percentage,
   enforced CPU quota, actual RAM usage, configured RAM limit, and RAM percentage.
@@ -714,8 +1341,8 @@ continues to own the application/Kafka stack.
 For clusters created before this change, enable it once:
 
 ```bash
-make dev-metrics
-make dev-status
+make dev-metrics MULTI_CLUSTER=3
+make dev-status MULTI_CLUSTER=3
 ```
 
 Allow about a minute for the initial metrics samples. Status is read-only and
@@ -728,31 +1355,30 @@ and their sampling windows differ, so container rows need not sum to the node
 value (which also includes Kubernetes overhead). These are current samples,
 not peak usage, historical monitoring, or a Stage 4 metrics/dashboard stack.
 
-Normal edits use `make dev-update`; it rebuilds and loads
-application images into every active full-stack member (only A in legacy mode)
+Normal lab edits use `make dev-update MULTI_CLUSTER=3`; it rebuilds and loads
+application images into every active full-stack member (only cluster 1 in Kafka-only mode)
 without deleting data. Use
-`make smoke` for API/frontend checks; that does not
+`make smoke MULTI_CLUSTER=3 MINIKUBE_PROFILE=rpp-1` for API/frontend checks; that does not
 prove Kafka replication or completed event consumption.
 Replication factor three and minimum ISR two allow one broker outage, subject to
-quorum/ISR recovery. In legacy mode, losing A also removes the API, database,
+quorum/ISR recovery. In Kafka-only mode, losing cluster 1 also removes the API, database,
 registry, and ingress; that placement is not application HA.
 See [the outage exercise](runbooks/event-publication.md#three-cluster-outage-exercise).
 
 To destroy only this lab, with all three profiles running:
 
 ```bash
-make dev-down
-make cluster-down
+make dev-clean MULTI_CLUSTER=3
 ```
 
-Both commands are destructive. The first removes applications, brokers, PVCs,
-and data; the second deletes only the three owned profiles/network after
-checking managed resources are gone. Use `dev-up` to recreate. Preserve
-`.local/<base>/` and `.local/<base>-a/` until teardown succeeds, including after a
+This is destructive: it removes applications, brokers, PVCs and data, then
+deletes only the three owned profiles/network after checking managed resources
+are gone. Use `dev-up MULTI_CLUSTER=3` to recreate. Preserve
+`.local/rpp-multi/` and `.local/rpp-1/` until teardown succeeds, including after a
 partial apply. Recover startup/apply errors and rerun rather than deleting state.
-This section describes the retained **legacy Kafka-only** placement. New owned
-bases default to the full-stack topology below. Existing old bases stay in their
-original mode; updating them never silently converts or destroys their data.
+This section describes the **Kafka-only** placement. New owned bases default to
+the full-stack topology below. Numbered Kafka-only bases retain their mode;
+letter-identified bases require the [legacy-state procedure](#protecting-a-legacy-topology).
 
 ### Stage 3: full-stack three-cluster lab
 
@@ -760,23 +1386,24 @@ The default [ADR-017 topology](adr/ADR-017-full-stack-cross-cluster-replication.
 adds an API, portal, relay, consumer, Apicurio and ingress in **each** profile.
 Kafka remains one three-broker cluster. PostgreSQL is **one shared database**:
 one writable primary and two read-only standbys, not three independent databases.
-The older Kafka-only lab remains usable for existing owned bases; the separate
-single-profile Make workflow has been removed.
-An existing Kafka-only lab cannot be converted in place: use an unused base and
-verify it before deliberately replacing any old lab/data.
+An existing Kafka-only lab cannot be converted in place. The public workflow
+does not support alternate bases, so preserve any legacy resources/state until
+you have verified that their data is disposable; only then use the documented
+destructive cleanup before enabling the full-stack mode.
 
 ```bash
 make setup
-make dev-up
-make dev-status
-make dev-access MINIKUBE_PROFILE=rpp-b LOCAL_PORT=18081
-make dev-update
+make dev-up MULTI_CLUSTER=3
+make dev-status MULTI_CLUSTER=3
+make dev-access MULTI_CLUSTER=3 MINIKUBE_PROFILE=rpp-2 LOCAL_PORT=18081
+make dev-update MULTI_CLUSTER=3
 ```
 
-After separate verification, an owned Kafka-only base can be replaced deliberately:
-run `make dev-down` and `make cluster-down` with that old `DEV_PROFILE`,
-then `MULTI_FULL_STACK=1 make dev-up` with the same base. The explicit flag is
-needed only for reusing a legacy base's ownership marker. This destroys the old
+After separate verification, an owned **numbered** Kafka-only base can be
+replaced deliberately:
+run `make dev-clean MULTI_CLUSTER=3`,
+then `MULTI_FULL_STACK=1 make dev-up MULTI_CLUSTER=3`. The explicit flag is
+needed only for reusing a numbered Kafka-only base's ownership marker. This destroys the old
 lab's data and interrupts its port-forwards; restart `dev-access` afterward.
 The mode guard permits reuse only when its profiles/network are gone and both
 infrastructure/application states contain no managed resources.
@@ -802,7 +1429,7 @@ and application/JDBC connections verify a shared CA and node-IP certificates.
 All migration, API, worker and registry clients use the declared current writer.
 Configuration changes roll out their connection settings after promotion.
 
-The initial writer is `pg-a`; `pg-b` and `pg-c` stream WAL with matching
+The initial writer is `pg-1`; `pg-2` and `pg-3` stream WAL with matching
 `application_name` values. Required `ANY 1` synchronous replication waits for
 durable acknowledgement from either remote standby. With both unavailable,
 commits wait and bounded application operations fail; there is no asynchronous
@@ -825,7 +1452,7 @@ one Kafka consumer group, receipts and registry schema IDs.
 On 2026-11-02, the isolated full-stack lab used about 2.1-2.2 GiB per node at
 low load after recovery. Docker inspection confirmed 3221225472-byte memory
 caps and 2000000000 NanoCPU quotas, including the recreated former-primary node.
-Cold recreation recorded no cgroup OOMs/kills, but one C ingress installation
+Cold recreation recorded no cgroup OOMs/kills, but one cluster 3 ingress installation
 failed visibly with an etcd request timeout; `make dev-update` recovered
 without state deletion or budget changes. These are learning-lab observations,
 not throughput, zero-downtime, or production capacity guarantees.
@@ -840,13 +1467,13 @@ ingress when their node stops.
 ### Configuring counts and benchmark node budgets
 
 `DEV_CONFIG` accepts a JSON file. Omitted budgets are two CPUs / 3072 MiB per
-node; omitted workload counts are one. Counts may differ between A/B/C:
+node; omitted workload counts are one. Counts may differ between 1/2/3:
 
 ```json
 {
   "node": { "cpus": 4, "memory_mib": 6144 },
   "clusters": {
-    "a": {
+    "1": {
       "kafka_brokers": 2,
       "postgres_instances": 3,
       "applications": { "payment-api": 2, "web-portal": 2 },
@@ -864,11 +1491,11 @@ two of each workload in every cluster. It is an example, not a measured
 performance recommendation. Use a larger isolated host for benchmarks.
 
 ```bash
-make dev-up DEV_PROFILE=rpp-bench DEV_CONFIG=templates/development-topology.json
+make dev-up MULTI_CLUSTER=3 DEV_CONFIG=templates/development-topology.json
 # After editing a private copy of that JSON:
-make dev-update DEV_PROFILE=rpp-bench DEV_CONFIG=/absolute/path/to/settings.json
+make dev-update MULTI_CLUSTER=3 DEV_CONFIG=/absolute/path/to/settings.json
 # The selected settings persist; no file/flags needed on normal updates.
-make dev-update DEV_PROFILE=rpp-bench
+make dev-update MULTI_CLUSTER=3
 ```
 
 Node budgets are local Minikube/Docker bootstrap settings, not Kubernetes
@@ -939,36 +1566,38 @@ in required quality checks. See [the security runbook](runbooks/security-checks.
 
 ### Profiles, ports, and state
 
-The default topology base is `rpp`, with profiles `rpp-a/b/c`.
-`DEV_PROFILE` is optional: omit it for everyday commands, including access/smoke.
-Set it consistently when selecting a different lab. Existing explicitly named
-bases are not renamed or migrated. Existing unowned `rpp-a/b/c` nodes, state,
-or an `rpp-net` network are refused, not adopted or overwritten. Creating the
-default lab while another lab is running consumes an additional three-node
-budget; stop unrelated labs first. No lab is torn down automatically.
-To isolate a development or verification environment, pass a different base:
+The public Make workflow has exactly two profile families:
 
-```bash
-make dev-up DEV_PROFILE=rpp-sandbox
-make dev-access DEV_PROFILE=rpp-sandbox MINIKUBE_PROFILE=rpp-sandbox-b LOCAL_PORT=8081
-```
+| Selector | Minikube profile(s) | State |
+|---|---|---|
+| `MULTI_CLUSTER=0` (default) | `rpp` | `.local/rpp/` |
+| `MULTI_CLUSTER=3` | `rpp-1`, `rpp-2`, `rpp-3` | shared `.local/rpp-multi/` plus per-profile `.local/rpp-1/`, `.local/rpp-2/`, `.local/rpp-3/` |
 
-Use `DEV_CONFIG` for budgets and counts. `MINIKUBE_PROFILE` is only a single
-member selector for access/smoke; it does not select the topology for lifecycle
-commands. Every local Kubernetes/Terraform command explicitly targets
-the selected profile, not whichever kubeconfig context happened to be current.
-Use a single kubeconfig file; `KUBECONFIG` may override its path.
+Only `0` and `3` are accepted. `DEV_PROFILE` and arbitrary profile names are
+not supported. In multi-cluster mode, lifecycle commands operate on all three
+profiles; do not pass `MINIKUBE_PROFILE` to `dev-up`, `dev-update`,
+`dev-status`, `dev-down`, or `dev-clean`. For commands that target one member,
+`MINIKUBE_PROFILE` may be `rpp-1`, `rpp-2`, or `rpp-3` with
+`MULTI_CLUSTER=3`; in single-cluster mode it may only be `rpp`.
+Unowned profiles, state, or the `rpp-net` network are refused, not adopted
+or overwritten. No profile is torn down automatically.
 
-Terraform state, provider working data, saved plans, and image inventory live in
-git-ignored `.local/<base>/` and `.local/<base>-a/b/c/`. Keep these until you destroy the
-resources it owns. Do not commit it, copy state between profiles, or delete state
-as a workaround for a failed apply. You can run `make smoke` while `dev-access`
-is running; kubectl binds an available temporary port atomically for each check.
+Use `DEV_CONFIG` for three-cluster budgets and counts. Every local
+Kubernetes/Terraform command explicitly targets the selected profile, not
+whichever kubeconfig context happened to be current. Use a single kubeconfig
+file; `KUBECONFIG` may override its path.
+
+Terraform state, provider working data, saved plans, image inventory and
+generated feature settings live in git-ignored `.local/` paths listed above.
+Keep them until you destroy the resources they own. Do not commit, copy state
+between profiles, or delete state as a workaround for a failed apply. You can
+run `make smoke` while `dev-access` is running; kubectl binds an available
+temporary port atomically for each check.
 
 To close browser access, press Ctrl-C in the `dev-access` terminal; the deployed
-applications keep running. `make dev-down` is not a pause command: it destroys
-the Terraform-managed stack. Use it only when you intend to remove those
-resources. You do not need it before updating applications.
+applications keep running. `make dev-down` stops the selected cluster(s) while
+preserving their data; `make dev-clean` destroys them and their data. Neither
+is needed before updating applications.
 
 ### Recovery and clean-cluster acceptance
 
@@ -980,27 +1609,27 @@ an air-gapped workflow.
 To demonstrate pod recovery:
 
 ```bash
-make dev-status
-kubectl --context rpp-a -n apps delete pod -l app.kubernetes.io/name=payment-api
-kubectl --context rpp-a -n apps rollout status deployment/payment-api --timeout=120s
-make smoke
+make dev-status MULTI_CLUSTER=3
+kubectl --context rpp-1 -n apps delete pod -l app.kubernetes.io/name=payment-api
+kubectl --context rpp-1 -n apps rollout status deployment/payment-api --timeout=120s
+make smoke MULTI_CLUSTER=3 MINIKUBE_PROFILE=rpp-1
 ```
 
 The deletion is intentional and affects only the selected API pod; its Deployment
-recreates it. To verify complete reproducibility, use a dedicated profile:
+recreates it. To verify complete reproducibility, deliberately clean and recreate the selected
+profile family; this destroys local data and should only be done when that data
+is disposable:
 
 ```bash
-make dev-up DEV_PROFILE=rpp-recreate
-make dev-down DEV_PROFILE=rpp-recreate
-make cluster-down DEV_PROFILE=rpp-recreate
-make dev-up DEV_PROFILE=rpp-recreate
-make smoke DEV_PROFILE=rpp-recreate
+make dev-up
+make dev-clean
+make dev-up
+make smoke
 ```
 
-`dev-down` destroys all Terraform-managed resources across the three profiles,
-including application namespaces/data. `cluster-down` deletes their nodes and
-network. Never use this sequence on another person's topology.
-Clean up the dedicated profile afterward using the same two teardown commands.
+For multi-cluster recreation, pass `MULTI_CLUSTER=3` to each lifecycle command.
+`dev-clean` destroys all Terraform-managed resources across the selected profile
+family, including application namespaces/data, then deletes its nodes and network.
 
 See [local development troubleshooting](runbooks/local-development.md) and
 [ADR-001](adr/ADR-001-terraform-local-development.md) for ownership and trade-offs.
@@ -1079,6 +1708,7 @@ For WSL networking and disk problems see the [WSL runbook](runbooks/wsl-troubles
 | `~/.local/bin is not on PATH` | Add it to `~/.bashrc` as shown above |
 | `docker daemon is not reachable` | `sudo systemctl start docker`, or start Docker Desktop with WSL integration |
 | `permission denied` on the Docker socket | Run `make docker`, or open a new terminal so the `docker` group applies |
+| `make dev-up` fails with an HTTP 504 while Minikube checks the Kubernetes release | Retry when upstream access recovers; Minikube may perform this network check even for an existing profile |
 | `python3 -m venv` fails | `sudo apt install python3-venv` |
 | Catalog validation dependencies are missing | Run `make setup` to install the pinned libraries into `.venv/` |
 | `systemd-binfmt.service failed` during `apt install` on WSL | Harmless: WSL already registers its own binfmt handler. Check with `sudo dpkg --audit`; no output means apt finished cleanly |

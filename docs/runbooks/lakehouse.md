@@ -39,7 +39,8 @@ lag of one checkpoint interval is normal, not an incident.
 
 ## Diagnosis
 
-1. Select the profile explicitly: `PROFILE=rpp-a` (or your owned profile).
+1. Select the profile explicitly: `PROFILE=rpp-1` for the multi-cluster topology,
+  or `PROFILE=rpp` for the default single cluster.
 2. Check the workloads and setup hook:
 
     ```bash
@@ -69,6 +70,13 @@ lag of one checkpoint interval is normal, not an incident.
 
 ## Mitigation
 
+- **Trino table browsing fails with `Failed to list views`:** inspect Polaris
+  logs for HTTP 403 on `/namespaces/payments/views`. Trino `SHOW TABLES`
+  enumerates views too, requiring `VIEW_LIST` even when none exist. The
+  catalog setup grants that read-only listing privilege; rerun the upgraded
+  setup hook, not an administrator connection. For single-cluster development,
+  use `make dev-up MINIKUBE_PROFILE=rpp` with your memory override;
+  for three-cluster development use `make dev-update MULTI_CLUSTER=3`.
 - **Setup or bootstrap failed:** fix the cause shown in the logs (usually
   PostgreSQL or MinIO not ready), then `make dev-update`. Both the bootstrap
   and the setup script are idempotent.

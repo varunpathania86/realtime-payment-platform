@@ -1,6 +1,6 @@
 # llm-serving
 
-CPU model serving for the Stage 10 AI assistant: one pod running two pinned
+CPU-default model serving for the Stage 10 AI assistant: one pod running two pinned
 [llama.cpp](https://github.com/ggml-org/llama.cpp) servers. Part of
 [realtime-payment-platform](../../README.md); catalogued in
 [solution.yaml](../../solution.yaml).
@@ -30,6 +30,17 @@ flowchart LR
   authorization or numeric decisions.
 - Generation runs at roughly 25 tokens/second on three CPU cores. The pod
   requests 1.4 GiB of memory and is limited to 2.25 GiB.
+- Optional NVIDIA mode uses the `llama-cpp-cuda` version/digest pins for both
+  servers, explicit `CUDA0` layer offload and one `nvidia.com/gpu.shared`
+  allocation per container. Terraform configures two time-sliced slots per
+  physical GPU; the model-fetch init container remains GPU-free. Time slicing
+  does not isolate VRAM or increase host RAM. See
+  [GPU setup and verification](../../docs/developer-setup.md#optional-nvidia-acceleration-for-ai).
+  CPU mode remains available with `AI_GPU=0`. On 2026-11-10, a recreated `rpp`
+  verified both servers concurrently on an RTX A2000 8 GiB: 512 generated
+  tokens and a batch of 16 embeddings (768 dimensions), with about 1.6 GiB
+  combined GPU memory after initialization. This is a functional check, not a
+  sustained-throughput certification.
 
 See the [Helm chart guide](chart/README.md) for Kubernetes resources and the
 [AI assistant runbook](../../docs/runbooks/ai-assistant.md) for operations.

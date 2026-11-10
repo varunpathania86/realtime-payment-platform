@@ -32,6 +32,14 @@ spec:
           image: {{ include "bi-dashboards.image" . | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
+            {{- if .Values.oidc.enabled }}
+            # Interactive SSO is independent of the scoped BFF guest-token issuer account.
+            - {name: OIDC_ISSUER, value: {{ .Values.oidc.issuer | quote }}}
+            - {name: OIDC_INTERNAL_URL, value: {{ .Values.oidc.internalUrl | quote }}}
+            - name: OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef: {name: {{ .Values.oidc.existingSecret }}, key: client-secret}
+            {{- end }}
             {{- include "bi-dashboards.configEnv" . | nindent 12 }}
             - {name: SERVER_WORKER_AMOUNT, value: {{ .Values.server.workers | quote }}}
             - {name: SERVER_THREADS_AMOUNT, value: {{ .Values.server.threads | quote }}}

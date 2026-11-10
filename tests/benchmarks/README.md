@@ -53,10 +53,10 @@ Run commands from the repository root, in order:
     make ci
     ```
 
-3. Check memory **before** starting the owned three-cluster base:
+3. Check memory **before** starting the fixed three-cluster profile set:
 
     ```bash
-    make streaming-benchmark-preflight DEV_PROFILE=rpp-stage6-perf DEV_CONFIG=templates/analytics-low-memory-topology.json
+    make streaming-benchmark-preflight MULTI_CLUSTER=3 DEV_CONFIG=templates/analytics-low-memory-topology.json
     ```
 
     **Stop if preflight fails.** This laptop's recorded preflight failed;
@@ -64,10 +64,10 @@ Run commands from the repository root, in order:
 4. Only after a passing preflight:
 
     ```bash
-    make dev-up DEV_PROFILE=rpp-stage6-perf DEV_CONFIG=templates/analytics-low-memory-topology.json
-    make smoke MINIKUBE_PROFILE=rpp-stage6-perf-a
-    make dev-status DEV_PROFILE=rpp-stage6-perf
-    make streaming-benchmark DEV_PROFILE=rpp-stage6-perf
+    make dev-up MULTI_CLUSTER=3 DEV_CONFIG=templates/analytics-low-memory-topology.json
+    make smoke MULTI_CLUSTER=3 MINIKUBE_PROFILE=rpp-1
+    make dev-status MULTI_CLUSTER=3
+    make streaming-benchmark MULTI_CLUSTER=3
     ```
 
     The benchmark prints JSON and returns nonzero on failed acceptance.
@@ -79,9 +79,9 @@ Run commands from the repository root, in order:
 5. After evidence collection, stop only your test profiles to preserve data:
 
     ```bash
-    minikube stop -p rpp-stage6-perf-a
-    minikube stop -p rpp-stage6-perf-b
-    minikube stop -p rpp-stage6-perf-c
+    minikube stop -p rpp-1
+    minikube stop -p rpp-2
+    minikube stop -p rpp-3
     ```
 
     For permanent, explicitly approved disposal, follow the destructive cleanup
@@ -99,7 +99,7 @@ Run commands from the repository root, in order:
 | `make dev-status` | Inspect resource allocations and usage |
 | `make streaming-benchmark` | Run the bounded 50/100 events/s pipeline test |
 | `make -C modules/realtime-analytics benchmark` | Separate disposable-table query benchmark |
-| `make dev-down` then `make cluster-down` | Destructively dispose of an owned three-cluster test base |
+| `make dev-clean MULTI_CLUSTER=3` | Destructively dispose of the three-cluster profile set |
 
 ## Configuration
 

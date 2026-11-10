@@ -1,3 +1,13 @@
+variable "kafka_host_port" {
+  description = "Opt-in single-cluster desktop SASL_SSL listener advertised as localhost; zero keeps Kafka internal-only."
+  type        = number
+  default     = 0
+  validation {
+    condition     = var.kafka_host_port == 0 || (var.kafka_host_port >= 1024 && var.kafka_host_port <= 65535 && floor(var.kafka_host_port) == var.kafka_host_port)
+    error_message = "kafka_host_port must be 0 (disabled) or an integer port from 1024 to 65535."
+  }
+}
+
 resource "random_password" "kafka" {
   count   = nonsensitive(var.external_kafka == null) ? 1 : 0
   length  = 64
@@ -21,7 +31,8 @@ resource "tls_self_signed_cert" "kafka" {
   validity_period_hours = 8760
   is_ca_certificate     = true
   allowed_uses          = ["key_encipherment", "digital_signature", "server_auth", "cert_signing"]
-  dns_names             = ["payments-kafka", "payments-kafka.data", "payments-kafka.data.svc", "payments-kafka.data.svc.cluster.local"]
+  dns_names             = concat(["payments-kafka", "payments-kafka.data", "payments-kafka.data.svc", "payments-kafka.data.svc.cluster.local"], var.kafka_host_port > 0 ? ["localhost"] : [])
+  ip_addresses          = var.kafka_host_port > 0 ? ["127.0.0.1"] : []
   subject {
     common_name = "payments-kafka.data.svc.cluster.local"
   }
@@ -34,13 +45,14 @@ locals {
     node.id=1
     controller.quorum.voters=1@127.0.0.1:9093
     controller.listener.names=CONTROLLER
-    listeners=SASL_SSL://0.0.0.0:9092,CONTROLLER://127.0.0.1:9093
-    advertised.listeners=SASL_SSL://${local.kafka_host}:9092
-    listener.security.protocol.map=SASL_SSL:SASL_SSL,CONTROLLER:PLAINTEXT
+    listeners=SASL_SSL://0.0.0.0:9092,CONTROLLER://127.0.0.1:9093${var.kafka_host_port > 0 ? ",HOST://0.0.0.0:19092" : ""}
+    advertised.listeners=SASL_SSL://${local.kafka_host}:9092${var.kafka_host_port > 0 ? ",HOST://localhost:${var.kafka_host_port}" : ""}
+    listener.security.protocol.map=SASL_SSL:SASL_SSL,CONTROLLER:PLAINTEXT${var.kafka_host_port > 0 ? ",HOST:SASL_SSL" : ""}
     inter.broker.listener.name=SASL_SSL
     sasl.enabled.mechanisms=SCRAM-SHA-512
     sasl.mechanism.inter.broker.protocol=SCRAM-SHA-512
     listener.name.sasl_ssl.scram-sha-512.sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required username="payments" password="${var.external_kafka == null ? random_password.kafka[0].result : var.external_kafka.password}";
+    ${var.kafka_host_port > 0 ? "listener.name.host.scram-sha-512.sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required username=\"payments\" password=\"${random_password.kafka[0].result}\";" : ""}
     ssl.keystore.type=PEM
     ssl.keystore.location=/etc/kafka/tls/server.pem
     ssl.truststore.type=PEM
@@ -104,6 +116,15 @@ resource "kubernetes_service_v1" "kafka" {
     port {
       port        = 9092
       target_port = 9092
+      name        = "internal"
+    }
+    dynamic "port" {
+      for_each = var.kafka_host_port > 0 ? [1] : []
+      content {
+        name        = "desktop"
+        port        = 19092
+        target_port = 19092
+      }
     }
   }
 }
@@ -123,6 +144,10 @@ resource "kubernetes_stateful_set_v1" "kafka" {
     template {
       metadata {
         labels = { "app.kubernetes.io/name" = "payments-kafka" }
+        annotations = {
+          # A Secret update alone does not restart the broker with new listeners or certificates.
+          "checksum/config" = sha256(local.kafka_properties)
+        }
       }
       spec {
         automount_service_account_token = false
@@ -186,6 +211,12 @@ resource "kubernetes_stateful_set_v1" "kafka" {
           env {
             name  = "KAFKA_HEAP_OPTS"
             value = "-Xms128m -Xmx384m"
+          }
+          # Keep the unknown certificate revision out of the config annotations map:
+          # the provider can otherwise omit its first update during certificate replacement.
+          env {
+            name  = "KAFKA_TLS_REVISION"
+            value = sha256(tls_self_signed_cert.kafka[0].cert_pem)
           }
           env {
             name  = "LOG_DIR"

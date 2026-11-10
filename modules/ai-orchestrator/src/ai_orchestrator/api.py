@@ -7,7 +7,6 @@ import os
 import re
 import time
 import uuid
-from pathlib import Path
 from typing import Any
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -15,8 +14,8 @@ from fastapi import FastAPI, Header
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from ai_core.identity import (ORCHESTRATOR_AUDIENCE, TOOLS_AUDIENCE, IdentityError, bearer_token, load_public_key,
-                                verify_assertion)
+from ai_core.identity import (ORCHESTRATOR_AUDIENCE, TOOLS_AUDIENCE, IdentityError, bearer_token,
+                                verify_assertion, identity_key_from_env, KeycloakVerifier, payment_token_context)
 from ai_orchestrator.graph import Dependencies, build_graph, response
 from ai_orchestrator.llm import DisabledModel, LlamaModel, Model
 from ai_orchestrator.mcp_client import McpToolClient, ToolClient
@@ -47,6 +46,7 @@ def create_app(model: Model, tools: ToolClient, public_key: Ed25519PublicKey) ->
         body: AskRequest,
         authorization: str | None = Header(default=None),
         tools_assertion: str | None = Header(default=None, alias=TOOLS_ASSERTION_HEADER),
+        payment_token: str | None = Header(default=None, alias="X-Assistant-Payment-Token"),
         x_request_id: str | None = Header(default=None),
     ) -> Any:
         started = time.monotonic()
@@ -54,16 +54,27 @@ def create_app(model: Model, tools: ToolClient, public_key: Ed25519PublicKey) ->
         try:
             principal = verify_assertion(bearer_token(authorization), public_key, ORCHESTRATOR_AUDIENCE)
             relayed = verify_assertion(tools_assertion or "", public_key, TOOLS_AUDIENCE)
+            if isinstance(public_key, KeycloakVerifier) and payment_token:
+                payment = verify_assertion(payment_token, public_key, "payment-api")
+                if payment.subject != principal.subject or not payment.has("payments:read"):
+                    raise IdentityError("mismatched payment-tool identity")
         except IdentityError:
             return _unauthenticated(request_id)
         # Both assertions must describe the same user; the orchestrator never widens permissions.
         if (relayed.subject, relayed.tenant) != (principal.subject, principal.tenant):
             return _unauthenticated(request_id)
-        state = await graph.ainvoke(
-            {"question": body.question, "request_id": request_id, "subject": principal.subject,
-            "tenant": principal.tenant, "permissions": sorted(principal.permissions), "started": started},
-            config={"configurable": {"tools_token": tools_assertion}},
-        )
+        if not principal.has("ai:invoke"):
+            return JSONResponse({"status": "forbidden", "request_id": request_id}, status_code=403)
+        permissions = (principal.permissions & {"ai:invoke"}) | relayed.permissions
+        context_token = payment_token_context.set(payment_token if isinstance(public_key, KeycloakVerifier) else None)
+        try:
+            state = await graph.ainvoke(
+                {"question": body.question, "request_id": request_id, "subject": principal.subject,
+                "tenant": principal.tenant, "permissions": sorted(permissions), "started": started},
+                config={"configurable": {"tools_token": tools_assertion}},
+            )
+        finally:
+            payment_token_context.reset(context_token)
         result = response(state)
         result["latency_ms"] = round((time.monotonic() - started) * 1000)
         return result
@@ -72,7 +83,7 @@ def create_app(model: Model, tools: ToolClient, public_key: Ed25519PublicKey) ->
 
 
 def app_from_environment() -> FastAPI:
-    public_key = load_public_key(Path(os.environ["ASSERTION_PUBLIC_KEY_FILE"]).read_bytes())
+    public_key = identity_key_from_env()
     chat_url = os.environ.get("LLM_CHAT_URL", "")
     model: Model = LlamaModel(chat_url, os.environ.get("LLM_MODEL", "qwen2.5-1.5b-instruct-q4_k_m")) if chat_url \
         else DisabledModel()

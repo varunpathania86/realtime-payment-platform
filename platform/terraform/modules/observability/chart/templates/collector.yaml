@@ -1,3 +1,9 @@
+{{/*
+Optional cluster-local telemetry collector: application OTLP, pod logs, service and Kafka metrics.
+Requires discovery RBAC, collector-kafka Secret and reachable configured telemetry backends.
+The single-profile identity/Grafana-only path disables all collector resources.
+*/}}
+{{- if .Values.collectorEnabled }}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -31,6 +37,7 @@ metadata:
   name: collector
 data:
   config.yaml: |
+{{- end }}
 {{- define "observability.collectorConfig" }}
     extensions:
       health_check:
@@ -155,6 +162,7 @@ data:
           processors: [memory_limiter, resource, batch]
           exporters: [prometheusremotewrite]
 {{- end }}
+{{- if .Values.collectorEnabled }}
 {{ include "observability.collectorConfig" . }}
 ---
 apiVersion: apps/v1
@@ -218,3 +226,4 @@ spec:
   selector: {app: collector}
   ports:
     - {name: otlp, port: 4318, targetPort: otlp}
+{{- end }}

@@ -64,7 +64,7 @@ From the repository root:
 
 ```bash
 make -C modules/lakehouse-query test lint
-make dev-up DEV_CONFIG=templates/lakehouse-topology.json
+make dev-up MULTI_CLUSTER=3 DEV_CONFIG=templates/lakehouse-topology.json
 make lakehouse-query SQL='SELECT count(*) FROM payment_events'
 ```
 

@@ -124,7 +124,7 @@ class AiPlatformWiringTests(unittest.TestCase):
         local_dev = (ROOT / "scripts/local-dev.sh").read_text()
         self.assertIn("arguments+=(--feature ai)", local_dev)
         self.assertIn('if [ "$object_store" = true ]; then', local_dev)
-        self.assertIn('ai_enabled: ($key == "a" and ($config[0].ai // false))', (ROOT / "scripts/multi-cluster.sh").read_text())
+        self.assertIn('ai_enabled: ($key == "1" and ($config[0].ai // false))', (ROOT / "scripts/multi-cluster.sh").read_text())
 
 
 if __name__ == "__main__":

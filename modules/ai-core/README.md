@@ -13,7 +13,7 @@ Docker build context
 
 | File | Purpose |
 |---|---|
-| [identity.py](src/ai_core/identity.py) | Verifies portal-signed Ed25519 assertions (one audience each, at most 300 seconds) and intersects permissions with an allowlist ([ADR-030](../../docs/adr/ADR-030-assistant-identity-assertions.md)) |
+| [identity.py](src/ai_core/identity.py) | Verifies Keycloak RS256 JWTs with issuer, resource audience, expiry, scope and per-resource roles; bounded JWKS refresh supports rotation. Portal Ed25519 assertions are only an identity-disabled development compatibility path ([ADR-032](../../docs/adr/ADR-032-keycloak-identity-and-bff.md)) |
 | [retrieval.py](src/ai_core/retrieval.py) | Hybrid search: exact pgvector cosine plus PostgreSQL full-text, fused with Reciprocal Rank Fusion. Permission, classification, tenant, version and quarantine filters run in SQL. Without an embedding it ranks by text only |
 | [embeddings.py](src/ai_core/embeddings.py) | LangChain `Embeddings` adapter for the llama.cpp embeddings endpoint (nomic-embed-text v1.5, 768 dimensions) |
 | [safety.py](src/ai_core/safety.py) | Deterministic redaction (secrets, tokens, private keys, Luhn-valid card numbers), prompt-injection signals and citation verification |

@@ -117,9 +117,9 @@ def ingest(profile, wait_seconds=1800):
     raise RuntimeError(f"ingestion job {name} did not finish within {wait_seconds} seconds")
 
 
-def lookup_payment(send, origin):
+def lookup_payment(send, origin, headers=None):
     status, _, text = send("POST", "/api/payments", PORTAL_HOST,
-        {"Origin": origin, "Idempotency-Key": LOOKUP_KEY},
+        {"Origin": origin, "Idempotency-Key": LOOKUP_KEY, **(headers or {})},
         {"account_id": LOOKUP_ACCOUNT, "amount_minor": 4200, "currency": "EUR"})
     if status != 201:
         raise RuntimeError(f"creating the synthetic lookup payment returned {status}")
@@ -164,12 +164,27 @@ def run_evaluation(profile):
     if portal_env(profile, "AI_ORCHESTRATOR_URL") == "":
         raise RuntimeError("the assistant is not enabled on this profile (web-portal has no AI_ORCHESTRATOR_URL)")
     origins = portal_env(profile, "PORTAL_ALLOWED_ORIGINS").split()
-    users = json.loads(secret(profile, "web-portal-identity", "dev-users"))
+    issuer = portal_env(profile, "OIDC_ISSUER")
+    if issuer:
+        from scripts.identity_browser import credentials
+        _, users = credentials(profile)
+    else:
+        users = json.loads(secret(profile, "web-portal-identity", "dev-users"))
     suite = load_cases(CASES)
     process, base = forward(profile)
     try:
         send = lambda *request: http_long(base, *request)  # noqa: E731
-        results = evaluate(send, origins[0], users, suite, lookup_payment(send, origins[0]))
+        payment_headers = {}
+        if issuer:
+            from scripts.identity_browser import OIDCSessionSender
+            import urllib.parse
+            send = OIDCSessionSender(urllib.parse.urlparse(base).port, origins[0], issuer, send)
+            status, headers, _ = send("POST", "/auth/login", PORTAL_HOST, {"Origin": origins[0]},
+                                    {"username": "payments-clerk", "password": users["payments-clerk"]["password"]})
+            if status != 200:
+                raise RuntimeError("Keycloak payment writer cannot sign in for the synthetic evaluation fixture")
+            payment_headers = {"Cookie": session_cookie(headers)}
+        results = evaluate(send, origins[0], users, suite, lookup_payment(send, origins[0], payment_headers))
     finally:
         process.terminate()
         process.wait(timeout=10)
@@ -203,7 +218,7 @@ def main(argv=None):
     parser.add_argument("--profile", required=True)
     args = parser.parse_args(argv)
     if not PROFILE.fullmatch(args.profile):
-        sys.exit("ERROR: set MINIKUBE_PROFILE to an explicit local profile, for example rpp-a")
+        sys.exit("ERROR: set MINIKUBE_PROFILE to an explicit local profile, for example rpp-1")
     try:
         if args.command == "ingest":
             documents, job = ingest(args.profile)

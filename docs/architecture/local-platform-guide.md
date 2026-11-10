@@ -62,7 +62,7 @@ flowchart TB
     Root --> Platform["platform/: shared implementation"]
     Platform --> Terraform["terraform/"]
     Terraform --> Envs["environments/: runnable root configurations"]
-    Envs --> Shared["kafka-multicluster/: shared A/B/C infrastructure"]
+    Envs --> Shared["kafka-multicluster/: shared 1/2/3 infrastructure"]
     Envs --> Apps["local/: application stack for one selected cluster"]
     Terraform --> Reuse["modules/: reusable infrastructure building blocks"]
     Reuse --> Kafka["kafka-broker/: Kafka resources"]
@@ -74,6 +74,9 @@ flowchart TB
     Charts --> Chart["chart/: module-owned Kubernetes packaging"]
     Root --> State[".local/: generated, git-ignored runtime state"]
 ```
+
+The [CNPG module guide](../../platform/terraform/modules/cnpg/README.md) maps
+its Terraform resources and database chart.
 
 The two directories named `modules` mean different things:
 
@@ -89,8 +92,8 @@ two ownership scopes, not a choice between development and production:
 
 | Root configuration | Scope | Important files |
 |---|---|---|
-| [kafka-multicluster/](../../platform/terraform/environments/kafka-multicluster/) | Shared infrastructure across A/B/C | [main.tf](../../platform/terraform/environments/kafka-multicluster/main.tf): providers, Kafka and outputs; [database.tf](../../platform/terraform/environments/kafka-multicluster/database.tf): cross-cluster CNPG; [observability.tf](../../platform/terraform/environments/kafka-multicluster/observability.tf): optional telemetry |
-| [local/](../../platform/terraform/environments/local/) | Application stack in one explicitly selected cluster, repeated for A/B/C | [main.tf](../../platform/terraform/environments/local/main.tf): namespaces, Traefik and application Helm releases |
+| [kafka-multicluster/](../../platform/terraform/environments/kafka-multicluster/) | Shared infrastructure across 1/2/3 | [main.tf](../../platform/terraform/environments/kafka-multicluster/main.tf): providers, Kafka and outputs; [database.tf](../../platform/terraform/environments/kafka-multicluster/database.tf): cross-cluster CNPG; [observability.tf](../../platform/terraform/environments/kafka-multicluster/observability.tf): optional telemetry |
+| [local/](../../platform/terraform/environments/local/) | Application stack in one explicitly selected cluster, repeated for 1/2/3 | [main.tf](../../platform/terraform/environments/local/main.tf): namespaces, Traefik and application Helm releases |
 
 Despite its historical name, `kafka-multicluster` now composes more than Kafka.
 Despite its name, `local` is not a fourth cluster: its same code is applied
@@ -149,10 +152,11 @@ Three different kinds of state are easy to confuse:
 | Helm release state | Stored in the target cluster; records chart release information |
 | Application data | PostgreSQL, Kafka, ClickHouse and MinIO data on their storage volumes |
 
-For the default base, shared Terraform state is in
-`.local/rpp/terraform.tfstate`; per-cluster states are in
-`.local/rpp-a/terraform.tfstate`, `.local/rpp-b/terraform.tfstate` and
-`.local/rpp-c/terraform.tfstate`. Generated `events.tfvars.json` carries
+For the default single cluster, Terraform state is in
+`.local/rpp/terraform.tfstate`. With `MULTI_CLUSTER=3`, shared topology state
+is in `.local/rpp-multi/terraform.tfstate`; per-cluster states are in
+`.local/rpp-1/terraform.tfstate`, `.local/rpp-2/terraform.tfstate` and
+`.local/rpp-3/terraform.tfstate`. Generated `events.tfvars.json` carries
 connection/feature settings; `images.tfvars.json` carries local image references.
 Treat these files and saved plans as private. Do not commit or casually delete
 them: losing Terraform state is not a safe way to reset the platform.
@@ -219,14 +223,15 @@ resource exists.
 Use `make dev-status` and the [local development runbook](../runbooks/local-development.md)
 to investigate failures. Do not run ad-hoc `helm upgrade` or `kubectl apply` over
 Terraform-owned resources: that introduces competing ownership/configuration.
-`dev-down` destroys application/database resources and data; `cluster-down`
-deletes owned nodes after teardown. Neither is needed for routine code edits.
+`dev-down` stops the selected environment and preserves its data; `dev-clean`
+deletes the selected cluster(s) and data. Neither is needed for routine code edits.
 
 ## 7. Configuration
 
-Use `DEV_PROFILE` for the whole topology base, `DEV_CONFIG` for a checked-in
-topology configuration, and `MINIKUBE_PROFILE` to select one cluster for access
-or smoke. Defaults are the `rpp` base and access to `rpp-a`.
+Use `MULTI_CLUSTER=3` to select the fixed three-cluster topology (`rpp-1`,
+`rpp-2`, `rpp-3`), `DEV_CONFIG` for its topology configuration, and
+`MINIKUBE_PROFILE` to select one member for access or smoke. The default
+`MULTI_CLUSTER=0` mode uses only the single profile `rpp`.
 
 Optional streaming/analytics run in A; observability uses per-cluster collectors
 and shared backends in A. See the [developer guide](../developer-setup.md) for

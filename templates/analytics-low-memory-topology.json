@@ -1,6 +1,6 @@
 {
   "node": { "cpus": 2, "memory_mib": 3072 },
-  "nodes": { "a": { "cpus": 4, "memory_mib": 6144 } },
+  "nodes": { "1": { "cpus": 4, "memory_mib": 6144 } },
   "runtime_profile": "low-memory",
   "streaming": true,
   "analytics": true

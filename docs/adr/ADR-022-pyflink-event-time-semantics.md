@@ -77,7 +77,7 @@ Flink-to-ClickHouse sink.
 
 ## Consequences
 
-Flink and MinIO are opt-in and placed only in cluster A; ordinary payment
+Flink and MinIO are opt-in and placed only in cluster 1; ordinary payment
 development does not start them. Flink brings a larger image, Python worker
 overhead and an explicit larger local node budget. The local JobManager and
 MinIO volume are not highly available. TaskManager recovery uses checkpoints;

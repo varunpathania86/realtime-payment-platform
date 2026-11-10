@@ -95,11 +95,12 @@ resource "helm_release" "application" {
   wait            = true
   atomic          = true
   cleanup_on_fail = true
-  depends_on      = [helm_release.ingress, helm_release.realtime_analytics, kubernetes_stateful_set_v1.postgres, kubernetes_secret_v1.payment_database, kubernetes_stateful_set_v1.kafka, kubernetes_deployment_v1.registry, kubernetes_secret_v1.payment_events, kubernetes_secret_v1.realtime_analytics, kubernetes_config_map_v1.event_schema, kubernetes_deployment_v1.minio, helm_release.lakehouse_catalog, kubernetes_secret_v1.lakehouse_writer, kubernetes_secret_v1.lakehouse_query, kubernetes_secret_v1.bi_dashboards, kubernetes_secret_v1.web_portal_identity, kubernetes_secret_v1.ai_identity, kubernetes_secret_v1.web_portal_assistant_signer, kubernetes_secret_v1.knowledge_database, kubernetes_job_v1.knowledge_database]
+  depends_on      = [helm_release.nvidia_device_plugin, helm_release.ingress, helm_release.realtime_analytics, kubernetes_stateful_set_v1.postgres, kubernetes_secret_v1.payment_database, kubernetes_stateful_set_v1.kafka, kubernetes_deployment_v1.registry, kubernetes_secret_v1.payment_events, kubernetes_secret_v1.realtime_analytics, kubernetes_config_map_v1.event_schema, kubernetes_deployment_v1.minio, helm_release.lakehouse_catalog, kubernetes_secret_v1.lakehouse_writer, kubernetes_secret_v1.lakehouse_query, kubernetes_secret_v1.bi_dashboards, kubernetes_secret_v1.web_portal_identity, kubernetes_secret_v1.ai_identity, kubernetes_secret_v1.web_portal_assistant_signer, kubernetes_secret_v1.knowledge_database, kubernetes_job_v1.knowledge_database]
 
   values = concat([yamlencode({
     replicaCount   = lookup(var.application_replicas, each.key, 1)
     runtimeProfile = var.runtime_profile
+    gpu            = { enabled = var.ai_gpu_enabled }
     risk = {
       enabled       = var.risk_enabled
       packageKey    = var.risk_package_key
@@ -139,6 +140,14 @@ resource "helm_release" "application" {
       enabled        = local.portal_identity_enabled
       existingSecret = "web-portal-identity"
       allowedOrigins = local.bi_origins
+    }
+    oidc = {
+      enabled        = var.identity_enabled
+      issuer         = "http://identity.localhost:${var.access_port}/realms/rpp"
+      internalUrl    = "http://identity-provider.security.svc.cluster.local:8080/realms/rpp"
+      portalOrigin   = "http://localhost:${var.access_port}"
+      existingSecret = "web-portal-identity"
+      localHTTP      = true
     }
     assistant = {
       enabled         = var.ai_enabled

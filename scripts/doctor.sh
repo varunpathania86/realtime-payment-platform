@@ -25,7 +25,7 @@ else
   bad "catalog validation dependencies are missing (run: make setup)"
 fi
 
-for t in kubectl minikube helm terraform go jq yq nodejs tflint trivy; do
+for t in kubectl minikube helm terraform go jq yq nodejs tflint trivy editorconfig-checker; do
   want=$(pinned_version "$t"); have=$(installed_version "$t")
   if [ -z "$have" ]; then bad "$t is missing, want $want (run: make setup)"
   elif [ "$have" != "$want" ]; then bad "$t is $have, want $want (run: make setup)"
@@ -69,12 +69,12 @@ for runtime in kafka apicurio otelcol prometheus alertmanager loki tempo grafana
   fi
 done
 
-if [ "${MULTI_CLUSTER:-0}" = 1 ]; then
+if [ "${MULTI_CLUSTER:-0}" = 3 ]; then
   if [ -r /proc/sys/fs/inotify/max_user_instances ] &&
     [ "$(cat /proc/sys/fs/inotify/max_user_instances)" -ge 1024 ]; then
     ok "multi-cluster host inotify instance limit"
   else
-    bad "multi-cluster needs fs.inotify.max_user_instances >= 1024 on the Docker host (run: MULTI_CLUSTER=1 make setup)"
+    bad "multi-cluster needs fs.inotify.max_user_instances >= 1024 on the Docker host (run: MULTI_CLUSTER=3 make setup)"
   fi
 fi
 
@@ -123,6 +123,38 @@ else
   bad "invalid AI pins in .tool-versions (restore ai-python, llama-cpp, llama-cpp-image-digest and pgvector)"
 fi
 flink_pin=$(pinned_version flink)
+if [[ "$(pinned_version keycloak)" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] &&
+  [[ "$(pinned_version keycloak-image-digest)" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+  ok "Keycloak $(pinned_version keycloak) identity image pin (built by local deployment)"
+else
+  bad "invalid identity pins (restore keycloak and keycloak-image-digest in .tool-versions)"
+fi
+if [[ "$(pinned_version dbx)" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] &&
+  [[ "$(pinned_version dbx-api-contract)" == "$(pinned_version dbx)" ]] &&
+  [[ "$(pinned_version dbx-image-digest)" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+  ok "DBX $(pinned_version dbx) API contract and image digest pin (optional local workbench)"
+else
+  bad "invalid DBX version/API contract/image digest pins in .tool-versions"
+fi
+for pin in dbx-agent-kafka-sha256 dbx-agent-trino-sha256 dbx-jre-sha256-amd64 dbx-jre-sha256-arm64; do
+  if [[ ! "$(pinned_version "$pin")" =~ ^[a-f0-9]{64}$ ]]; then
+    bad "invalid DBX runtime checksum pin $pin (restore .tool-versions)"
+  fi
+done
+if [ "${DBX:-0}" = 1 ]; then
+  if docker image inspect "$(bash "$REPO_ROOT/scripts/dbx-runtime.sh" image)" >/dev/null 2>&1; then
+    ok "DBX offline Kafka/Trino runtime package"
+  else
+    bad "DBX runtime package missing (run: DBX=1 make setup)"
+  fi
+fi
+if [ "${IDENTITY:-0}" = 1 ]; then
+  if docker image inspect "$(bash "$REPO_ROOT/scripts/identity-runtime.sh" image)" >/dev/null 2>&1; then
+    ok "optimized identity runtime"
+  else
+    bad "identity runtime missing (run: IDENTITY=1 make setup)"
+  fi
+fi
 if [ "${flink_pin%%-*}" != "$(pinned_version flink-python)" ]; then
   bad "Flink and PyFlink pins must match (restore .tool-versions and run STREAMING=1 make setup)"
 fi
@@ -140,6 +172,23 @@ if [ "${AI:-0}" = 1 ]; then
     ok "AI Python test runtime $(bash "$REPO_ROOT/scripts/ai-python.sh" image)"
   else
     bad "AI Python test runtime missing (run: AI=1 make setup)"
+  fi
+fi
+
+cuda_build=$(pinned_version llama-cpp)
+if [[ "$(pinned_version llama-cpp-cuda)" != "server-cuda-${cuda_build#server-}" ]] ||
+  [[ ! "$(pinned_version llama-cpp-cuda-image-digest)" =~ ^sha256:[a-f0-9]{64}$ ]] ||
+  [[ ! "$(pinned_version nvidia-device-plugin)" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] ||
+  [[ ! "$(pinned_version nvidia-device-plugin-chart-sha256)" =~ ^[a-f0-9]{64}$ ]]; then
+  bad "invalid CUDA/plugin pins; restore .tool-versions"
+fi
+if [ "${AI_GPU:-0}" = 1 ]; then
+  # shellcheck source=scripts/gpu.sh
+  . "$(dirname "${BASH_SOURCE[0]}")/gpu.sh"
+  if gpu_prepare_chart && gpu_preflight "${MINIKUBE_PROFILE:-rpp}"; then
+    ok "NVIDIA GPU prerequisites and verified time-slicing chart"
+  else
+    bad "GPU prerequisites unavailable; repair host GPU/Docker access, run AI_GPU=1 make setup, and preserve existing profile data before recreating a CPU-only node"
   fi
 fi
 

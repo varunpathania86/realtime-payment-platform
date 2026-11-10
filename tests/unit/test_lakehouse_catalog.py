@@ -87,6 +87,9 @@ class IcebergLakehouseSetupTests(unittest.TestCase):
         reader = SETUP.PRINCIPALS["trino-lakehouse-reader"][3]
         self.assertFalse(any(privilege.endswith(("_CREATE", "_DROP", "WRITE_PROPERTIES")) for privilege in writer))
         self.assertNotIn("TABLE_WRITE_DATA", reader)
+        # Trino SHOW TABLES also enumerates views, even in a namespace with only tables.
+        self.assertIn("VIEW_LIST", reader)
+        self.assertNotIn("VIEW_READ_PROPERTIES", reader)
         self.assertFalse(any("WRITE" in privilege or "MANAGE" in privilege for privilege in reader))
         self.assertEqual(set(writer) - set(reader), {"TABLE_WRITE_DATA"})
 

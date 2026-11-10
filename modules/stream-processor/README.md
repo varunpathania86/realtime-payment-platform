@@ -50,14 +50,15 @@ From the repository root:
 ```bash
 make -C modules/stream-processor build test lint
 make -C modules/stream-processor integration
-make dev-up DEV_CONFIG=templates/streaming-topology.json
-make streaming-fixtures
-make streaming-inspect
-make streaming-savepoint
+make dev-up MULTI_CLUSTER=3 DEV_CONFIG=templates/streaming-topology.json
+make streaming-fixtures MULTI_CLUSTER=3
+make streaming-inspect MULTI_CLUSTER=3
+make streaming-savepoint MULTI_CLUSTER=3
 ```
 
-Use an explicitly owned, unused `DEV_PROFILE` for destructive acceptance.
-The example raises cluster A to 4 CPUs/8192 MiB; B/C remain 2 CPUs/3072 MiB.
+Use the fixed `rpp-1`/`rpp-2`/`rpp-3` profiles for acceptance, and run destructive
+cleanup only when their data is disposable.
+The example raises cluster 1 to 4 CPUs/8192 MiB; 2/3 remain 2 CPUs/3072 MiB.
 This is a low-load starting budget, not capacity certification.
 
 ## Make targets
@@ -78,7 +79,7 @@ This is a low-load starting budget, not capacity certification.
 The default Helm values scale both Flink roles to zero for standalone chart
 inspection. Ordinary local orchestration excludes this optional chart entirely.
 The opt-in topology
-enables them only in A and provisions a 5 GiB MinIO PVC. Kafka uses the existing
+enables them only in cluster 1 and provisions a 5 GiB MinIO PVC. Kafka uses the existing
 TLS/SCRAM credentials, private cluster services and three partitions. Input
 records are UTF-8 JSON conforming to the Avro logical contract; this topic does
 not use the initiation topic's Confluent-wire encoding.
@@ -122,13 +123,13 @@ benchmark. Use the separate three-cluster benchmark for throughput, lag and fact
 visibility latency:
 
 ```bash
-make streaming-benchmark-preflight DEV_PROFILE=rpp-stage6-perf
-make dev-up DEV_PROFILE=rpp-stage6-perf DEV_CONFIG=templates/analytics-benchmark-topology.json
-make streaming-benchmark DEV_PROFILE=rpp-stage6-perf
+make streaming-benchmark-preflight MULTI_CLUSTER=3
+make dev-up MULTI_CLUSTER=3 DEV_CONFIG=templates/analytics-benchmark-topology.json
+make streaming-benchmark MULTI_CLUSTER=3
 ```
 
 Do not continue to `dev-up` if preflight fails. The benchmark template budgets
-A at 4 CPUs/6144 MiB and B/C at 2 CPUs/3072 MiB each, without observability
+cluster 1 at 4 CPUs/6144 MiB and clusters 2/3 at 2 CPUs/3072 MiB each, without observability
 backends. A fresh start requires 14336 MiB **available** host memory, including
 a 2048-MiB safety reserve; installed RAM alone is not the check.
 

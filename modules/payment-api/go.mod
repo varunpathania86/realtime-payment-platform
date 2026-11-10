@@ -4,6 +4,7 @@ go 1.26.0
 
 require (
 	github.com/XSAM/otelsql v0.44.0
+	github.com/coreos/go-oidc/v3 v3.17.0
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/linkedin/goavro/v2 v2.14.1
 	github.com/prometheus/client_golang v1.23.2
@@ -15,6 +16,7 @@ require (
 require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
+	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
 	github.com/go-openapi/jsonpointer v1.0.1 // indirect
 	github.com/golang/snappy v0.0.1 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.31.0 // indirect
@@ -36,6 +38,7 @@ require (
 	github.com/xdg-go/stringprep v1.0.4 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	golang.org/x/net v0.59.0 // indirect
+	golang.org/x/oauth2 v0.36.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260928230214-8a89bd6388cc // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260928230214-8a89bd6388cc // indirect
 	google.golang.org/grpc v1.84.0 // indirect

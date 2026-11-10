@@ -1,7 +1,7 @@
-name: pg-a
+name: pg-1
 instances: 1
 maxConnections: 128
-primary: pg-a
+primary: pg-1
 bootstrapSource: ""
 promotionToken: ""
 addresses: {}

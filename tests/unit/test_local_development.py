@@ -1,4 +1,5 @@
 import copy
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -105,7 +106,7 @@ class LocalCommandTests(unittest.TestCase):
         self.addCleanup(self.directory.cleanup)
         self.root = Path(self.directory.name)
         (self.root / "scripts").mkdir()
-        for name in ("local-dev.sh", "lib.sh", "module_catalog.py", "smoke.py", "local_database.py",
+        for name in ("local-dev.sh", "gpu.sh", "lib.sh", "module_catalog.py", "smoke.py", "local_database.py",
                     "streaming-control.py"):
             shutil.copy(ROOT / "scripts" / name, self.root / "scripts" / name)
         shutil.copy(ROOT / ".tool-versions", self.root / ".tool-versions")
@@ -138,6 +139,10 @@ with open(os.environ["COMMAND_LOG"], "a") as log:
 if name == "docker" and os.environ.get("FAIL_BUILD"):
     print("deliberate build failure", file=sys.stderr)
     sys.exit(7)
+if name == "docker" and sys.argv[1:] == ["info", "--format", "{{json .Runtimes}}"]:
+    print('{"nvidia":{}}')
+if name == "docker" and sys.argv[1:3] == ["container", "inspect"]:
+    sys.exit(1)
 if name == "minikube" and os.environ.get("FAIL_LOAD"):
     print("deliberate image load failure", file=sys.stderr)
     sys.exit(8)
@@ -190,6 +195,57 @@ if name == "kubectl" and "port-forward" in sys.argv:
 
     def inventory(self):
         return json.loads((self.root / ".local" / "isolated" / "images.tfvars.json").read_text())
+
+    def test_gpu_build_is_opt_in_persisted_and_has_a_distinct_image_tag(self):
+        module = self.root / "modules/llm-serving"
+        shutil.copytree(self.source.parent, module)
+        (module / "module.yaml").write_text("name: llm-serving\ntype: library\n")
+        (self.root / "solution.yaml").write_text("modules: [llm-serving]\n")
+        (self.root / "scripts/build-minio.sh").write_text("#!/bin/sh\nexit 0\n")
+        driver = self.bin / "nvidia-smi"
+        driver.write_text("#!/bin/sh\necho 'RTX A2000, 8192 MiB'\n")
+        driver.chmod(0o755)
+        archive = self.root / ".local/tools/nvidia-device-plugin-0.20.1.tgz"
+        archive.parent.mkdir(parents=True)
+        archive.write_bytes(b"fixture chart")
+        pins = self.root / ".tool-versions"
+        old_checksum = next(line.split()[1] for line in pins.read_text().splitlines()
+                            if line.startswith("nvidia-device-plugin-chart-sha256 "))
+        pins.write_text(pins.read_text().replace(old_checksum, hashlib.sha256(archive.read_bytes()).hexdigest()))
+        settings = self.root / ".local/isolated/events.tfvars.json"
+        settings.parent.mkdir()
+        settings.write_text('{"ai_enabled":true}\n')
+        result = self.run_command("images", AI_GPU="0")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        cpu = self.inventory()["local_images"]["llm-serving"]
+        result = self.run_command("images", AI_GPU="1")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        gpu = self.inventory()["local_images"]["llm-serving"]
+        self.assertNotEqual(cpu, gpu)
+        self.assertTrue(json.loads(settings.read_text())["ai_gpu_enabled"])
+        commands = [json.loads(line) for line in self.log.read_text().splitlines()]
+        builds = [call for call in commands if call[:2] == ["docker", "build"]]
+        self.assertIn("LLAMA_CPP_VERSION=server-b12124", builds[0])
+        self.assertIn("LLAMA_CPP_VERSION=server-cuda-b12124", builds[1])
+        self.assertEqual(self.run_command("images").returncode, 0)
+        self.assertEqual(self.inventory()["local_images"]["llm-serving"], gpu)
+        self.assertEqual(self.run_command("images", AI_GPU="0").returncode, 0)
+        self.assertEqual(self.inventory()["local_images"]["llm-serving"], cpu)
+
+    def test_gpu_requires_ai_and_boolean_settings_before_building(self):
+        settings = self.root / ".local/isolated/events.tfvars.json"
+        settings.parent.mkdir(parents=True)
+        for data, variables in (
+            ({"ai_enabled": False}, {"AI_GPU": "1"}),
+            ({"ai_enabled": True, "ai_gpu_enabled": "true"}, {}),
+            ({"ai_enabled": False, "ai_gpu_enabled": True}, {}),
+            ({"ai_enabled": True}, {"AI_GPU": "yes"}),
+        ):
+            settings.write_text(json.dumps(data))
+            result = self.run_command("images", **variables)
+            self.assertNotEqual(result.returncode, 0, result.stdout)
+            self.assertIn("GPU", result.stderr.upper())
+            self.assertFalse(self.log.exists())
 
     def test_smoke_uses_assigned_port_without_interrupting_existing_listener(self):
         self.assertEqual(self.run_command("images").returncode, 0)
@@ -344,14 +400,50 @@ if name == "kubectl" and "port-forward" in sys.argv:
         self.assertTrue(all(f"-var-file={variables}" in call for call in plans))
 
     def test_individual_dev_commands_refuse_fenced_former_primary(self):
-        state = self.root / ".local/lab"
+        state = self.root / ".local/lab-multi"
+        state.mkdir(parents=True)
+        (state / "owned").write_text("lab\n")
+        (state / "cluster-identity").write_text("numbered-v1\n")
+        (state / "database-fence.json").write_text('{"old":"pg-1","phase":"complete"}')
+        for action in ("up", "update", "images", "apply", "down"):
+            result = self.run_command(action, MINIKUBE_PROFILE="lab-1")
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("is fenced", result.stderr)
+
+    def test_individual_dev_commands_refuse_legacy_fence_identity(self):
+        state = self.root / ".local/lab-multi"
         state.mkdir(parents=True)
         (state / "owned").write_text("lab\n")
         (state / "database-fence.json").write_text('{"old":"pg-a","phase":"complete"}')
         for action in ("up", "update", "images", "apply", "down"):
-            result = self.run_command(action, MINIKUBE_PROFILE="lab-a")
+            result = self.run_command(action, MINIKUBE_PROFILE="lab-1")
             self.assertNotEqual(result.returncode, 0)
-            self.assertIn("is fenced", result.stderr)
+            self.assertIn("legacy", result.stderr.lower())
+
+    def test_individual_dev_commands_refuse_invalid_numbered_fence(self):
+        state = self.root / ".local/lab-multi"
+        state.mkdir(parents=True)
+        (state / "owned").write_text("lab\n")
+        (state / "cluster-identity").write_text("numbered-v1\n")
+        (state / "database-fence.json").write_text('{"old":"pg-a","phase":"complete"}')
+        for profile in ("lab-1", "lab-2", "lab-3"):
+            result = self.run_command("update", MINIKUBE_PROFILE=profile)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("Invalid fenced database identity", result.stderr)
+
+    def test_single_profile_refuses_legacy_shared_state(self):
+        state = self.root / ".local/rpp"
+        state.mkdir(parents=True)
+        (state / "owned").write_text("rpp\n")
+        state_file = state / "terraform.tfstate"
+        original = '{"resources":[{"mode":"managed"}]}'
+        state_file.write_text(original)
+        for action in ("up", "update", "images", "apply", "down"):
+            result = self.run_command(action, MINIKUBE_PROFILE="rpp")
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("legacy multi-cluster state", result.stderr)
+            self.assertEqual(state_file.read_text(), original)
+        self.assertFalse(self.log.exists())
 
 
 class MultiClusterCommandTests(unittest.TestCase):
@@ -360,7 +452,10 @@ class MultiClusterCommandTests(unittest.TestCase):
         self.addCleanup(self.directory.cleanup)
         self.root = Path(self.directory.name)
         (self.root / "scripts").mkdir()
-        for name in ("multi-cluster.sh", "setup-multicluster.sh", "lib.sh", "topology_config.py", "database_switchover.py"):
+        for name in (
+            "multi-cluster.sh", "setup-multicluster.sh", "gpu.sh", "lib.sh", "topology_config.py",
+            "topology_identity.py", "database_switchover.py",
+        ):
             shutil.copy(ROOT / "scripts" / name, self.root / "scripts" / name)
         python = self.root / ".venv/bin/python"
         python.parent.mkdir(parents=True)
@@ -385,19 +480,25 @@ if name == "cat":
     else:
         os.execv("/bin/cat", ["/bin/cat", *args])
 elif name == "docker":
-    if args[0] == "inspect":
+    if args[0] == "info":
+        print('{"nvidia":{}}')
+    elif args[:2] == ["container", "inspect"]:
+        sys.exit(1)
+    elif args[0] == "inspect":
         print(args[1])
     elif args[:2] == ["network", "create"]:
         network.touch()
     elif args[:2] == ["network", "inspect"]:
         if not network.exists():
             sys.exit(1)
-        print("172.18.0.1" if "Gateway" in args[-1] else os.environ.get("NETWORK_OWNER", "learning"))
+        print("172.18.0.1" if "Gateway" in args[-1] else os.environ.get("NETWORK_OWNER", "rpp"))
     elif args[:2] == ["network", "rm"]:
         network.unlink()
+elif name == "minikube" and args[:1] == ["status"] and os.environ.get("FAIL_STATUS") == args[-1]:
+    sys.exit(1)
 elif name == "minikube" and "ip" in args:
     profile = args[args.index("-p") + 1]
-    print("172.18.0." + str(2 + "abc".index(profile[-1])))
+    print("172.18.0." + str(2 + "123".index(profile[-1])))
 elif name == "kubectl" and "pg_control_system()" in args[-1]:
     print("42")
 elif name == "kubectl" and "jsonpath={.status.currentPrimary}" in args:
@@ -407,15 +508,15 @@ elif name == "terraform":
         print("deliberate Terraform failure", file=sys.stderr)
         sys.exit(9)
     if "output" in args:
-        print('{"a":{},"b":{},"c":{}}' if "workload_vars" in args else '{"external_kafka":{"brokers":"test"}}')
+        print('{"1":{},"2":{},"3":{}}' if "workload_vars" in args else '{"external_kafka":{"brokers":"test"}}')
 """
-        for name in ("docker", "minikube", "terraform", "kubectl", "cat", "sudo"):
+        for name in ("docker", "minikube", "terraform", "kubectl", "cat", "sudo", "nvidia-smi"):
             path = self.bin / name
             path.write_text(fake)
             path.chmod(0o755)
         self.env = {
             **os.environ, "HOME": str(self.root), "MINIKUBE_HOME": str(self.root),
-            "BIN_DIR": str(self.bin), "DEV_PROFILE": "learning", "MULTI_FULL_STACK": "0",
+            "BIN_DIR": str(self.bin), "MULTI_FULL_STACK": "0",
         }
 
     def run_command(self, action, **env):
@@ -427,19 +528,201 @@ elif name == "terraform":
     def calls(self):
         return [json.loads(line) for line in (self.root / "commands.jsonl").read_text().splitlines()]
 
+    def test_only_cluster_1_gets_gpu_passthrough_and_builtin_plugin_is_disabled(self):
+        config = json.loads((ROOT / "templates/ai-topology.json").read_text())
+        config["ai_gpu"] = True
+        source = self.root / "gpu-topology.json"
+        source.write_text(json.dumps(config))
+        archive = self.root / ".local/tools/nvidia-device-plugin-0.20.1.tgz"
+        archive.parent.mkdir(parents=True)
+        archive.write_bytes(b"fixture chart")
+        versions = self.root / ".tool-versions"
+        checksum = next(line.split()[1] for line in versions.read_text().splitlines()
+                        if line.startswith("nvidia-device-plugin-chart-sha256 "))
+        versions.write_text(versions.read_text().replace(checksum, hashlib.sha256(archive.read_bytes()).hexdigest()))
+        result = self.run_command("up", DEV_CONFIG=str(source))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        starts = [call for call in self.calls() if call[:2] == ["minikube", "start"]]
+        self.assertEqual(len(starts), 3)
+        self.assertIn("--gpus=all", starts[0])
+        self.assertIn("--container-runtime=docker", starts[0])
+        for call in starts[1:]:
+            self.assertNotIn("--gpus=all", call)
+        disables = [call for call in self.calls() if "addons" in call and "disable" in call]
+        self.assertEqual(disables, [["minikube", "-p", "rpp-1", "addons", "disable", "nvidia-device-plugin"]])
+
+    def test_legacy_identity_refuses_mutating_topology_commands(self):
+        state = self.root / ".local/rpp-multi"
+        state.mkdir(parents=True)
+        (state / "owned").write_text("rpp\n")
+        (state / "full-stack").touch()
+        state_file = state / "terraform.tfstate"
+        original = '{"resources":[{"mode":"managed"}]}'
+        state_file.write_text(original)
+        for action in ("up", "update", "metrics", "observability", "switchover", "failover", "rejoin", "down", "cluster-down"):
+            with self.subTest(action=action):
+                result = self.run_command(action, DATABASE_TARGET="pg-2")
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("legacy", result.stderr.lower())
+                self.assertEqual(state_file.read_text(), original)
+                calls = self.calls() if (self.root / "commands.jsonl").exists() else []
+                self.assertFalse(any(call[0] in ("docker", "minikube", "terraform", "kubectl") for call in calls))
+
+    def test_old_shared_state_path_is_not_claimed_as_a_new_lab(self):
+        state = self.root / ".local/rpp"
+        state.mkdir(parents=True)
+        (state / "owned").write_text("rpp\n")
+        original = '{"resources":[{"mode":"managed"}]}'
+        (state / "terraform.tfstate").write_text(original)
+        result = self.run_command("up")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("legacy multi-cluster state", result.stderr)
+        self.assertEqual((state / "terraform.tfstate").read_text(), original)
+        self.assertFalse((self.root / ".local/rpp-multi/owned").exists())
+        self.assertFalse((self.root / "commands.jsonl").exists())
+
+    def test_unowned_topology_metadata_is_not_adopted(self):
+        state = self.root / ".local/rpp-multi"
+        state.mkdir(parents=True)
+        for name in (
+            "terraform.tfstate", "terraform.tfstate.backup", "topology.tfvars.json",
+            "topology.pending.json", "configuration.json", "cluster-identity", "unknown-metadata",
+            "full-stack", "database-role.json", "database-transition.json", "database-fence.json",
+            "database-transition.pending", "tfplan", "database-transition.tfplan", "database-failover.tfplan",
+        ):
+            with self.subTest(name=name):
+                metadata = state / name
+                metadata.write_text("preserve")
+                result = self.run_command("up")
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("unowned topology metadata", result.stderr)
+                self.assertEqual(metadata.read_text(), "preserve")
+                self.assertFalse((state / "owned").exists())
+                metadata.unlink()
+        self.assertFalse((self.root / "commands.jsonl").exists())
+
+    def test_unused_terraform_cache_does_not_prevent_a_new_claim(self):
+        cache = self.root / ".local/rpp-multi/terraform"
+        cache.mkdir(parents=True)
+        (cache / "cache-metadata").write_text("provider initialization")
+        result = self.run_command("up")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((cache.parent / "owned").exists())
+
+    def test_symlinked_multi_cluster_state_is_not_claimed_or_used(self):
+        outside = self.root / "external-state"
+        outside.mkdir()
+        state = self.root / ".local/rpp-multi"
+        state.parent.mkdir(parents=True)
+        state.symlink_to(outside, target_is_directory=True)
+        for action in ("up", "update", "down", "cluster-down"):
+            with self.subTest(action=action):
+                result = self.run_command(action)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("symlinked topology state", result.stderr)
+        self.assertEqual(list(outside.iterdir()), [])
+        self.assertFalse((self.root / "commands.jsonl").exists())
+
+    def test_unknown_identity_version_is_not_adopted(self):
+        state = self.root / ".local/rpp-multi"
+        state.mkdir(parents=True)
+        (state / "owned").write_text("rpp\n")
+        (state / "cluster-identity").write_text("numbered-v2\n")
+        result = self.run_command("up")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("unsupported cluster identity", result.stderr)
+        self.assertFalse(any(call[0] in ("docker", "minikube", "terraform", "kubectl") for call in self.calls()))
+
+    def test_stop_requires_ownership_and_preserves_state(self):
+        result = self.run_command("stop")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("No owned multi-cluster topology", result.stderr)
+        self.assertFalse((self.root / "commands.jsonl").exists())
+        state = self.root / ".local/rpp-multi"
+        state.mkdir(parents=True)
+        (state / "owned").write_text("rpp\n")
+        (state / "terraform.tfstate").write_text('{"resources":[{"mode":"managed"}]}')
+        result = self.run_command("stop")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.calls(), [
+            ["cat", str(state / "owned")],
+            *[["minikube", "stop", "-p", f"rpp-{suffix}"] for suffix in "123"],
+        ])
+        self.assertTrue((state / "terraform.tfstate").exists())
+
+    def test_stop_refuses_incomplete_database_recovery(self):
+        state = self.root / ".local/rpp-multi"
+        state.mkdir(parents=True)
+        (state / "owned").write_text("rpp\n")
+        for marker in ("database-fence.json", "database-transition.json"):
+            (state / marker).touch()
+            result = self.run_command("stop")
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse(any(call[0] == "minikube" for call in self.calls()))
+            (state / marker).unlink()
+
+    def test_destroy_checks_network_ownership_and_database_transition_first(self):
+        state = self.root / ".local/rpp-multi"
+        state.mkdir(parents=True)
+        (state / "owned").write_text("rpp\n")
+        (state / "cluster-identity").write_text("numbered-v1\n")
+        (self.root / "network").touch()
+        (state / "database-transition.json").touch()
+        result = self.run_command("down")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("database transition", result.stderr)
+        (state / "database-transition.json").unlink()
+        result = self.run_command("down", NETWORK_OWNER="other")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Network ownership mismatch", result.stderr)
+        self.assertFalse(any(call[0] == "terraform" for call in self.calls()))
+        result = self.run_command("down", FAIL_STATUS="rpp-2")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("rpp-2 is unavailable", result.stderr)
+        self.assertFalse(any(call[0] == "terraform" for call in self.calls()))
+
+    def test_cluster_deletion_refuses_pending_database_recovery(self):
+        state = self.root / ".local/rpp-multi"
+        state.mkdir(parents=True)
+        (state / "owned").write_text("rpp\n")
+        (state / "cluster-identity").write_text("numbered-v1\n")
+        for name in ("database-fence.json", "database-transition.json"):
+            with self.subTest(name=name):
+                (state / name).write_text("{}")
+                result = self.run_command("cluster-down")
+                self.assertNotEqual(result.returncode, 0)
+                self.assertFalse(any(call[0] in ("docker", "minikube", "terraform") for call in self.calls()))
+                (state / name).unlink()
+
     def test_default_base_needs_no_profile_override(self):
-        self.env.pop("DEV_PROFILE")
         result = self.run_command("up", NETWORK_OWNER="rpp")
         self.assertEqual(result.returncode, 0, result.stderr)
         starts = [call for call in self.calls() if call[:2] == ["minikube", "start"]]
         self.assertEqual(len(starts), 3)
-        for suffix, call in zip("abc", starts):
+        for suffix, call in zip("123", starts):
             self.assertIn(f"rpp-{suffix}", call)
             self.assertIn("--network=rpp-net", call)
-        state = self.root / ".local/rpp"
+        state = self.root / ".local/rpp-multi"
         self.assertEqual((state / "owned").read_text().strip(), "rpp")
+        self.assertEqual((state / "cluster-identity").read_text().strip(), "numbered-v1")
         inventory = json.loads((state / "topology.tfvars.json").read_text())
-        self.assertEqual(inventory["profiles"], ["rpp-a", "rpp-b", "rpp-c"])
+        self.assertEqual(inventory["profiles"], ["rpp-1", "rpp-2", "rpp-3"])
+
+    def test_optional_features_follow_cluster_one(self):
+        config = self.root / "configuration.json"
+        config.write_text(json.dumps({
+            "nodes": {"1": {"cpus": 4, "memory_mib": 10240}},
+            "analytics": True,
+            "ai": True,
+            "identity": True,
+        }))
+        result = self.run_command("up", MULTI_FULL_STACK="1", DEV_CONFIG=str(config))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for number in ("1", "2", "3"):
+            variables = json.loads((self.root / f".local/rpp-{number}/events.tfvars.json").read_text())
+            for feature in ("analytics", "ai", "identity"):
+                with self.subTest(number=number, feature=feature):
+                    self.assertEqual(variables[f"{feature}_enabled"], number == "1")
 
     def test_three_fixed_budgets_and_distinct_static_ips(self):
         result = self.run_command("up")
@@ -447,35 +730,35 @@ elif name == "terraform":
         starts = [call for call in self.calls() if call[:2] == ["minikube", "start"]]
         self.assertEqual(len(starts), 3)
         for i, call in enumerate(starts):
-            self.assertIn(f"learning-{'abc'[i]}", call)
-            for flag in ("--cpus=2", "--memory=3072", "--network=learning-net", f"--static-ip=172.18.0.{i + 2}"):
+            self.assertIn(f"rpp-{'123'[i]}", call)
+            for flag in ("--cpus=2", "--memory=3072", "--network=rpp-net", f"--static-ip=172.18.0.{i + 2}"):
                 self.assertIn(flag, call)
         quotas = [call for call in self.calls() if call[:2] == ["docker", "update"]]
         self.assertEqual(quotas, [
-            ["docker", "update", "--cpus=2", "--memory=3072m", "--memory-swap=6144m", f"learning-{suffix}"]
-            for suffix in "abc"
+            ["docker", "update", "--cpus=2", "--memory=3072m", "--memory-swap=6144m", f"rpp-{suffix}"]
+            for suffix in "123"
         ])
         (self.root / "commands.jsonl").write_text("")
         result = self.run_command("metrics")
         self.assertEqual(result.returncode, 0, result.stderr)
         contexts = [call[call.index("--context") + 1] for call in self.calls() if call[0] == "kubectl"]
-        self.assertEqual(contexts, ["learning-a", "learning-b", "learning-c"])
+        self.assertEqual(contexts, ["rpp-1", "rpp-2", "rpp-3"])
         addons = [call for call in self.calls() if call[0] == "minikube"]
         self.assertEqual(addons, [
-            ["minikube", "-p", f"learning-{suffix}", "addons", "enable", "metrics-server"]
-            for suffix in "abc"
+            ["minikube", "-p", f"rpp-{suffix}", "addons", "enable", "metrics-server"]
+            for suffix in "123"
         ])
-        variables = self.root / ".local" / "learning-a" / "events.tfvars.json"
+        variables = self.root / ".local" / "rpp-1" / "events.tfvars.json"
         self.assertEqual(variables.stat().st_mode & 0o777, 0o600)
 
     def test_existing_unowned_profile_or_network_is_refused(self):
-        existing = self.root / ".minikube" / "profiles" / "learning-b"
+        existing = self.root / ".minikube" / "profiles" / "rpp-2"
         existing.mkdir(parents=True)
         result = self.run_command("up")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("unowned profile", result.stderr)
         existing.rmdir()
-        application = self.root / ".local" / "learning-a"
+        application = self.root / ".local" / "rpp-1"
         application.mkdir(parents=True)
         result = self.run_command("up")
         self.assertNotEqual(result.returncode, 0)
@@ -499,23 +782,28 @@ elif name == "terraform":
         self.assertFalse(any(call[:2] == ["minikube", "start"] for call in self.calls()))
         quotas = [call for call in self.calls() if call[:2] == ["docker", "update"]]
         self.assertEqual(quotas, [
-            ["docker", "update", "--cpus=2.5", "--memory=4096m", "--memory-swap=8192m", f"learning-{suffix}"]
-            for suffix in "abc"
+            ["docker", "update", "--cpus=2.5", "--memory=4096m", "--memory-swap=8192m", f"rpp-{suffix}"]
+            for suffix in "123"
         ])
 
     def test_new_base_defaults_to_full_stack_and_legacy_base_is_preserved(self):
         self.env.pop("MULTI_FULL_STACK")
         result = self.run_command("up")
         self.assertEqual(result.returncode, 0, result.stderr)
-        mode = self.root / ".local/learning/full-stack"
+        mode = self.root / ".local/rpp-multi/full-stack"
         self.assertTrue(mode.exists())
         mode.unlink()
         result = self.run_command("update")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse(mode.exists())
         self.assertNotIn("full_stack", json.loads(
-            (self.root / ".local/learning/topology.tfvars.json").read_text(),
+            (self.root / ".local/rpp-multi/topology.tfvars.json").read_text(),
         ))
+
+    def test_ready_hint_selects_the_three_cluster_mode(self):
+        result = self.run_command("up")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("make dev-access MULTI_CLUSTER=3 MINIKUBE_PROFILE=rpp-1", result.stdout)
 
     def test_invalid_budget_refuses_infrastructure_changes(self):
         source = self.root / "configuration.json"
@@ -525,7 +813,7 @@ elif name == "terraform":
         self.assertIn("node.cpus", result.stderr)
         self.assertEqual(
             [call for call in self.calls() if call[0] != "cat"],
-            [["docker", "network", "inspect", "learning-net"]],
+            [["docker", "network", "inspect", "rpp-net"]],
         )
 
     def test_full_stack_conversion_requires_a_separate_lab(self):
@@ -540,7 +828,7 @@ elif name == "terraform":
             self.assertEqual(result.returncode, 0, result.stderr)
         result = self.run_command("up", MULTI_FULL_STACK="1")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertTrue((self.root / ".local/learning/full-stack").exists())
+        self.assertTrue((self.root / ".local/rpp-multi/full-stack").exists())
 
     def test_invalid_full_stack_flag_is_explicit(self):
         result = self.run_command("up", MULTI_FULL_STACK="true")
@@ -550,14 +838,14 @@ elif name == "terraform":
     def test_full_stack_deploys_all_profiles_and_fence_preserves_stopped_member(self):
         result = self.run_command("up", MULTI_FULL_STACK="1")
         self.assertEqual(result.returncode, 0, result.stderr)
-        state = self.root / ".local/learning"
-        for suffix in "abc":
-            self.assertTrue((self.root / f".local/learning-{suffix}/events.tfvars.json").exists())
+        state = self.root / ".local/rpp-multi"
+        for suffix in "123":
+            self.assertTrue((self.root / f".local/rpp-{suffix}/events.tfvars.json").exists())
         self.assertTrue(json.loads((state / "topology.tfvars.json").read_text())["full_stack"])
         (state / "database-fence.json").write_text(json.dumps({
-            "old": "pg-a", "target": "pg-b", "phase": "complete",
+            "old": "pg-1", "target": "pg-2", "phase": "complete",
         }))
-        (state / "database-role.json").write_text('{"database_primary":"pg-b"}')
+        (state / "database-role.json").write_text('{"database_primary":"pg-2"}')
         (self.root / "commands.jsonl").write_text("")
         result = self.run_command("up")
         self.assertNotEqual(result.returncode, 0)
@@ -567,23 +855,23 @@ elif name == "terraform":
         self.assertEqual(result.returncode, 0, result.stderr)
         plans = [call for call in self.calls() if call[0] == "terraform" and "plan" in call]
         self.assertEqual(len(plans), 1)
-        self.assertIn("-target=module.b", plans[0])
-        self.assertIn("-target=module.database_b[0]", plans[0])
-        self.assertIn("-target=module.c", plans[0])
-        self.assertNotIn("-target=module.a", plans[0])
-        self.assertFalse(any(call[0] == "minikube" and "learning-a" in call for call in self.calls()))
-        self.assertEqual(json.loads((state / "topology.tfvars.json").read_text())["database_primary"], "pg-b")
+        self.assertIn("-target=module.cluster_2", plans[0])
+        self.assertIn("-target=module.database_2[0]", plans[0])
+        self.assertIn("-target=module.cluster_3", plans[0])
+        self.assertNotIn("-target=module.cluster_1", plans[0])
+        self.assertFalse(any(call[0] == "minikube" and "rpp-1" in call for call in self.calls()))
+        self.assertEqual(json.loads((state / "topology.tfvars.json").read_text())["database_primary"], "pg-2")
 
     def test_pending_transition_and_rebuild_refuse_ordinary_update(self):
         self.assertEqual(self.run_command("up", MULTI_FULL_STACK="1").returncode, 0)
-        state = self.root / ".local/learning"
+        state = self.root / ".local/rpp-multi"
         journal = state / "database-transition.json"
         journal.write_text("{}")
         result = self.run_command("update")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("pending", result.stderr)
         journal.unlink()
-        (state / "database-fence.json").write_text('{"old":"pg-a","phase":"rebuild-start"}')
+        (state / "database-fence.json").write_text('{"old":"pg-1","phase":"rebuild-start"}')
         before = (state / "topology.tfvars.json").read_text()
         result = self.run_command("update")
         self.assertNotEqual(result.returncode, 0)
@@ -592,12 +880,12 @@ elif name == "terraform":
 
     def test_resumed_rejoin_keeps_fenced_profile_identity_through_startup(self):
         self.assertEqual(self.run_command("up", MULTI_FULL_STACK="1").returncode, 0)
-        state = self.root / ".local/learning"
+        state = self.root / ".local/rpp-multi"
         (state / "database-fence.json").write_text(json.dumps({
-            "old": "pg-b", "target": "pg-c", "phase": "rebuild-start",
+            "old": "pg-2", "target": "pg-3", "phase": "rebuild-start",
         }))
         (state / "database-role.json").write_text(json.dumps({
-            "database_primary": "pg-c", "bootstrap_sources": {"pg-b": "pg-c"},
+            "database_primary": "pg-3", "bootstrap_sources": {"pg-2": "pg-3"},
         }))
         (self.root / "commands.jsonl").write_text("")
         result = self.run_command("rejoin")
@@ -605,12 +893,34 @@ elif name == "terraform":
         self.assertFalse((state / "database-fence.json").exists())
         starts = [call for call in self.calls() if call[:2] == ["minikube", "start"]]
         self.assertEqual(len(starts), 1)
-        self.assertIn("learning-b", starts[0])
+        self.assertIn("rpp-2", starts[0])
         addons = [call for call in self.calls() if call[0] == "minikube" and "addons" in call]
-        self.assertEqual(addons, [["minikube", "-p", "learning-b", "addons", "enable", "metrics-server"]])
+        self.assertEqual(addons, [["minikube", "-p", "rpp-2", "addons", "enable", "metrics-server"]])
         queries = [call for call in self.calls() if call[0] == "kubectl" and "pg_control_system()" in call[-1]]
-        self.assertEqual([call[call.index("--context") + 1] for call in queries], ["learning-c", "learning-b"])
-        self.assertIn("pg-b-2", queries[-1])
+        self.assertEqual([call[call.index("--context") + 1] for call in queries], ["rpp-3", "rpp-2"])
+        self.assertIn("pg-2-2", queries[-1])
+
+    def test_rejoin_refuses_malformed_member_before_deleting_a_profile(self):
+        self.assertEqual(self.run_command("up", MULTI_FULL_STACK="1").returncode, 0)
+        state = self.root / ".local/rpp-multi"
+        configuration = state / "configuration.json"
+        original = json.dumps(json.loads(configuration.read_text()), indent=2)
+        configuration.write_text(original)
+        cases = (
+            ({"old": "pg-101", "target": "pg-2", "phase": "rebuild-delete"}, "Invalid database member"),
+            ({"old": "pg-1", "target": "pg-b", "phase": "rebuild-delete"}, "Invalid database member"),
+            ({"old": "pg-2", "target": "pg-2", "phase": "rebuild-delete"}, "must differ"),
+            ({"old": "pg-1", "target": "pg-2", "phase": "unknown"}, "pending failover"),
+        )
+        for journal, error in cases:
+            with self.subTest(journal=journal):
+                (state / "database-fence.json").write_text(json.dumps(journal))
+                (self.root / "commands.jsonl").write_text("")
+                result = self.run_command("rejoin")
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(error, result.stderr)
+                self.assertEqual(configuration.read_text(), original)
+                self.assertFalse(any(call[0] in ("docker", "minikube", "terraform") for call in self.calls()))
 
     def test_low_inotify_and_terraform_failures_are_explicit(self):
         result = self.run_command("up", TEST_INOTIFY="128")
@@ -619,10 +929,10 @@ elif name == "terraform":
         result = self.run_command("up", FAIL_TF="1")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("deliberate Terraform failure", result.stderr)
-        self.assertFalse((self.root / ".local" / "learning-a" / "events.tfvars.json").exists())
+        self.assertFalse((self.root / ".local" / "rpp-1" / "events.tfvars.json").exists())
 
     def test_setup_only_tunes_low_limit_when_explicitly_enabled(self):
-        for enabled, limit, changes in (("0", "128", False), ("1", "128", True), ("1", "2048", False)):
+        for enabled, limit, changes in (("0", "128", False), ("3", "128", True), ("3", "2048", False)):
             with self.subTest(enabled=enabled, limit=limit):
                 (self.root / "commands.jsonl").write_text("")
                 result = subprocess.run(
@@ -647,11 +957,11 @@ elif name == "terraform":
         result = self.run_command("cluster-down", NETWORK_OWNER="somebody-else")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("ownership mismatch", result.stderr)
-        state = self.root / ".local" / "learning" / "terraform.tfstate"
+        state = self.root / ".local" / "rpp-multi" / "terraform.tfstate"
         state.write_text(json.dumps({"resources": [{"mode": "managed", "type": "kubernetes_namespace_v1"}]}))
         result = self.run_command("cluster-down")
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("dev-down", result.stderr)
+        self.assertIn("destroy the topology", result.stderr.lower())
         self.assertFalse(any(call[:2] == ["minikube", "delete"] for call in self.calls()))
 
 

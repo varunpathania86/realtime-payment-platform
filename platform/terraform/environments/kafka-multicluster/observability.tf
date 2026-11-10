@@ -2,6 +2,19 @@ variable "observability_enabled" {
   type    = bool
   default = false
 }
+variable "identity_enabled" {
+  type    = bool
+  default = false
+}
+variable "access_port" {
+  type    = number
+  default = 8080
+}
+resource "random_password" "grafana_oidc" {
+  count   = var.identity_enabled && var.observability_enabled ? 1 : 0
+  length  = 48
+  special = false
+}
 resource "random_password" "grafana" {
   length  = 32
   special = false
@@ -16,40 +29,47 @@ locals {
     grafana      = "grafana/grafana:${local.pins["grafana"]}"
   }
   telemetry_settings = {
-    for index, key in ["a", "b", "c"] : key => {
-      backends        = key == "a"
+    for index, key in ["1", "2", "3"] : key => {
+      backends        = key == "1"
       cluster         = var.profiles[index]
       backendAddress  = var.addresses[0]
       images          = local.telemetry_images
-      grafanaPassword = key == "a" ? random_password.grafana.result : ""
+      grafanaPassword = key == "1" ? random_password.grafana.result : ""
       brokers         = [for address in var.addresses : "${address}:30092"]
+      oidc = {
+        enabled      = key == "1" && var.identity_enabled
+        issuer       = "http://identity.localhost:${var.access_port}/realms/rpp"
+        internalUrl  = "http://identity-provider.security.svc.cluster.local:8080/realms/rpp"
+        rootUrl      = "http://grafana.localhost:${var.access_port}"
+        clientSecret = var.identity_enabled && var.observability_enabled ? random_password.grafana_oidc[0].result : ""
+      }
     }
   }
 }
-module "telemetry_a" {
+module "telemetry_1" {
   count          = var.observability_enabled ? 1 : 0
   source         = "../../modules/observability"
-  providers      = { kubernetes = kubernetes.a, helm = helm.a }
-  settings       = local.telemetry_settings.a
+  providers      = { kubernetes = kubernetes.cluster_1, helm = helm.cluster_1 }
+  settings       = local.telemetry_settings["1"]
   kafka_password = random_password.kafka.result
   kafka_ca       = tls_self_signed_cert.kafka.cert_pem
-  depends_on     = [module.a, module.b, module.c, module.database_a, module.database_b, module.database_c]
+  depends_on     = [module.cluster_1, module.cluster_2, module.cluster_3, module.database_1, module.database_2, module.database_3]
 }
-module "telemetry_b" {
+module "telemetry_2" {
   count          = var.observability_enabled ? 1 : 0
   source         = "../../modules/observability"
-  providers      = { kubernetes = kubernetes.b, helm = helm.b }
-  settings       = local.telemetry_settings.b
+  providers      = { kubernetes = kubernetes.cluster_2, helm = helm.cluster_2 }
+  settings       = local.telemetry_settings["2"]
   kafka_password = random_password.kafka.result
   kafka_ca       = tls_self_signed_cert.kafka.cert_pem
-  depends_on     = [module.a, module.b, module.c, module.database_a, module.database_b, module.database_c]
+  depends_on     = [module.cluster_1, module.cluster_2, module.cluster_3, module.database_1, module.database_2, module.database_3]
 }
-module "telemetry_c" {
+module "telemetry_3" {
   count          = var.observability_enabled ? 1 : 0
   source         = "../../modules/observability"
-  providers      = { kubernetes = kubernetes.c, helm = helm.c }
-  settings       = local.telemetry_settings.c
+  providers      = { kubernetes = kubernetes.cluster_3, helm = helm.cluster_3 }
+  settings       = local.telemetry_settings["3"]
   kafka_password = random_password.kafka.result
   kafka_ca       = tls_self_signed_cert.kafka.cert_pem
-  depends_on     = [module.a, module.b, module.c, module.database_a, module.database_b, module.database_c]
+  depends_on     = [module.cluster_1, module.cluster_2, module.cluster_3, module.database_1, module.database_2, module.database_3]
 }

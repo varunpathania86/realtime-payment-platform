@@ -1,0 +1,5 @@
+{
+  "node": {"cpus": 2, "memory_mib": 3072},
+  "nodes": {"1": {"cpus": 4, "memory_mib": 5120}},
+  "identity": true
+}

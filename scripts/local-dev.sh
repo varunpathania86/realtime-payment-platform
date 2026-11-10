@@ -3,6 +3,8 @@ set -euo pipefail
 # shellcheck source=scripts/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 export PATH="$BIN_DIR:$PATH"
+# shellcheck source=scripts/gpu.sh
+. "$(dirname "${BASH_SOURCE[0]}")/gpu.sh"
 cd "$REPO_ROOT"
 
 PROFILE="${MINIKUBE_PROFILE:-rpp}"
@@ -15,7 +17,42 @@ if ! [[ "$LOCAL_PORT" =~ ^[0-9]{1,5}$ ]] || ((10#$LOCAL_PORT < 1 || 10#$LOCAL_PO
   echo "LOCAL_PORT must be between 1 and 65535" >&2
   exit 1
 fi
+DBX_LOCAL_PORT="${DBX_LOCAL_PORT:-44224}"
+if ! [[ "$DBX_LOCAL_PORT" =~ ^[0-9]{1,5}$ ]] || ((10#$DBX_LOCAL_PORT < 1 || 10#$DBX_LOCAL_PORT > 65535)); then
+  echo "DBX_LOCAL_PORT must be between 1 and 65535" >&2
+  exit 1
+fi
 STATE_DIR="$REPO_ROOT/.local/$PROFILE"
+if [ -f "$STATE_DIR/events.tfvars.json" ] && ! jq -e \
+  'type == "object" and ((has("ai_gpu_enabled") | not) or (.ai_gpu_enabled | type == "boolean"))' \
+  "$STATE_DIR/events.tfvars.json" >/dev/null; then
+  echo "Invalid saved feature settings: ai_gpu_enabled must be a boolean." >&2
+  exit 1
+fi
+if [ -n "${AI_GPU:-}" ]; then
+  [[ "$AI_GPU" = 0 || "$AI_GPU" = 1 ]] || { echo "AI_GPU must be 0 or 1" >&2; exit 1; }
+  case "${1:-}" in
+    up|update|images)
+      [ -f "$STATE_DIR/events.tfvars.json" ] ||
+        { echo "Initialize saved feature settings with make dev-up before selecting AI_GPU." >&2; exit 1; }
+      if [ "$AI_GPU" = 1 ] && ! jq -e '.ai_enabled == true' "$STATE_DIR/events.tfvars.json" >/dev/null; then
+        echo "AI_GPU=1 requires ai_enabled: true in saved feature settings." >&2
+        exit 1
+      fi
+      temporary=$(mktemp "$STATE_DIR/gpu.XXXXXX")
+      jq --argjson enabled "$AI_GPU" '.ai_gpu_enabled = ($enabled == 1)' "$STATE_DIR/events.tfvars.json" > "$temporary"
+      mv "$temporary" "$STATE_DIR/events.tfvars.json"
+      ;;
+  esac
+fi
+case "${1:-}" in
+  up|update|images|plan|apply)
+    if gpu_enabled "$PROFILE" && ! jq -e '.ai_enabled == true' "$STATE_DIR/events.tfvars.json" >/dev/null; then
+      echo "ai_gpu_enabled requires ai_enabled in saved feature settings." >&2
+      exit 1
+    fi
+    ;;
+esac
 EXTRA_VARS=()
 if [ -f "$STATE_DIR/events.tfvars.json" ]; then
   EXTRA_VARS+=("-var-file=$STATE_DIR/events.tfvars.json")
@@ -72,6 +109,15 @@ build_images() (
   local name path tag image commit inventory candidate selected dependency streaming=false object_store=false
   local -a dependencies sources contexts
   selected=$(modules)
+  local llama_version llama_digest
+  llama_version=$(pinned_version llama-cpp)
+  llama_digest=$(pinned_version llama-cpp-image-digest)
+  if gpu_enabled "$PROFILE"; then
+    gpu_prepare_chart
+    gpu_preflight "$PROFILE"
+    llama_version=$(pinned_version llama-cpp-cuda)
+    llama_digest=$(pinned_version llama-cpp-cuda-image-digest)
+  fi
   mkdir -p "$STATE_DIR"
   if [ -f "$STATE_DIR/events.tfvars.json" ] &&
     jq -e '.streaming_enabled == true' "$STATE_DIR/events.tfvars.json" >/dev/null; then
@@ -98,6 +144,7 @@ build_images() (
     tag=$(
       {
         printf '%s\n' "$commit"
+        if [ "$name" = llm-serving ]; then printf '%s\n' "$llama_version" "$llama_digest"; fi
         sha256sum .tool-versions
         git ls-files --cached --others --exclude-standard --deduplicate -z -- "${sources[@]}" |
           sort -z |
@@ -152,11 +199,43 @@ PY
       --build-arg "SUPERSET_VERSION=$(pinned_version superset)" \
       --build-arg "SUPERSET_DIGEST=$(pinned_version superset-image-digest)" \
       --build-arg "AI_PYTHON_VERSION=$(pinned_version ai-python)" \
-      --build-arg "LLAMA_CPP_VERSION=$(pinned_version llama-cpp)" \
-      --build-arg "LLAMA_CPP_DIGEST=$(pinned_version llama-cpp-image-digest)" \
+      --build-arg "LLAMA_CPP_VERSION=$llama_version" \
+      --build-arg "LLAMA_CPP_DIGEST=$llama_digest" \
       --build-arg "VERSION=$tag" --build-arg "COMMIT=$commit" -t "$image" "$path"
     minikube -p "$PROFILE" image load "$image" --overwrite=false
   done < "$inventory"
+  if [ -f "$STATE_DIR/events.tfvars.json" ] &&
+    jq -e '.identity_enabled == true' "$STATE_DIR/events.tfvars.json" >/dev/null; then
+    bash scripts/identity-runtime.sh build
+    image=$(bash scripts/identity-runtime.sh image)
+    minikube -p "$PROFILE" image load "$image" --overwrite=false
+    "$PYTHON" - "$candidate" "$image" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+settings = json.loads(path.read_text())
+settings["local_images"]["identity-provider"] = sys.argv[2]
+path.write_text(json.dumps(settings, indent=2) + "\n")
+PY
+  fi
+  if [ -f "$STATE_DIR/events.tfvars.json" ] &&
+    jq -e '.dbx_enabled == true' "$STATE_DIR/events.tfvars.json" >/dev/null; then
+    bash scripts/dbx-runtime.sh build
+    image=$(bash scripts/dbx-runtime.sh image)
+    minikube -p "$PROFILE" image load "$image" --overwrite=false
+    "$PYTHON" - "$candidate" "$image" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+settings = json.loads(path.read_text())
+settings["local_images"]["dbx-workbench"] = sys.argv[2]
+path.write_text(json.dumps(settings, indent=2) + "\n")
+PY
+  fi
   mv "$candidate" "$STATE_DIR/images.tfvars.json"
 )
 
@@ -245,10 +324,17 @@ case "${1:-}" in
   access)
     exec kubectl --context "$PROFILE" -n platform port-forward --address 127.0.0.1 service/traefik "$LOCAL_PORT:80"
     ;;
+  dbx-access)
+    exec kubectl --context "$PROFILE" -n apps port-forward --address 127.0.0.1 \
+      service/dbx-workbench "$DBX_LOCAL_PORT:4224"
+    ;;
+  dbx-status)
+    kubectl --context "$PROFILE" -n apps rollout status deployment/dbx-workbench --timeout=30s
+    ;;
   smoke) smoke ;;
   status)
     kubectl --context "$PROFILE" get namespaces
     kubectl --context "$PROFILE" -n apps get deployments,pods,services,ingresses
     ;;
-  *) echo "Usage: $0 up|update|images|init|plan|apply|validate|charts|smoke|access|status|down" >&2; exit 2 ;;
+  *) echo "Usage: $0 up|update|images|init|plan|apply|validate|charts|smoke|access|dbx-access|dbx-status|status|down" >&2; exit 2 ;;
 esac

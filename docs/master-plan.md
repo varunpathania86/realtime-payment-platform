@@ -590,6 +590,12 @@ Full profile
 
 These are starting estimates, not guarantees. Tune resource requests and limits from observed usage. `make full-up` must not be required for normal backend work.
 
+The default single-cluster `make dev-up` uses 6 CPUs and a 14336 MiB node
+memory limit. A low-load run with identity, DBX and risk enabled used about
+9.5 GiB inside the node during CPU knowledge ingestion; this is not a capacity
+certification. The host also needs memory for the OS, Docker and development
+tools. Explicit `MINIKUBE_MEMORY` overrides remain available.
+
 Stage 3 uses a three-cluster development lab: **three independent
 Minikube profiles, each 3072 MiB RAM and 2 CPUs**. Total node memory is 9216 MiB,
 with host/build overhead in addition. Each cluster runs one combined KRaft
@@ -600,11 +606,11 @@ This is a low-load learning baseline, not production
 capacity or physical HA. The optional setup raises host inotify instances to
 at least 1024 with sudo. See [the developer guide](developer-setup.md#stage-3-optional-three-cluster-kafka-lab)
 and [ADR-016](adr/ADR-016-local-cross-cluster-kafka.md). Stage 4 adds an opt-in
-observability topology with a larger cluster-A budget; this does not certify
+observability topology with a larger cluster-1 budget; this does not certify
 sustained-load capacity.
 
 The local lab exposes Docker node usage and per-workload-container CPU/RAM
-usage plus requests/limits through `make dev-status`. Minikube's bundled
+usage plus requests/limits through `make dev-status MULTI_CLUSTER=3`. Minikube's bundled
 metrics-server addon supplies current pod metrics; `dev-up` enables it and
 `dev-metrics` upgrades existing labs. This is a read-only resource snapshot,
 not the Stage 4 instrumentation, historical monitoring, or dashboard stack.
@@ -618,8 +624,9 @@ CloudNativePG distributed PostgreSQL with one primary and two standbys.
 Require acknowledgement from at least one synchronous standby and controlled
 cross-cluster promotion with fencing; do not silently fall back to asynchronous
 commits. Existing lab data is disposable only after separate replacement
-verification. This supersedes the A-only placement as the target. An unused base
-uses the full stack by default with `make dev-up`; the mode persists.
+verification. This supersedes the cluster-1-only placement as the target. An unowned
+fixed profile set uses the full stack by default with `make dev-up MULTI_CLUSTER=3`;
+the mode persists.
 Terraform installs a pinned CNPG operator and a distributed-cluster declaration
 in each Kubernetes cluster, initially with one instance each. Existing owned
 Kafka-only bases are preserved and cannot be converted in place. See
@@ -638,11 +645,28 @@ rebalance existing partitions. Required remote synchronous PostgreSQL
 acknowledgement remains unchanged with additional local cascading replicas.
 Recovery follows CNPG's designated primary rather than assuming a pod ordinal.
 The public lifecycle is `dev-up`, `dev-update`, `dev-status`, `dev-down`,
-`cluster-down`, with `dev-access`/`smoke` selecting one member through
-`MINIKUBE_PROFILE`. The default base is `rpp` (`rpp-a/b/c`); `DEV_PROFILE` is
-an optional override for isolated labs. Historical verification records below
-retain the names actually tested. The earlier `rpp-multi` lab was intentionally
-retired on 2026-11-02; its data was not migrated. The old `multi-*` and
+`dev-clean`, with `dev-access`/`smoke` selecting one member through
+`MINIKUBE_PROFILE`. `MULTI_CLUSTER=0` (default) uses only profile `rpp`;
+`MULTI_CLUSTER=3` uses only `rpp-1`, `rpp-2`, and `rpp-3`. Other selector
+values and custom profile names are rejected. Configuration keys and Kafka
+racks are `1`/`2`/`3`; CNPG members are `pg-1`/`pg-2`/`pg-3`. Letter-identified
+state is not automatically converted; the
+[legacy-state procedure](developer-setup.md#protecting-a-legacy-topology)
+preserves it. On 2026-11-07, `TMPDIR="$PWD/.local" make ci` passed with 389
+shared tests, module checks/builds and both three-test mocked Terraform suites.
+On 2026-11-07, live `make dev-up MULTI_CLUSTER=3` from no profiles created
+`rpp-1`/`rpp-2`/`rpp-3` in full-stack mode with 10317 MiB host memory
+available (below the 11264 MiB planning figure; nodes used 2.2-2.4 GiB of
+their 3072 MiB caps). Smoke passed on all three members; CNPG reported `pg-1`
+as the agreed writer with healthy `pg-1`/`pg-2`/`pg-3` clusters; Kafka rendered
+node IDs and racks `1`/`2`/`3` with a three-voter KRaft quorum (leader 1, zero
+follower lag). A dirty API edit propagated through `dev-update` to all three
+members, restoring it redeployed the original build, and a deleted `rpp-2` API
+pod recovered with smoke passing. The run fixed the printed `dev-access` hint,
+which had omitted `MULTI_CLUSTER=3`. Clean three-cluster recreation through
+`dev-clean` has not yet been run live. `dev-down` stops and
+preserves data; `dev-clean` destroys the selected environment. Historical verification
+records below retain the names actually tested. The old `multi-*` and
 single-cluster orchestration targets are removed; quality, setup and
 publication commands remain.
 
@@ -693,7 +717,7 @@ make doctor          verifies the environment (scripts/doctor.sh)
 make dev-up
 make dev-status
 make dev-down
-make cluster-down
+make dev-clean
 ```
 
 Docker Engine is installed by `make setup` through `scripts/install-docker.sh` (skipped when Docker Desktop or an existing Engine already works) and verified by `make doctor`; see `docs/developer-setup.md`. Scripts longer than a few lines live in `/scripts` and are called from the Makefile.
@@ -754,7 +778,8 @@ Also demonstrate an application source edit followed by `make dev-update` changi
 the deployed image and visible output, and recovery after deleting an API pod.
 `make dev-up` wraps cluster start, local image build/load, Terraform init/plan/apply,
 and smoke checks; `make dev-access` exposes ingress on loopback for the browser.
-`make dev-down` destroys the stack but preserves the cluster.
+`make dev-down` stops the selected cluster and preserves data; `make dev-clean`
+destroys it and its data.
 Smoke checks automatically use an available temporary loopback port so
 `make dev-access` can remain running during updates; refresh the browser afterward.
 The entire loop must work before PI start and while remote workflows fail.
@@ -865,6 +890,8 @@ passed; the temporary profile was deleted and the original `rpp-try` context
 restored. Those results cover the original single-cluster implementation.
 The subsequently requested three-cluster extension has passed focused Go,
 orchestration fixtures, Terraform validation/lint, and broker integration.
+The verification records in this section use the A/B/C identities and commands
+that existed at the time; the current identities and workflow are numbered.
 Initial cluster startup reached a host inotify limit of 128; the third kubelet
 failed before Kafka was provisioned. After the developer raised it to 1024,
 the isolated topology deployed with actual 3072 MiB / two-CPU Docker caps per
@@ -964,8 +991,8 @@ Implement:
 
 **Selected deployment:** Run an OpenTelemetry Collector in each Kubernetes
 cluster, sending telemetry to shared Prometheus, Alertmanager, Loki, Tempo,
-and Grafana backends in **cluster A**. The opt-in example budgets 5120 MiB/3 CPUs
-for A and 3072 MiB/2 CPUs for B/C; these are learning defaults, not capacity
+and Grafana backends in **cluster 1**. The opt-in example budgets 5120 MiB/3 CPUs
+for cluster 1 and 3072 MiB/2 CPUs for clusters 2/3; these are learning defaults, not capacity
 certification. Keep local resource budgets explicit and the deployment
 Kubernetes-portable. Application replication remains unchanged. Telemetry
 export failures must not prevent payment processing. Reuse compatible HTTP,
@@ -1524,6 +1551,30 @@ Never expose the model server directly to users. In Stage 10 only the AI
 orchestrator calls it inside the cluster; Stage 12 puts the user-facing path
 behind the hardened Go AI Gateway.
 
+Local implementation also supports opt-in NVIDIA llama.cpp acceleration for
+both chat and embedding containers (`AI_GPU=1` for `rpp`, or `ai_gpu: true`
+on cluster 1 in an AI-enabled three-cluster configuration). CPU remains the
+default. A pinned CUDA image and Terraform-owned NVIDIA device plugin expose
+two explicitly time-sliced slots per physical GPU; this is neither GPU-memory
+isolation nor additional system RAM. See
+[developer setup](developer-setup.md#optional-nvidia-acceleration-for-ai) and
+[ADR-034](adr/ADR-034-shared-local-ai-gpu.md). Offline validation covers both
+rendering modes and prerequisites. On 2026-11-10, explicitly approved clean
+`rpp` recreation exposed two shared slots and ran chat (512 generated tokens)
+and embeddings (16 vectors, 768 dimensions) concurrently on the RTX A2000
+8 GiB, with about 1635 MiB combined GPU memory after initialization.
+Live validation also corrected vendor Helm affinity merging: the plugin
+explicitly matches the selected hostname rather than retaining default
+hardware-label requirements. Sustained throughput and a deliberate
+dirty-source GPU update remain unverified. Existing CPU-only profiles are
+refused rather than deleted automatically.
+The same recreated single-cluster run restored the retained checksum-pinned
+risk artifact into fresh MinIO, passed ingress smoke and AI evaluation
+(21/21, zero authorization leaks), and indexed 61 knowledge documents.
+Knowledge PostgreSQL's one-second exec probes caused repeated restarts under
+full-stack startup load; bounded startup grace and five-second probe timeouts
+resolved that failure.
+
 ### MCP tool boundary
 
 The platform hosts its own MCP server. The LangGraph agent is an MCP client;
@@ -1641,9 +1692,12 @@ authorization leakage.
 
 Implement:
 
-- OIDC Authorization Code with PKCE for React
-- Optional Backend-for-Frontend token pattern if needed
-- OIDC clients for React, Superset, Grafana, and Argo CD
+- OIDC Authorization Code with S256 PKCE through the existing Go portal BFF;
+  React receives only an opaque HttpOnly session cookie
+- Explicit idempotent reconciliation of existing realms; startup import only
+  seeds a new identity database
+- OIDC clients for the portal, Superset and Grafana; reserve the disabled
+  Argo CD client contract without deploying Argo CD in this stage
 - Client Credentials only for appropriate machine clients
 - Short-lived access tokens
 - Signing-key rotation test
@@ -1673,6 +1727,17 @@ ai:admin
 Map Keycloak groups to tool-specific roles. Do not rely only on broad job-title roles.
 
 Kafka initially uses TLS plus SASL/SCRAM. Add Kafka OIDC only if it creates a useful learning outcome and is cleanly supported by the selected deployment.
+
+### Optional local DBX workbench
+
+Stage 11 also provides an opt-in, shared-infrastructure DBX Web workbench for
+local development. Terraform provisions it only when `dbx_enabled` is selected;
+the browser is reachable through loopback port-forwarding, while a version-
+pinned API adapter syncs available PostgreSQL, ClickHouse, Trino and Kafka
+connections from existing Kubernetes Secrets. See
+[ADR-033](adr/ADR-033-optional-dbx-development-workbench.md). This separate DBX
+login is not Keycloak SSO. Its upstream connection routes are internal and
+unstable, so image changes require adapter contract tests and live verification.
 
 **Exit criteria:** One user accesses React, Superset, Grafana, and the AI assistant through Keycloak. A viewer cannot call write APIs. Expired and incorrectly scoped tokens fail closed.
 
@@ -2327,7 +2392,7 @@ make dev-update
 make dev-access
 make dev-status
 make dev-down
-make cluster-down
+make dev-clean
 make core-up
 make streaming-up
 make analytics-up
@@ -2568,15 +2633,18 @@ runbooks. See the [low-memory pipeline report](../tests/benchmarks/pipeline/2026
 and [ClickHouse query report](../tests/benchmarks/pipeline/2026-11-03-clickhouse-query.md).
 
 ```yaml
-current_milestone: stage-10-ai-assistant
-stage_status: Stage 10 AI operations assistant implemented on feature/stage-10-ai-assistant; pgvector hybrid RAG, a LangGraph orchestrator, read-only MCP tools and local llama.cpp models passed single-cluster live acceptance on the lean AI profile; awaiting PR review
-last_completed_task: Stage 10 lean-profile acceptance on 4 CPU / 10 GiB (analytics and AI, no streaming) indexed 57 documents (424 chunks), loaded synthetic fixtures and passed make ai-eval 21/21 with Recall@5 0.9, citation correctness 1.0 and zero authorization leaks; model-down fallback and a stable Terraform re-plan verified
-next_task: Merge Stage 10, then start Stage 11 with Keycloak replacing the local development identity
+current_milestone: stage-11-unified-identity
+stage_status: Stage 10 merged as PR 14; Stage 11 complete and verified locally on feature/stage-11-unified-identity, awaiting pull request review and merge
+last_completed_task: Verified the rpp single-cluster lifecycle and feature workflows, including approved clean recreation, Keycloak, DBX and advisory risk
+next_task: Open, review and merge the Stage 11 pull request; Stage 12 implementation remains deferred
 known_issues:
+  - one rpp dev-up encountered a transient HTTP 504 while Minikube checked the pinned Kubernetes release; retry succeeded after upstream access recovered
+  - the 14 GiB rpp node used about 9.5 GiB during low-load full-stack knowledge ingestion; the 15.5 GiB host had about 5 GiB available with 3.6 GiB of 4 GiB swap in use, so this is not a capacity guarantee
   - the Stage 10 lean profile used about 5.4 GiB of 10 GiB during evaluation; the chat model used about 1.25 GiB, ClickHouse about 0.7 GiB and the three AI services under 0.35 GiB together
   - CPU-only Qwen2.5-1.5B answers took p50 21 s and p95 103 s in the evaluation; the portal allows two concurrent questions and a 210-second timeout
   - first knowledge ingestion embedded 424 chunks in about 6 minutes on CPU; later runs skip unchanged content
-  - branch publication uses main's tooling, so Stage 10 dependency build contexts (ADR-031) publish only after merge
+  - Stage 11 realm startup import seeds only a new database; use make identity-sync to explicitly reconcile existing realms without resetting human passwords
+  - Stage 11 BFF sessions are bounded in-memory and require one replica; restarts sign users out; the optional DBX login remains independent of Keycloak and Argo CD stays disabled
   - Superset 6.1.0 registers /static/service-worker.js, which the pinned image does not ship; the browser logs a harmless 404 and the optional service worker is skipped
   - the Stage 9 single-cluster node used about 7.5 GiB of 11 GiB with streaming, analytics, lakehouse, risk and BI; Superset used about 280 MiB idle
   - embedded Superset loads off-screen charts lazily; charts below the iframe fold query only when scrolled into view
@@ -2597,6 +2665,8 @@ known_issues:
   - local Flink JobManager and MinIO are not HA; external sinks are at-least-once, and deduplication has a 24-hour processing-time TTL
   - Stage 5 scoped scanner exceptions retain official Flink UID/GID, Kubernetes health/namespace ownership and local Never images; exact paths expire 2027-01-01
 architecture_decisions:
+  - ADR-033 Optional in-cluster DBX workbench, version-pinned internal API adapter and Secret-backed connection provisioning
+  - ADR-032 Keycloak-managed users in dedicated PostgreSQL, Go BFF code+PKCE and explicit resource permissions; no initial LDAP
   - ADR-031 Catalog-declared library dependencies passed to image builds as named build contexts
   - ADR-030 Portal-signed Ed25519 per-audience assistant identity assertions until Keycloak
   - ADR-029 LangGraph operations assistant over pgvector RAG, read-only MCP tools and local llama.cpp models
@@ -2618,6 +2688,23 @@ architecture_decisions:
   - ADR-014 Stage 1 artifact publication and separate security checks
   - ADR-015 PostgreSQL-backed synthetic payments and idempotency
 verification:
+  - 2026-11-07 on rpp, both Flink jobs were stopped with savepoints, dev-down and restart preserved data, and an approved dev-clean followed by dev-up recreated only the single cluster; a normal dev-update, smoke, DBX provisioning, 24 identity checks, 26 BI checks, risk verification and non-stopping savepoints passed on the recreated cluster
+  - 2026-11-07 the recreated rpp knowledge ingestion indexed 60 documents and 446 chunks, quarantined four unsafe chunks and retired none; access-local opened 11 loopback forwards and representative service endpoints responded
+  - 2026-11-07 make ai-eval on the recreated risk-enabled rpp passed 21/21 cases with no authorization leaks, recall@5 0.9 and citation correctness 1.0; CPU latency was p50 49.388 s and p95 107.244 s, with eight fallback responses
+  - 2026-11-07 Stage 11 make ci passed, make security passed all 14 solution/module targets, make identity-integration passed three isolated real-provider tests, and all-file pre-commit hooks passed; make bi-verify MINIKUBE_PROFILE=rpp-dev-single passed 26 embedded-access checks
+  - 2026-11-07 the existing single profile had no knowledge_chunks table; make knowledge-ingest MINIKUBE_PROFILE=rpp-dev-single initialized 60 local corpus documents / 445 chunks and quarantined four unsafe chunks without retiring documents; subsequent make ai-eval MINIKUBE_PROFILE=rpp-dev-single passed 21/21 cases with recall@5 0.9, citation correctness 1.0, zero authorization leaks, p50 30.666 s and p95 100.738 s, including protected payment lookup and long-running refreshed OIDC sessions
+  - 2026-11-07 make identity-verify MINIKUBE_PROFILE=rpp-dev-single passed all 24 checks with real Keycloak; one viewer accessed React, Superset Gamma, Grafana Viewer and an assistant payment_metrics call without another SSO password; both BFF and direct payment API denied viewer writes, cross-resource replay and missing relay tokens failed closed, a new RSA signing kid and the retained old kid both verified, genuinely expired tokens failed closed, and logout required a fresh provider password
+  - 2026-11-07 guarded make dev-update MINIKUBE_PROFILE=rpp-dev-single rebuilt dirty identity/application sources and refreshed chart snapshots using the existing payment and lakehouse savepoint restore paths; smoke passed, streaming-inspect remained available and a read-only lakehouse SELECT succeeded; the user-owned profile was not stopped or recreated, and DBX 44224 / MinIO 19091 remained HTTP 200
+  - 2026-11-07 both payment-event-time-v1 and payment-lakehouse-v1 remained RUNNING and their Flink REST checkpoint metadata confirmed restoration from the original stage11-savepoints paths
+  - 2026-11-07 DBX runtime packaging pins Kafka 0.1.24, Trino 0.1.92 and Java 21 with verified checksums; seven provisioned profiles connect, SQL profiles execute SELECT, Kafka browser lists four topics and Trino browser executes SELECT without password prompt; isolated fresh non-root/read-only bootstrap and idempotent runtime installation passed; make ci passed; MinIO remains a separate console because pinned DBX has no S3 connector
+  - 2026-11-06 DBX browser target-mismatch reproduced from absent driver_profile; fixed explicit driver identities and revision-triggered sync Job replacement, verified browser-normalized saved-reference connects and SELECT 1 for PostgreSQL/ClickHouse; Trino driver and Kafka agent launch specification are missing from the pinned image and remain implementation blockers, despite saved profile presence
+  - 2026-11-06 rpp-dev-single (13312 MiB allocation) deployed streaming, analytics, lakehouse, BI and AI with application smoke passing; desktop Trino metadata initially failed because Polaris denied VIEW_LIST, now granted as read-only listing; live SHOW TABLES and information_schema list both payment tables, SELECT succeeds and reader CREATE remains denied; make ci passed
+  - 2026-11-06 native desktop access added through make access-local with explicit-context and supervised loopback forwards; optional DBX browser access is separately provisioned in-cluster
+  - 2026-11-06 dedicated profiles verified an authenticated PostgreSQL query through the desktop forward, authenticated TLS Kafka metadata advertising localhost and internal metadata retaining Kubernetes DNS, Apicurio HTTP, ClickHouse HTTP, MinIO S3 health and MinIO console; Trino/JDBC extension connections and the full combined run-local feature set remain unverified
+  - 2026-11-06 live certificate replacement exposed Terraform omitting a first unknown annotations-map update; broker config now has a plan-known checksum and TLS has a separate container revision, verified by a single-apply listener/certificate change, recovered internal clients, application smoke and a no-change re-plan
+  - 2026-11-06 Stage 11 foundation make ci, make security (all 14 targets) and all-file pre-commit hooks passed; the dedicated verification profile was stopped, not deleted
+  - 2026-11-06 Stage 11 foundation passed IDENTITY=1 make setup, Terraform build/lint, 10 provider unit tests and 3 isolated real-Keycloak tests covering code exchange, PKCE, code replay, inactive tokens and viewer/clerk roles
+  - 2026-11-06 fresh rpp-stage11-verify profile (4 CPUs/5120 MiB) deployed identity PostgreSQL and Keycloak; ingress discovery and browser login page verified, source-hashed runtime changed on a dirty-source edit and restored after rollback, dedicated stack recreated without deleting the profile, application smoke passed and initial re-plan had no changes
   - 2026-11-05 Stage 10 make ci, make security and pre-commit passed; ai-core pgvector integration verified hybrid and text-only retrieval
   - 2026-11-05 dedicated rpp-stage10-verify profile (4 CPUs/10240 MiB, analytics and AI without streaming) deployed with smoke passing; make knowledge-ingest, make ai-fixtures and make ai-eval passed 21/21 with zero leaks
   - 2026-11-05 live acceptance found shared portal identity values overriding the AI charts' verifier Secret; the charts now use assertionVerifier and a regression test renders them with the shared values

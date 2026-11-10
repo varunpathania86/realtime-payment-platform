@@ -114,7 +114,11 @@ func execute(ctx context.Context) error {
 	}
 
 	slog.Info("server_listening", "address", addr)
-	return run(ctx, newServer(addr, httpapi.New(store, slog.Default(), version, commit)))
+	handler, err := paymentIdentity(httpapi.New(store, slog.Default(), version, commit), os.Getenv)
+	if err != nil {
+		return err
+	}
+	return run(ctx, newServer(addr, handler))
 }
 
 func runWorker(ctx context.Context, store *postgres.Store, mode string) error {

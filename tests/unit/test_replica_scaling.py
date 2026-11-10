@@ -51,27 +51,27 @@ class ReplicaScalingTests(unittest.TestCase):
     def test_public_make_targets_use_only_one_topology_workflow(self):
         result = subprocess.run(["make", "help"], cwd=ROOT, check=True, capture_output=True, text=True)
         targets = {line.strip().split()[0] for line in result.stdout.splitlines() if line.strip()}
-        self.assertTrue({"dev-up", "dev-update", "dev-status", "dev-down", "dev-access", "smoke", "db-switchover"} <= targets)
+        self.assertTrue({"dev-up", "dev-update", "dev-status", "dev-down", "dev-clean", "dev-access", "smoke", "db-switchover"} <= targets)
         self.assertFalse(any(name.startswith("multi-") or name.startswith("terraform-") for name in targets))
         self.assertNotIn("cluster-up", targets)
         self.assertNotIn("dev-images", targets)
+        self.assertTrue({"run-local", "stop-local", "clean-local", "cluster-down"}.isdisjoint(targets))
 
     def test_access_and_smoke_select_default_base_or_explicit_overrides(self):
         environment = {
             key: value for key, value in os.environ.items()
-            if key not in {"DEV_PROFILE", "MINIKUBE_PROFILE", "MAKEFLAGS", "MAKEOVERRIDES"}
+            if key not in {"DEV_PROFILE", "MINIKUBE_PROFILE", "MULTI_CLUSTER", "MAKEFLAGS", "MAKEOVERRIDES"}
         }
         for settings, expected in (
-            ({}, "rpp-a"),
-            ({"DEV_PROFILE": "rpp-lab"}, "rpp-lab-a"),
-            ({"DEV_PROFILE": "rpp-bench"}, "rpp-bench-a"),
-            ({"DEV_PROFILE": "rpp-bench", "MINIKUBE_PROFILE": "rpp-bench-c"}, "rpp-bench-c"),
+            ({}, "rpp"),
+            ({"MULTI_CLUSTER": "3"}, "rpp-1"),
+            ({"MULTI_CLUSTER": "3", "MINIKUBE_PROFILE": "rpp-3"}, "rpp-3"),
         ):
             for target, action in (("dev-access", "access"), ("smoke", "smoke")):
                 with self.subTest(settings=settings, target=target):
                     recipe = subprocess.run(
                         ["make", "--no-print-directory", "-n", target], cwd=ROOT,
-                        env=environment, check=True, capture_output=True, text=True,
+                        env={**environment, **settings}, check=True, capture_output=True, text=True,
                     ).stdout.strip()
                     selection = recipe.removesuffix(f" scripts/local-dev.sh {action}")
                     self.assertNotEqual(selection, recipe)

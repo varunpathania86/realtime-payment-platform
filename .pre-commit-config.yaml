@@ -17,10 +17,12 @@ repos:
     hooks:
       - id: markdownlint-cli2
         language_version: system
-  - repo: https://github.com/editorconfig-checker/editorconfig-checker.python
-    rev: 3.11.1
+  - repo: local
     hooks:
       - id: editorconfig-checker
+        name: Check .editorconfig rules
+        entry: editorconfig-checker
+        language: system
         exclude: ^docs/master-plan\.md$
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.30.1

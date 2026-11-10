@@ -26,7 +26,7 @@ See the [API guide](modules/payment-api/README.md) and
 
 Stage 3 is merged and its main build, security and publication passed.
 Stage 4 is merged: its selected architecture uses per-cluster
-OpenTelemetry Collectors and shared observability backends in cluster A.
+OpenTelemetry Collectors and shared observability backends in cluster 1.
 Instrumentation includes API/PostgreSQL tracing, durable outbox/Kafka context,
 correlated JSON logs, bounded business metrics and browser status telemetry.
 Use the [opt-in topology](templates/observability-topology.json) with `DEV_CONFIG`;
@@ -55,7 +55,7 @@ reviewed stable-catalog PRs. Deployment and GitOps remain deferred.
 Stage 6 is in progress: it adds opt-in persistent
 [realtime analytics (ClickHouse)](modules/realtime-analytics/README.md) and
 checkpoint-aligned Flink sinks for normalized facts and revision-aware windows.
-Use `templates/analytics-topology.json` to select the feature in cluster A;
+Use `templates/analytics-topology.json` to select the feature in cluster 1;
 default payment-only development remains unchanged. PostgreSQL continues as
 the transactional source of truth.
 
@@ -83,8 +83,8 @@ Stage 7 is merged as PR #10. [ADR-025](docs/adr/ADR-025-interview-roadmap-and-re
 reorders the next stages: Iceberg and Trino (Stage 8), Superset embedded in
 React (Stage 9), then one AI assistant stage combining pgvector RAG, LangChain,
 LangGraph, a local llama.cpp model and platform-hosted read-only MCP tools
-(Stage 10). Keycloak follows in Stage 11; until then Superset and the
-assistant use a clearly labelled local development identity. See the
+(Stage 10). Stage 11 replaces that temporary development issuer with
+Keycloak SSO and resource authorization when identity is enabled. See the
 [roadmap](docs/master-plan.md#stage-10-ai-operations-assistant-with-rag-langchain-langgraph-and-mcp).
 
 Stage 8 adds an opt-in Iceberg lakehouse: an
@@ -92,7 +92,7 @@ Stage 8 adds an opt-in Iceberg lakehouse: an
 PostgreSQL-backed metadata, a Flink job that commits bronze and curated
 payment facts to MinIO per checkpoint, and [Trino](modules/lakehouse-query/README.md)
 read-only and maintainer catalogs. `templates/lakehouse-topology.json` enables
-it in cluster A; `make lakehouse-verify` demonstrates time travel and
+it in cluster 1; `make lakehouse-verify` demonstrates time travel and
 schema/partition evolution, and `make lakehouse-maintain` compacts and expires
 snapshots. See [ADR-026](docs/adr/ADR-026-polaris-iceberg-lakehouse.md) and the
 [lakehouse runbook](docs/runbooks/lakehouse.md).
@@ -101,7 +101,7 @@ Stage 9 adds opt-in [Superset BI](modules/bi-dashboards/README.md) embedded in
 the [React portal](modules/web-portal/README.md). The payment operations
 dashboard reads ClickHouse (including advisory risk predictions and late
 events written by Flink), and Iceberg history through Trino. The Go portal
-signs in synthetic local development users and issues a five-minute guest
+signs in synthetic users (Keycloak when Stage 11 identity is enabled) and issues a five-minute guest
 token scoped to that one dashboard. React never sees Superset or database
 credentials, and the guest role cannot reach SQL Lab or other privileged APIs.
 `templates/bi-topology.json` enables it, and `make bi-verify` checks the access
@@ -114,14 +114,32 @@ Stage 10 adds an opt-in AI operations assistant to the portal. A
 pgvector and full-text retrieval with citations) and from read-only
 [MCP tools](modules/assistant-tools/README.md) over ClickHouse, Trino and
 payment status. A [local llama.cpp server](modules/llm-serving/README.md)
-runs pinned open-weight models with no hosted API. The portal signs a
-short-lived identity assertion per request; authorization, redaction and
+runs pinned open-weight models with no hosted API. With Stage 11 identity,
+the portal exchanges a separate Keycloak token per resource; authorization, redaction and
 citation checks are deterministic code, and the assistant never changes or
 approves payments. `templates/ai-topology.json` enables a lean profile, and
 `make ai-eval` runs the evaluation set. See
 [ADR-029](docs/adr/ADR-029-ai-operations-assistant.md),
 [ADR-030](docs/adr/ADR-030-assistant-identity-assertions.md) and the
 [assistant runbook](docs/runbooks/ai-assistant.md).
+
+Optional [NVIDIA AI acceleration](docs/developer-setup.md#optional-nvidia-acceleration-for-ai)
+uses `make dev-up AI_GPU=1` for both chat and embeddings with explicit GPU time
+slicing; CPU remains the default. GPU VRAM cannot replace system RAM. Both
+servers have been exercised concurrently on the development RTX A2000 8 GiB.
+
+Stage 11 is in progress: [Keycloak identity infrastructure](platform/terraform/modules/identity/chart/README.md)
+uses its own PostgreSQL database for synthetic users, with no LDAP requirement.
+[ADR-032](docs/adr/ADR-032-keycloak-identity-and-bff.md) records the selected
+Go BFF Authorization Code + S256 PKCE pattern, opaque HttpOnly sessions,
+server-side refresh/logout and per-resource token exchange. Payment and AI
+APIs independently verify Keycloak issuer, signature, audience, expiry, scope
+and application roles. Superset and Grafana have interactive SSO; Argo CD
+remains a disabled reserved client. Existing realm upgrades use
+`make identity-sync`; `make identity-verify` checks full-stack SSO, viewer write
+denial, audience boundaries, expiry and signing-key rotation. See the
+[identity runbook](docs/runbooks/unified-identity.md) and current
+[acceptance status](docs/master-plan.md#19-current-implementation-status).
 
 ## Repository map
 
@@ -155,14 +173,43 @@ to connect the repository layout, Make scripts, Terraform, Helm and Kubernetes.
 
 ## Quick start
 
+For single-cluster development, use `make dev-up`, then
+`make dev-access` in another terminal. Both select `rpp` by default.
+`make dev-down` stops it and preserves data; **`make dev-clean` deletes the selected
+profile and its profile-local state**. The full default stack allocates 6 CPUs
+and 14 GiB to the cluster and needs additional host memory. A low-load combined
+stack has been exercised at that limit, but capacity is not certified. See the
+[single-cluster guide](docs/developer-setup.md#single-cluster-end-to-end-development)
+for feature scope, overrides and initialization. Use `MULTI_CLUSTER=3` for the
+optional three-cluster workflow (`rpp-1`, `rpp-2`, `rpp-3`).
+Those numbers also identify the Kafka racks, configuration keys and database
+members `pg-1`, `pg-2`, and `pg-3`. Existing letter-identified labs are not
+renamed in place; follow the [legacy-state guidance](docs/developer-setup.md#protecting-a-legacy-topology)
+before recreating them.
+
+For an optional in-cluster SQL workbench, enable DBX in the selected local
+profile and run `make dbx-access`; it binds
+only `127.0.0.1:44224` and preloads server-side connections from Kubernetes
+Secrets. It has a separate generated DBX password (not Keycloak SSO) and the
+upstream Web API adapter is version-pinned. See the
+[DBX and native database access guide](docs/developer-setup.md#optional-in-cluster-dbx-workbench)
+for setup, credentials and privacy boundaries. `make access-local` remains the
+optional loopback path for native clients and other data services.
+For object storage, use the separate MinIO console at
+`http://127.0.0.1:19091` with `make minio-access` running. Its username is
+`rpp-streaming`; DBX takes an access password without a username. See
+[DBX and MinIO login commands](docs/developer-setup.md#browser-urls-and-login-credentials)
+for the exact commands to retrieve each profile's password from Kubernetes
+Secrets. Never store the decoded passwords in checked-in documentation.
+
 Full environment instructions: [docs/developer-setup.md](docs/developer-setup.md).
 
 ```bash
 git clone git@github.com:varunpathania86/realtime-payment-platform.git
 cd realtime-payment-platform
-MULTI_CLUSTER=1 make setup  # tools plus host prerequisites for three clusters
+MULTI_CLUSTER=3 make setup  # tools plus host prerequisites for three clusters
 make ci       # lint, test, build
-make dev-up   # three full-stack clusters: rpp-a/b/c
+make dev-up   # default single cluster: rpp
 make dev-access  # foreground: open http://127.0.0.1:8080; Ctrl-C stops access
 ```
 
@@ -174,38 +221,43 @@ PI**. A failed remote workflow does not disable local commands. Initial setup,
 image/dependency downloads, and Terraform/chart initialization need internet;
 local development is independent of publication, not a guarantee of air-gapped operation.
 
-`make dev-down` destroys all three clusters' application/database resources
-and data, but leaves their Minikube nodes running. Use `make dev-update`, not teardown,
-for normal iteration.
-`make cluster-down` deletes the three owned cluster nodes/network after teardown. See the
+`MULTI_CLUSTER=3 make dev-down` stops all three clusters and preserves their data.
+**`MULTI_CLUSTER=3 make dev-clean` destroys their resources, data and profiles.**
+The lab must be running for cleanup. Use `make dev-update`, not cleanup,
+for normal iteration. See the
 [developer guide](docs/developer-setup.md#4-local-application-development) for
 profiles, image loading, Terraform commands, recovery, and recreation.
 
-Development now defaults to three independent clusters, each **3072 MiB / 2 CPUs**,
+The optional lab has three independent clusters, each **3072 MiB / 2 CPUs**,
 with the full application stack, one Kafka broker/controller and one CNPG instance
 per cluster. PostgreSQL has one global writer and two remote standbys; this is
 one Kafka cluster and one shared payment database, not three separate datasets.
-All nodes still share one host. No profile argument is required.
-`DEV_PROFILE` optionally selects a different topology base (default `rpp`);
-`MINIKUBE_PROFILE` selects one member for access/smoke only (default `<base>-a`).
+All nodes still share one host. Select this topology with
+`make dev-up MULTI_CLUSTER=3`; use the same selector for updates and status.
+`MINIKUBE_PROFILE` selects one member for access, smoke and feature commands;
+the default member is `rpp-1`.
 Read the [host prerequisites](docs/developer-setup.md#stage-3-optional-three-cluster-kafka-lab).
 The [configuration template](templates/development-topology.json) illustrates
 larger CPU/RAM budgets and independent per-cluster broker, CNPG and application
-counts: `make dev-up DEV_PROFILE=rpp-bench DEV_CONFIG=templates/development-topology.json`.
+counts: `make dev-up MULTI_CLUSTER=3 DEV_CONFIG=templates/development-topology.json`.
 Omitted counts default to one; omitted budgets default to two CPUs / 3072 MiB.
 The [full-stack guide](docs/developer-setup.md#stage-3-full-stack-three-cluster-lab)
 explains required synchronous commits, Terraform-installed operators/charts,
 and explicit switchover, fenced failover and destructive former-primary rejoin.
-An existing explicitly selected base is never converted or destroyed
-automatically. Stop unrelated labs to avoid doubled host resource usage.
-The superseded `multi-*`, single-cluster lifecycle and low-level Terraform Make
-targets have been removed; `dev-*`, `db-*` and `cluster-down` are the public workflow.
-The isolated full-stack lab passed synchronous write-blocking, shared identity,
-planned switchover, fenced promotion/rebuild, dirty-source updates and clean
-recreation checks; see the [verification record](docs/master-plan.md#stage-3-kafka-and-reliable-event-publication).
-`make dev-status` prints node and workload-container
+The [CNPG module guide](platform/terraform/modules/cnpg/README.md) maps its
+Terraform resources and database chart.
+The fixed profile set is never converted or destroyed automatically. Stop
+unrelated containers to avoid doubled host resource usage.
+The superseded `multi-*` and low-level Terraform Make targets have been removed;
+`dev-*` and `db-*` are the public workflows.
+An earlier, letter-identified isolated full-stack lab passed synchronous
+write-blocking, shared identity, planned switchover, fenced promotion/rebuild,
+dirty-source updates and clean recreation checks; see the
+[verification record](docs/master-plan.md#stage-3-kafka-and-reliable-event-publication).
+Those historical results do not verify the new numbered identities live.
+`make dev-status MULTI_CLUSTER=3` prints node and workload-container
 CPU/RAM usage alongside configured limits/requests, readiness, and restarts.
-For existing labs, run `make dev-metrics` with the appropriate optional base override once to enable
+For existing labs, run `make dev-metrics MULTI_CLUSTER=3` once to enable
 the bundled metrics-server; new `dev-up` runs enable it automatically.
 
 Run `make help` for all targets.

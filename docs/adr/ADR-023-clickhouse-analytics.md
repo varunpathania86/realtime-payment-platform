@@ -60,7 +60,7 @@ documented 500 ms p95 target. It drops the temporary table after the run.
 
 ## Consequences
 
-ClickHouse is optional and placed only in cluster A. The local image is pinned
+ClickHouse is optional and placed only in cluster 1. The local image is pinned
 in `.tool-versions`; credentials are generated into profile-local Terraform
 state and Kubernetes Secrets. The StatefulSet and PVC are single-node local
 development components, not HA or production backups. Removing the feature or

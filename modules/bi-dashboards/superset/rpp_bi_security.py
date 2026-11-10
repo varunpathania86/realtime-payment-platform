@@ -42,6 +42,22 @@ def guest_chart_allowed(chart, datasource, has_dashboard_access):
 
 
 class RppSecurityManager(SupersetSecurityManager):
+    def oauth_user_info(self, provider, response=None):
+        if provider != "keycloak":
+            return {}
+        # Userinfo is obtained with the exchanged access token, never from a browser identity header.
+        result = self.appbuilder.sm.oauth_remotes[provider].get("userinfo")
+        result.raise_for_status()
+        claims = result.json()
+        roles = claims.get("roles", [])
+        subject = claims.get("sub")
+        if not isinstance(subject, str) or not 1 <= len(subject) <= 128 or not isinstance(roles, list) \
+                or not all(isinstance(role, str) for role in roles) or not set(roles) & {"Gamma", "Admin"}:
+            return {}
+        return {"username": "keycloak_" + subject, "email": claims.get("email", ""),
+                "first_name": claims.get("given_name", ""), "last_name": claims.get("family_name", ""),
+                "role_keys": sorted(set(roles) & {"Gamma", "Admin"})}
+
     def raise_for_access(self, *args, **kwargs):
         query_context = kwargs.get("query_context")
         if query_context is not None and self.is_guest_user():

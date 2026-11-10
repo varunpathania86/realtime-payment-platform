@@ -1,0 +1,219 @@
+{
+  "realm": "rpp",
+  "enabled": true,
+  "displayName": "Real-time Payment Platform (synthetic users)",
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": false,
+  "rememberMe": false,
+  "loginWithEmailAllowed": false,
+  "duplicateEmailsAllowed": false,
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "failureFactor": 5,
+  "accessTokenLifespan": 300,
+  "accessCodeLifespan": 60,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 28800,
+  "revokeRefreshToken": true,
+  "refreshTokenMaxReuse": 0,
+  "eventsEnabled": true,
+  "eventsExpiration": 86400,
+  "adminEventsEnabled": true,
+  "adminEventsDetailsEnabled": false,
+  "roles": {
+    "client": {
+      "web-portal": [{"name": "bi:view"}],
+      "payment-api": [{"name": "payments:read"}, {"name": "payments:write"}],
+      "ai-orchestrator": [{"name": "ai:invoke"}, {"name": "ai:admin"}],
+      "assistant-tools": [
+        {"name": "knowledge:read"}, {"name": "knowledge:restricted"},
+        {"name": "analytics:read"}, {"name": "payments:read"}
+      ],
+      "grafana": [{"name": "Viewer"}, {"name": "Editor"}, {"name": "Admin"}],
+      "superset": [{"name": "Gamma"}, {"name": "Admin"}],
+      "argocd": [{"name": "readonly"}, {"name": "admin"}]
+    }
+  },
+  "groups": [
+    {
+      "name": "viewer",
+      "clientRoles": {
+        "web-portal": ["bi:view"],
+        "payment-api": ["payments:read"],
+        "ai-orchestrator": ["ai:invoke"],
+        "assistant-tools": ["knowledge:read", "analytics:read", "payments:read"],
+        "grafana": ["Viewer"],
+        "superset": ["Gamma"],
+        "argocd": ["readonly"]
+      }
+    },
+    {
+      "name": "analyst",
+      "clientRoles": {
+        "web-portal": ["bi:view"],
+        "payment-api": ["payments:read"],
+        "ai-orchestrator": ["ai:invoke"],
+        "assistant-tools": ["knowledge:read", "analytics:read", "payments:read"],
+        "grafana": ["Viewer"],
+        "superset": ["Gamma"],
+        "argocd": ["readonly"]
+      }
+    },
+    {
+      "name": "developer",
+      "clientRoles": {
+        "web-portal": ["bi:view"],
+        "payment-api": ["payments:read", "payments:write"],
+        "ai-orchestrator": ["ai:invoke"],
+        "assistant-tools": ["knowledge:read", "analytics:read", "payments:read"],
+        "grafana": ["Editor"],
+        "superset": ["Gamma"],
+        "argocd": ["readonly"]
+      }
+    },
+    {
+      "name": "platform-admin",
+      "clientRoles": {
+        "web-portal": ["bi:view"],
+        "payment-api": ["payments:read", "payments:write"],
+        "ai-orchestrator": ["ai:invoke", "ai:admin"],
+        "assistant-tools": ["knowledge:read", "knowledge:restricted", "analytics:read", "payments:read"],
+        "grafana": ["Admin"],
+        "superset": ["Admin"],
+        "argocd": ["admin"]
+      }
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "web-portal",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "${PORTAL_CLIENT_SECRET}",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": ["${PORTAL_ORIGIN}/auth/callback"],
+      "webOrigins": ["${PORTAL_ORIGIN}"],
+      "attributes": {
+        "standard.token.exchange.enabled": "true",
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "${PORTAL_ORIGIN}/analytics"
+      },
+      "defaultClientScopes": ["basic", "profile", "email", "roles"],
+      "protocolMappers": [
+        {
+          "name": "resource-audiences",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.client.audience": "web-portal",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        },
+        {
+          "name": "groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "config": {"claim.name": "groups", "full.path": "false", "id.token.claim": "true", "access.token.claim": "true"}
+        }
+      ]
+    },
+    {"clientId": "payment-api", "enabled": true, "protocol": "openid-connect", "bearerOnly": true},
+    {"clientId": "ai-orchestrator", "enabled": true, "protocol": "openid-connect", "bearerOnly": true},
+    {"clientId": "assistant-tools", "enabled": true, "protocol": "openid-connect", "bearerOnly": true},
+    {
+      "clientId": "grafana",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "${GRAFANA_CLIENT_SECRET}",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": ["${GRAFANA_ORIGIN}/login/generic_oauth"],
+      "attributes": {"pkce.code.challenge.method": "S256"},
+      "defaultClientScopes": ["basic", "profile", "email", "roles"],
+      "protocolMappers": [{
+        "name": "grafana-roles", "protocol": "openid-connect",
+        "protocolMapper": "oidc-usermodel-client-role-mapper",
+        "config": {"usermodel.clientRoleMapping.clientId": "grafana", "claim.name": "roles",
+          "multivalued": "true", "jsonType.label": "String", "access.token.claim": "true",
+          "id.token.claim": "true", "userinfo.token.claim": "true"}
+      }]
+    },
+    {
+      "clientId": "superset",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "${SUPERSET_CLIENT_SECRET}",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": ["${SUPERSET_ORIGIN}/oauth-authorized/keycloak"],
+      "attributes": {"pkce.code.challenge.method": "S256"},
+      "defaultClientScopes": ["basic", "profile", "email", "roles"],
+      "protocolMappers": [{
+        "name": "superset-roles", "protocol": "openid-connect",
+        "protocolMapper": "oidc-usermodel-client-role-mapper",
+        "config": {"usermodel.clientRoleMapping.clientId": "superset", "claim.name": "roles",
+          "multivalued": "true", "jsonType.label": "String", "access.token.claim": "true",
+          "id.token.claim": "true", "userinfo.token.claim": "true"}
+      }]
+    },
+    {
+      "clientId": "argocd",
+      "enabled": false,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "${ARGOCD_CLIENT_SECRET}",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": ["${ARGOCD_ORIGIN}/auth/callback"],
+      "attributes": {"pkce.code.challenge.method": "S256"},
+      "defaultClientScopes": ["basic", "profile", "email", "roles"]
+    }
+  ],
+  "users": [
+    {
+      "username": "ops-viewer",
+      "enabled": true,
+      "firstName": "Synthetic",
+      "lastName": "Viewer",
+      "email": "ops-viewer@example.invalid",
+      "emailVerified": true,
+      "groups": ["/viewer"],
+      "credentials": [{"type": "password", "value": "${VIEWER_PASSWORD}", "temporary": false}]
+    },
+    {
+      "username": "payments-clerk",
+      "enabled": true,
+      "firstName": "Synthetic",
+      "lastName": "Clerk",
+      "email": "payments-clerk@example.invalid",
+      "emailVerified": true,
+      "clientRoles": {
+        "payment-api": ["payments:read", "payments:write"],
+        "ai-orchestrator": ["ai:invoke"],
+        "assistant-tools": ["payments:read"]
+      },
+      "credentials": [{"type": "password", "value": "${CLERK_PASSWORD}", "temporary": false}]
+    },
+    {
+      "username": "ops-engineer",
+      "enabled": true,
+      "firstName": "Synthetic",
+      "lastName": "Engineer",
+      "email": "ops-engineer@example.invalid",
+      "emailVerified": true,
+      "groups": ["/developer"],
+      "clientRoles": {"assistant-tools": ["knowledge:restricted"]},
+      "credentials": [{"type": "password", "value": "${ENGINEER_PASSWORD}", "temporary": false}]
+    }
+  ]
+}

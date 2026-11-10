@@ -118,8 +118,9 @@ def maintain(profile, retention="7d", runner=subprocess.run):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--profile", default=os.environ.get("MINIKUBE_PROFILE",
-        os.environ.get("DEV_PROFILE", "rpp") + "-a"))
+    parser.add_argument("--profile", default=os.environ.get("MINIKUBE_PROFILE") or (
+        "rpp-1" if os.environ.get("MULTI_CLUSTER") == "3" else "rpp"
+    ))
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("query").add_argument("sql")
     commands.add_parser("verify").add_argument("--timeout", type=int, default=240)

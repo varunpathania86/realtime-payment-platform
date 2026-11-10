@@ -9,22 +9,36 @@ Display explicit loading, success, and failure states for API health, readiness,
 and build metadata, with a retry action. Show the UI build version and commit so
 a local rebuild is visible.
 
-When BI is enabled, the `/analytics` page signs in a synthetic local development
-user and embeds the [Superset dashboard](../bi-dashboards/README.md). The Go
+With Stage 11 identity enabled, `/analytics` redirects to Keycloak to sign in
+and embeds the [Superset dashboard](../bi-dashboards/README.md). The Go
 server is the backend-for-frontend: it keeps the session and requests a
 five-minute guest token scoped to one dashboard. React never receives Superset
-or database credentials. Keycloak replaces this local identity in Stage 11
+or database credentials. Keycloak replaces the optional identity-disabled development login
 ([ADR-025](../../docs/adr/ADR-025-interview-roadmap-and-read-only-mcp.md),
 [ADR-028](../../docs/adr/ADR-028-embedded-superset-bi.md)).
 
 When the assistant is enabled, signed-in users with `ai:invoke` also see the
 operations assistant on `/analytics`. The Go server is its only caller: for
-each question it signs two 120-second Ed25519 assertions, one for
+each question it exchanges the server-held Keycloak token for one audience-scoped token for
 [ai-orchestrator](../ai-orchestrator/README.md) and one the orchestrator relays
 to [assistant-tools](../assistant-tools/README.md), and forwards only the user's
-assistant permissions
-([ADR-030](../../docs/adr/ADR-030-assistant-identity-assertions.md)). React never
-sees the assertions or the signing key.
+resource roles ([ADR-032](../../docs/adr/ADR-032-keycloak-identity-and-bff.md)).
+React never sees OAuth tokens. The old Ed25519 development assertions remain
+available only when OIDC is not configured.
+
+Authorization Code uses S256 PKCE, server-held state and nonce, and a
+five-minute one-use HttpOnly/Lax transaction cookie. The application cookie is
+opaque, HttpOnly and Strict (Secure unless explicitly local HTTP). Tokens are
+refreshed server-side; refresh failure, invalid signature or claims revoke the
+session. Logout removes the BFF session and revokes the Keycloak session.
+In-memory session storage is bounded to 1,024 sessions/transactions; use one
+BFF replica. A restart deliberately signs everyone out, rather than recovering
+unverified cookies. Durable multi-replica sessions are not implemented.
+
+Browser `/api/payments` traffic terminates at the BFF, which checks Origin for
+mutations and `payments:read`/`payments:write`, exchanges a `payment-api` token
+and removes the browser cookie before forwarding. The payment API independently
+verifies that token. See the [identity runbook](../../docs/runbooks/unified-identity.md).
 
 ## Layout
 
@@ -38,6 +52,8 @@ traffic reaches the portal and API.
 ├── README.md
 ├── main.go             # Standard-library static server
 ├── bi.go               # Local development sign-in and Superset guest tokens
+├── oidc.go             # Keycloak code flow, opaque sessions, refresh/logout and resource exchange
+├── payments.go         # Cookie-authenticated payment BFF; API verifies forwarded token
 ├── assistant.go        # Assistant BFF: assertion signing and orchestrator proxy
 ├── *_test.go
 ├── package.json
@@ -65,12 +81,14 @@ Open `http://localhost:8080`. The static server does not proxy the API, so stand
 execution shows a retryable error until ingress routes `/api` to the payment API.
 From the repository root, `make dev-up` deploys the environment, `make dev-update`
 rebuilds the local images, and `make smoke` checks the routed endpoints.
-New development bases run the stack in three independent clusters. The chart's
+The `MULTI_CLUSTER=3` topology runs the stack in three independent clusters. The chart's
 positive integer `replicaCount` defaults to one; use per-cluster
 `applications.web-portal` in `DEV_CONFIG` to change it independently of the API.
 See [topology sizing](../../docs/developer-setup.md#configuring-counts-and-benchmark-node-budgets).
-Use `MINIKUBE_PROFILE=<base>-b` with `make dev-access`/`make smoke` to select
-another member; lifecycle commands select the whole base using `DEV_PROFILE`.
+Use `make dev-up MULTI_CLUSTER=3`, then `MULTI_CLUSTER=3 MINIKUBE_PROFILE=rpp-2`
+with `make dev-access`/`make smoke`
+to select another member; lifecycle commands select all three profiles using
+`MULTI_CLUSTER=3`.
 
 ## Make targets
 
@@ -97,6 +115,11 @@ another member; lifecycle commands select the whole base using `DEV_PROFILE`.
 | `OTEL_CLUSTER_NAME` | Unset | Cluster resource identity |
 | `PORTAL_SESSION_KEY` | Unset | HMAC key for the session cookie (at least 32 characters); with `PORTAL_DEV_USERS` enables `/auth/*` |
 | `PORTAL_DEV_USERS` | Unset | JSON map of synthetic users: `{"name": {"password": "...", "permissions": ["bi:view"]}}` (passwords at least 12 characters) |
+| `OIDC_ISSUER` | Unset | Exact Keycloak realm issuer; enables OIDC and disables development login/assertions |
+| `OIDC_INTERNAL_URL` | Unset | Same realm's cluster URL for token exchange, JWKS and logout |
+| `OIDC_PORTAL_ORIGIN` | Unset | Exact browser origin; callback is `/auth/callback` |
+| `OIDC_CLIENT_SECRET` | Unset | Confidential `web-portal` client Secret, at least 32 characters |
+| `OIDC_LOCAL_HTTP` | `false` | Explicitly allow local HTTP; otherwise endpoints must use HTTPS and cookies are Secure |
 | `PORTAL_ALLOWED_ORIGINS` | Unset | Space-separated browser origins accepted on POST requests |
 | `BI_SUPERSET_URL` | Unset | Cluster-internal Superset URL; enables `/bi/guest-token` (all `BI_*` then required) |
 | `BI_SUPERSET_PUBLIC_URL` | Unset | Superset URL the browser loads the iframe from |

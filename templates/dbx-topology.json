@@ -1,0 +1,7 @@
+{
+  "node": {
+    "cpus": 4,
+    "memory_mib": 4096
+  },
+  "dbx": true
+}

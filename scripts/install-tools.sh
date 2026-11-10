@@ -7,46 +7,13 @@ set -euo pipefail
 # shellcheck source=scripts/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-ALL_TOOLS=(kubectl minikube helm terraform go jq yq nodejs tflint trivy)
+ALL_TOOLS=(kubectl minikube helm terraform go jq yq nodejs tflint trivy editorconfig-checker)
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 mkdir -p "$BIN_DIR"
 
-fetch() { curl -fsSL --retry 3 -o "$2" "$1"; }
-
-verify() { # file expected-sha256
-  [[ "$2" =~ ^[a-fA-F0-9]{64}$ ]] || { echo "Invalid or missing SHA-256 for $(basename "$1")" >&2; exit 1; }
-  echo "$2  $1" | sha256sum --check --status || { echo "Checksum mismatch for $(basename "$1")" >&2; exit 1; }
-}
-
-# SHA-256 of a GitHub release asset, from the GitHub API.
-github_digest() { # owner/repo tag asset
-  local response="$TMP/github-release.json" token="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
-  local headers=(-H "Accept: application/vnd.github+json")
-  if [ -n "$token" ]; then
-    headers+=(-H "Authorization: Bearer $token")
-  fi
-  if ! curl -fsSL --retry 3 "${headers[@]}" \
-    -o "$response" "https://api.github.com/repos/$1/releases/tags/$2"; then
-    echo "Cannot fetch checksum metadata for $1 release $2. Check GitHub API access/rate limits; CI must pass GH_TOKEN." >&2
-    return 1
-  fi
-  python3 - "$response" "$3" <<'PY'
-import json
-import re
-import sys
-
-try:
-    with open(sys.argv[1], encoding="utf-8") as stream:
-        assets = json.load(stream)["assets"]
-    digest = next(asset.get("digest") or "" for asset in assets if asset["name"] == sys.argv[2])
-    if not re.fullmatch(r"sha256:[a-fA-F0-9]{64}", digest):
-        raise ValueError("missing or invalid SHA-256 digest")
-except (OSError, ValueError, KeyError, TypeError, StopIteration) as error:
-    sys.exit(f"Invalid GitHub checksum metadata for {sys.argv[2]}: {error}")
-print(digest.removeprefix("sha256:"))
-PY
-}
+# shellcheck source=scripts/github-release.sh
+. "$(dirname "${BASH_SOURCE[0]}")/github-release.sh"
 
 install_kubectl() {
   local v=$1 base="https://dl.k8s.io/release/v$1/bin/$OS/$ARCH"
@@ -56,10 +23,8 @@ install_kubectl() {
 }
 
 install_minikube() {
-  local v=$1 asset="minikube-$OS-$ARCH" digest
-  fetch "https://github.com/kubernetes/minikube/releases/download/v$v/$asset" "$TMP/minikube"
-  digest=$(github_digest kubernetes/minikube "v$v" "$asset") || return 1
-  verify "$TMP/minikube" "$digest"
+  local v=$1 asset="minikube-$OS-$ARCH"
+  fetch_github_asset kubernetes/minikube "v$v" "$asset" "$TMP/minikube"
   install -m 0755 "$TMP/minikube" "$BIN_DIR/minikube"
 }
 
@@ -92,18 +57,14 @@ install_go() {
 }
 
 install_jq() {
-  local v=$1 asset="jq-$OS-$ARCH" digest
-  fetch "https://github.com/jqlang/jq/releases/download/jq-$v/$asset" "$TMP/jq"
-  digest=$(github_digest jqlang/jq "jq-$v" "$asset") || return 1
-  verify "$TMP/jq" "$digest"
+  local v=$1 asset="jq-$OS-$ARCH"
+  fetch_github_asset jqlang/jq "jq-$v" "$asset" "$TMP/jq"
   install -m 0755 "$TMP/jq" "$BIN_DIR/jq"
 }
 
 install_yq() {
-  local v=$1 asset="yq_${OS}_$ARCH" digest
-  fetch "https://github.com/mikefarah/yq/releases/download/v$v/$asset" "$TMP/yq"
-  digest=$(github_digest mikefarah/yq "v$v" "$asset") || return 1
-  verify "$TMP/yq" "$digest"
+  local v=$1 asset="yq_${OS}_$ARCH"
+  fetch_github_asset mikefarah/yq "v$v" "$asset" "$TMP/yq"
   install -m 0755 "$TMP/yq" "$BIN_DIR/yq"
 }
 
@@ -122,24 +83,27 @@ install_nodejs() {
 }
 
 install_tflint() {
-  local v=$1 f="tflint_${OS}_$ARCH.zip" base="https://github.com/terraform-linters/tflint/releases/download/v$1" digest
-  fetch "$base/$f" "$TMP/$f"
-  digest=$(github_digest terraform-linters/tflint "v$v" "$f") || return 1
-  verify "$TMP/$f" "$digest"
+  local v=$1 f="tflint_${OS}_$ARCH.zip"
+  fetch_github_asset terraform-linters/tflint "v$v" "$f" "$TMP/$f"
   python3 -c 'import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extract("tflint", sys.argv[2])' "$TMP/$f" "$TMP"
   install -m 0755 "$TMP/tflint" "$BIN_DIR/tflint"
 }
 
 install_trivy() {
-  local v=$1 trivy_arch=$ARCH digest
+  local v=$1 trivy_arch=$ARCH
   [ "$trivy_arch" != amd64 ] || trivy_arch=64bit
   [ "$trivy_arch" != arm64 ] || trivy_arch=ARM64
-  local f="trivy_${v}_Linux-${trivy_arch}.tar.gz" base="https://github.com/aquasecurity/trivy/releases/download/v$v"
-  fetch "$base/$f" "$TMP/$f"
-  digest=$(github_digest aquasecurity/trivy "v$v" "$f") || return 1
-  verify "$TMP/$f" "$digest"
+  local f="trivy_${v}_Linux-${trivy_arch}.tar.gz"
+  fetch_github_asset aquasecurity/trivy "v$v" "$f" "$TMP/$f"
   tar -xzf "$TMP/$f" -C "$TMP" trivy
   install -m 0755 "$TMP/trivy" "$BIN_DIR/trivy"
+}
+
+install_editorconfig-checker() {
+  local v=$1 asset="ec-${OS}-${ARCH}"
+  fetch_github_asset editorconfig-checker/editorconfig-checker "v$v" "$asset.tar.gz" "$TMP/ec.tar.gz"
+  tar -xzf "$TMP/ec.tar.gz" -C "$TMP" "bin/$asset"
+  install -m 0755 "$TMP/bin/$asset" "$BIN_DIR/editorconfig-checker"
 }
 
 tools=("$@")

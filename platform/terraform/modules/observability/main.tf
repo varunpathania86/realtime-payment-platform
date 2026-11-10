@@ -14,12 +14,21 @@ terraform {
 
 variable "settings" {
   type = object({
-    backends        = bool
-    cluster         = string
-    backendAddress  = string
-    images          = map(string)
-    grafanaPassword = string
-    brokers         = list(string)
+    backends         = bool
+    cluster          = string
+    backendAddress   = string
+    images           = map(string)
+    grafanaPassword  = string
+    brokers          = list(string)
+    backendNames     = optional(list(string), ["prometheus", "alertmanager", "loki", "tempo", "grafana"])
+    collectorEnabled = optional(bool, true)
+    oidc = optional(object({
+      enabled      = bool
+      issuer       = string
+      internalUrl  = string
+      rootUrl      = string
+      clientSecret = string
+    }), { enabled = false, issuer = "", internalUrl = "", rootUrl = "", clientSecret = "" })
   })
   sensitive = true
 }

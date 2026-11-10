@@ -42,7 +42,8 @@ every install or upgrade.
 
 ## Diagnosis
 
-1. Select the profile explicitly: `PROFILE=rpp-a` (or your owned profile).
+1. Select the profile explicitly: `PROFILE=rpp-1` for the multi-cluster topology,
+  or `PROFILE=rpp` for the default single cluster.
 2. Check the workloads and Jobs:
 
     ```bash

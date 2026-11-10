@@ -35,8 +35,8 @@ flowchart LR
 ## Start the lean AI profile
 
 ```bash
-make dev-up DEV_CONFIG=templates/ai-topology.json   # analytics + ai, no Flink
-export MINIKUBE_PROFILE=rpp-a
+make dev-up MULTI_CLUSTER=3 DEV_CONFIG=templates/ai-topology.json   # analytics + ai, no Flink
+export MULTI_CLUSTER=3 MINIKUBE_PROFILE=rpp-1
 make knowledge-ingest   # bundle the corpus, embed and load it (first run waits for model download)
 make ai-fixtures        # synthetic ClickHouse payment facts and advisory predictions
 make ai-eval            # starter evaluation; report in .local/$MINIKUBE_PROFILE/ai-eval/
@@ -57,6 +57,15 @@ kubectl --context "$MINIKUBE_PROFILE" -n apps get secret web-portal-identity \
 | `ops-engineer` | Everything, including restricted incident documents |
 
 ## Symptoms
+
+For optional NVIDIA acceleration, follow
+[GPU setup and verification](../developer-setup.md#optional-nvidia-acceleration-for-ai).
+Check for two allocatable `nvidia.com/gpu.shared` slots and CUDA offload in
+both llama.cpp container logs. Host-driver hangs must be resolved outside the
+cluster before retrying. Do not delete an existing CPU-only profile without
+preserving database data, models and streaming savepoints; stop/start cannot
+add missing Docker GPU device requests. Shared slots have no VRAM isolation,
+so simultaneous model initialization can still run out of GPU memory.
 
 - The panel shows "The assistant is busy", "timed out" or
   "temporarily unavailable".

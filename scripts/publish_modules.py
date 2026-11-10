@@ -19,6 +19,7 @@ from pathlib import Path
 
 import yaml
 
+from scripts.check_local_chart import POD_PATHS
 from scripts.module_catalog import (
     ROOT, _load_yaml, _module_manifests, _schema_errors, dependency_closure, plan_matrix, validate_catalog,
 )
@@ -195,15 +196,15 @@ def publish_chart(
             ["helm", "template", context["module"], str(staging)],
             check=True, capture_output=True, text=True,
         ).stdout
-        images = [
-            container["image"]
-            for document in yaml.safe_load_all(rendered)
-            if document and document.get("kind") in ("Deployment", "StatefulSet", "DaemonSet", "Job")
-            for container in (
-                document["spec"]["template"]["spec"]["containers"]
-                + document["spec"]["template"]["spec"].get("initContainers", [])
-            )
-        ]
+        paths = {**POD_PATHS, "DaemonSet": ("spec", "template", "spec")}
+        images = []
+        for document in yaml.safe_load_all(rendered):
+            if not document or document.get("kind") not in paths:
+                continue
+            pod = document
+            for key in paths[document["kind"]]:
+                pod = pod[key]
+            images.extend(container["image"] for container in pod["containers"] + pod.get("initContainers", []))
         if not images or any(image != f"{image_repository}@{image_digest}" for image in images):
             raise ValueError("published chart must render the approved image by immutable digest")
         subprocess.run(["helm", "package", str(staging), "--destination", directory], check=True)

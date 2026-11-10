@@ -8,7 +8,7 @@
 
 The three-cluster lab in [ADR-016](ADR-016-local-cross-cluster-kafka.md)
 distributes Kafka but leaves applications, PostgreSQL, registry, and ingress on
-A. This does not satisfy the intended learning goal: every implemented
+cluster 1. This does not satisfy the intended learning goal: every implemented
 application must be deployed in every cluster, with one shared database and
 controlled recovery after loss of a cluster.
 
@@ -20,48 +20,50 @@ of the replacement topology.
 ## Decision
 
 Extend the opt-in lab to deploy the implemented API, portal, relay, receipt
-consumer, Apicurio, and ingress in A, B, and C. Keep Kafka's three-broker quorum.
+consumer, Apicurio, and ingress in clusters 1, 2, and 3. Keep Kafka's
+three-broker quorum.
 Use CloudNativePG distributed primary/replica clusters for one PostgreSQL primary
 and two cross-cluster standbys, with controlled cross-cluster promotion and
-fencing. This supersedes ADR-016's A-only application/database placement, not
-its independent-cluster networking or shared-host limitations.
+fencing. This supersedes ADR-016's cluster-1-only application/database
+placement, not its independent-cluster networking or shared-host limitations.
 
-The opt-in implementation uses `MULTI_FULL_STACK=1 make dev-up` on an unused
-base. Existing Kafka-only labs retain their placement; they are not converted
-in place. See [setup](../developer-setup.md#stage-3-full-stack-three-cluster-lab)
+The opt-in implementation uses `make dev-up MULTI_CLUSTER=3` on an unused
+base. Existing Kafka-only labs are not converted in place; older
+letter-identified labs require the [legacy-state procedure](../developer-setup.md#protecting-a-legacy-topology).
+See [setup](../developer-setup.md#stage-3-full-stack-three-cluster-lab)
 and [controlled recovery](../runbooks/event-publication.md#cross-cluster-postgresql-recovery).
 Acceptance evidence is tracked in the master plan; implementation alone does
 not establish every recovery or capacity guarantee below.
 
 ```mermaid
 flowchart TB
-  subgraph A[Independent Kubernetes cluster A]
-    AppA[API / portal / relay / consumer / Apicurio / ingress]
-    KA[Kafka broker + controller]
-    OA[CNPG operator]
-    PA[(PostgreSQL: initial primary)]
-    OA --> PA
+  subgraph Cluster1[Independent Kubernetes cluster 1]
+    App1[API / portal / relay / consumer / Apicurio / ingress]
+    K1[Kafka broker + controller]
+    O1[CNPG operator]
+    P1[(PostgreSQL: initial primary)]
+    O1 --> P1
   end
-  subgraph B[Independent Kubernetes cluster B]
-    AppB[API / portal / relay / consumer / Apicurio / ingress]
-    KB[Kafka broker + controller]
-    OB[CNPG operator]
-    PB[(PostgreSQL: standby)]
-    OB --> PB
+  subgraph Cluster2[Independent Kubernetes cluster 2]
+    App2[API / portal / relay / consumer / Apicurio / ingress]
+    K2[Kafka broker + controller]
+    O2[CNPG operator]
+    P2[(PostgreSQL: standby)]
+    O2 --> P2
   end
-  subgraph C[Independent Kubernetes cluster C]
-    AppC[API / portal / relay / consumer / Apicurio / ingress]
-    KC[Kafka broker + controller]
-    OC[CNPG operator]
-    PC[(PostgreSQL: standby)]
-    OC --> PC
+  subgraph Cluster3[Independent Kubernetes cluster 3]
+    App3[API / portal / relay / consumer / Apicurio / ingress]
+    K3[Kafka broker + controller]
+    O3[CNPG operator]
+    P3[(PostgreSQL: standby)]
+    O3 --> P3
   end
-  AppA & AppB & AppC -->|All writes to current primary| PA
-  PA -->|TLS WAL streaming| PB
-  PA -->|TLS WAL streaming| PC
-  KA <--> KB
-  KB <--> KC
-  KC <--> KA
+  App1 & App2 & App3 -->|All writes to current primary| P1
+  P1 -->|TLS WAL streaming| P2
+  P1 -->|TLS WAL streaming| P3
+  K1 <--> K2
+  K2 <--> K3
+  K3 <--> K1
 ```
 
 ### PostgreSQL semantics
@@ -103,10 +105,10 @@ flowchart TB
   Verify group rebalancing and receipt deduplication during cluster loss.
 - Serialize/checksum migrations against the shared primary. Test simultaneous
   application startup and bound aggregate database connection pools.
-- An ingress exists in each cluster. A port-forward to A still dies when A dies;
-  document how to reconnect browser/API access through B or C during controlled
-  recovery. Automatic global traffic failover is not implied by three ingress
-  installations.
+- An ingress exists in each cluster. A port-forward to cluster 1 still dies when
+  that cluster dies; document how to reconnect browser/API access through
+  cluster 2 or 3 during controlled recovery. Automatic global traffic failover
+  is not implied by three ingress installations.
 
 ### Controlled promotion and recovery
 
@@ -115,9 +117,10 @@ flowchart TB
 - An unplanned failover must fence the former primary before promotion. Its
   unreachability alone does not prove it cannot still accept writes.
 - Determine the safe promotion candidate from durable WAL positions and replay,
-  not a fixed preference for B. With acknowledgement from any one standby, an
-  arbitrary standby may lag acknowledged commits. Refuse a no-data-loss claim
-  when evidence is insufficient; do not silently force promotion.
+  not a fixed preference for cluster 2. With acknowledgement from any one
+  standby, an arbitrary standby may lag acknowledged commits. Refuse a
+  no-data-loss claim when evidence is insufficient; do not silently force
+  promotion.
 - Verify exactly one writer, unchanged acknowledged payments/idempotency,
   outbox/receipt state, and registry schema IDs after promotion. Clients on
   surviving clusters must reconnect without new payment/event identities.
@@ -130,8 +133,8 @@ flowchart TB
 ### Resources, installation, and cutover
 
 - Retain 3072 MiB / two-CPU limits per Minikube cluster as the starting budget.
-  Each now carries the full stack and a CNPG operator, so earlier Kafka-only B/C
-  measurements are not capacity evidence for this design. Measure startup,
+  Each now carries the full stack and a CNPG operator, so earlier Kafka-only
+  cluster 2/3 measurements are not capacity evidence for this design. Measure startup,
   steady state, replica catch-up, failover, and concurrent updates.
 - Pin operator/chart and compatible PostgreSQL image versions in the repository
   tool-version policy. Install through Make-managed bootstrap/Terraform, verify
@@ -147,7 +150,7 @@ flowchart TB
 
 | Option | Pros | Cons |
 |---|---|---|
-| Current Kafka-only distribution | Already verified, lower resource use | Applications/database remain on A |
+| Current Kafka-only distribution | Already verified, lower resource use | Applications/database remain on cluster 1 |
 | One Kubernetes cluster with three nodes and CNPG instances=3 | Simpler database automation and networking | Does not meet independent-control-plane requirement |
 | Three independent writable databases | Simple isolated environments | Divergent payments, idempotency and registry identities |
 | Full stack plus distributed CNPG replicas | Meets selected cluster-failure learning goal | Requires explicit cross-cluster durability, fencing, routing and recovery |

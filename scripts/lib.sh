@@ -16,18 +16,37 @@ pinned_version() {
   awk -v t="$1" '$1 == t { print $2 }' "$REPO_ROOT/.tool-versions"
 }
 
+require_numbered_identity() {
+  local state="$1"
+  if [ ! -f "$state/cluster-identity" ] || [ "$(cat "$state/cluster-identity")" != "numbered-v1" ]; then
+    echo "Refusing legacy or unsupported cluster identity in $state; preserve its state and data. See docs/developer-setup.md." >&2
+    return 1
+  fi
+}
+
 refuse_fenced_profile() {
-  local profile="$1" base="${1%-?}" state
-  state="$REPO_ROOT/.local/$base"
-  if [[ "$profile" =~ -[abc]$ ]] && [ -f "$state/owned" ] &&
-    [ -f "$state/database-fence.json" ]; then
+  local profile="$1" base="${1%-?}" state fenced
+  if [ "$profile" = "rpp" ] && [ -f "$REPO_ROOT/.local/rpp/owned" ]; then
+    echo "Refusing legacy multi-cluster state in $REPO_ROOT/.local/rpp; preserve its state and data. See docs/developer-setup.md." >&2
+    return 1
+  fi
+  state="$REPO_ROOT/.local/$base-multi"
+  if [[ "$profile" =~ -[123]$ ]] && [ -f "$state/owned" ]; then
     [ "$(cat "$state/owned")" = "$base" ] || { echo "Invalid topology ownership marker" >&2; return 1; }
-    if [ "$(jq -r '.old' "$state/database-fence.json")" = "pg-${profile: -1}" ]; then
+    require_numbered_identity "$state" || return 1
+    [ -f "$state/database-fence.json" ] || return 0
+    fenced=$(jq -er '.old' "$state/database-fence.json") ||
+      { echo "Invalid fenced database identity in $state/database-fence.json" >&2; return 1; }
+    case "$fenced" in
+      pg-1|pg-2|pg-3) ;;
+      *) echo "Invalid fenced database identity: $fenced" >&2; return 1 ;;
+    esac
+    if [ "$fenced" = "pg-${profile: -1}" ]; then
       if [ "${REJOINING:-0}" = 1 ] &&
         [ "$(jq -r '.phase' "$state/database-fence.json")" = rebuild-start ]; then
         return 0
       fi
-      echo "Profile $profile is fenced. Use make db-rejoin DEV_PROFILE=$base; never restart the old database." >&2
+      echo "Profile $profile is fenced. Use make db-rejoin MULTI_CLUSTER=3; never restart the old database." >&2
       return 1
     fi
   fi
@@ -47,6 +66,7 @@ installed_version() {
     nodejs)    out=$(PATH=$bin node --version 2>/dev/null | sed 's/^v//') ;;
     tflint)    out=$(PATH=$bin tflint --version 2>/dev/null | sed -n '1s/^TFLint version //p') ;;
     trivy)     out=$(PATH=$bin trivy --version 2>/dev/null | sed -n 's/^Version: //p') ;;
+    editorconfig-checker) out=$(PATH=$bin editorconfig-checker --version 2>/dev/null | sed 's/^v//') ;;
     docker)    out=$(PATH=$bin docker --version 2>/dev/null | sed -n 's/^Docker version \([0-9.]*\).*/\1/p') ;;
   esac
   echo "$out"

@@ -47,9 +47,9 @@ profile-local PostgreSQL (`external_database` is not supported).
 
 ```bash
 make -C modules/lakehouse-catalog build test lint
-make dev-up DEV_CONFIG=templates/lakehouse-topology.json
-make streaming-fixtures
-make lakehouse-verify
+make dev-up MULTI_CLUSTER=3 DEV_CONFIG=templates/lakehouse-topology.json
+make streaming-fixtures MULTI_CLUSTER=3
+make lakehouse-verify MULTI_CLUSTER=3
 ```
 
 For a single-cluster verification on a resource-constrained host, follow
@@ -83,6 +83,14 @@ Tables use Iceberg format v2, zstd Parquet and hidden `day()` partitions on
 `kafka_timestamp` (bronze) and `event_time` (curated).
 
 ## Documentation
+
+Trino enumerates views as well as tables for `SHOW TABLES`. Read grants include
+`VIEW_LIST` so DBX and native-client metadata browsing works even when the namespace
+contains no views. This does not grant view creation, modification or content
+access. Existing deployments gain the grant through the idempotent setup hook
+on an upgrade. For the default single-cluster profile, use
+`make dev-up MINIKUBE_PROFILE=rpp` (retain your memory override);
+`make dev-update MULTI_CLUSTER=3` selects the three-cluster workflow.
 
 - [Chart guide](chart/README.md)
 - [Lakehouse runbook](../../docs/runbooks/lakehouse.md)

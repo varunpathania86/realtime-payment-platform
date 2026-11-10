@@ -90,6 +90,11 @@ resource "kubernetes_service_v1" "minio" {
       port        = 9000
       target_port = 9000
     }
+    port {
+      name        = "console"
+      port        = 9001
+      target_port = 9001
+    }
   }
 }
 

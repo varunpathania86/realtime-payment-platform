@@ -23,8 +23,8 @@ import (
 	"unicode/utf8"
 )
 
-// The portal is the only issuer of assistant identity assertions (ADR-030). It signs two short-lived
-// Ed25519 JWTs per question: one for the orchestrator and one the orchestrator relays to the MCP tools.
+// With OIDC, the BFF exchanges Keycloak tokens for each resource audience.
+// ADR-030 Ed25519 assertions are only the identity-disabled development path.
 
 const (
 	permissionAI           = "ai:invoke"
@@ -53,6 +53,9 @@ type assistantProxy struct {
 	client   *http.Client
 	slots    chan struct{}
 }
+
+type identityTokenContextKey struct{}
+type resourceTokens struct{ orchestrator, tools, payment string }
 
 // newAssistantFromEnv returns nil when the assistant is not configured, so /assistant stays disabled.
 func newAssistantFromEnv(getenv func(string) string) (*assistantProxy, error) {
@@ -129,7 +132,7 @@ func (p *portal) askAssistant(w http.ResponseWriter, r *http.Request) {
 	case p.assistant == nil:
 		http.NotFound(w, r)
 		return
-	case !has(user.Permissions, permissionAI) || !assertionSubject.MatchString(name):
+	case !has(user.Permissions, permissionAI) || (p.oidc == nil && !assertionSubject.MatchString(name)):
 		http.Error(w, "assistant access not granted", http.StatusForbidden)
 		return
 	}
@@ -162,6 +165,38 @@ func (p *portal) askAssistant(w http.ResponseWriter, r *http.Request) {
 		slog.Warn("assistant_write_deadline_unavailable", "error", err.Error())
 	}
 	requestID, started := randomHex(16), p.now()
+	if p.oidc != nil {
+		// CPU inference can take 210 seconds; refresh before exchange so tool tokens outlive the request.
+		session, valid := p.oidcCurrentBefore(r, assistantTimeout+5*time.Second)
+		if !valid {
+			http.Error(w, "not signed in", http.StatusUnauthorized)
+			return
+		}
+		if !has(session.user.Permissions, permissionAI) {
+			http.Error(w, "assistant access not granted", http.StatusForbidden)
+			return
+		}
+		name, user = session.name, session.user
+		orchestrator, err := p.oidc.resourceToken(r.Context(), session, orchestratorAudience)
+		if err != nil {
+			http.Error(w, "assistant identity unavailable", http.StatusBadGateway)
+			return
+		}
+		tools, err := p.oidc.resourceToken(r.Context(), session, toolsAudience)
+		if err != nil {
+			http.Error(w, "tool identity unavailable", http.StatusBadGateway)
+			return
+		}
+		payment := ""
+		if has(user.Permissions, "payments:read") {
+			payment, err = p.oidc.resourceToken(r.Context(), session, "payment-api")
+			if err != nil {
+				http.Error(w, "payment tool identity unavailable", http.StatusBadGateway)
+				return
+			}
+		}
+		r = r.WithContext(context.WithValue(r.Context(), identityTokenContextKey{}, resourceTokens{orchestrator, tools, payment}))
+	}
 	status, payload, err := p.assistant.forward(r.Context(), requestID, name, forwardedPermissions(user), question, started)
 	// The audit line never contains the question or the answer; the orchestrator audits content metadata.
 	slog.InfoContext(r.Context(), "assistant_request", "request_id", requestID, "user", name, "upstream_status", status,
@@ -190,8 +225,16 @@ func (a *assistantProxy) forward(ctx context.Context, requestID, subject string,
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Accept", "application/json")
 	request.Header.Set("X-Request-ID", requestID)
-	request.Header.Set("Authorization", "Bearer "+a.assertion(orchestratorAudience, subject, permissions, now))
-	request.Header.Set(toolsAssertionHeader, a.assertion(toolsAudience, subject, permissions, now))
+	if tokens, ok := ctx.Value(identityTokenContextKey{}).(resourceTokens); ok {
+		request.Header.Set("Authorization", "Bearer "+tokens.orchestrator)
+		request.Header.Set(toolsAssertionHeader, tokens.tools)
+		if tokens.payment != "" {
+			request.Header.Set("X-Assistant-Payment-Token", tokens.payment)
+		}
+	} else {
+		request.Header.Set("Authorization", "Bearer "+a.assertion(orchestratorAudience, subject, permissions, now))
+		request.Header.Set(toolsAssertionHeader, a.assertion(toolsAudience, subject, permissions, now))
+	}
 	response, err := a.client.Do(request)
 	if err != nil {
 		var timeout interface{ Timeout() bool }

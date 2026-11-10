@@ -17,6 +17,8 @@ Copy a template instead of writing a document from scratch, so every sub-project
 | [development-topology.json](development-topology.json) | Example configurable three-cluster workload/node sizing | Private JSON passed through `DEV_CONFIG` |
 | [analytics-benchmark-topology.json](analytics-benchmark-topology.json) | Compact three-cluster 50/100 events/s benchmark allocation; run memory preflight first | `DEV_CONFIG` for the owned benchmark base |
 | [analytics-low-memory-topology.json](analytics-low-memory-topology.json) | Same safe node budgets, opt-in coordinated low-memory Flink process/container budgets | `DEV_CONFIG` after memory preflight; does not certify three-cluster fit |
+| [identity-topology.json](identity-topology.json) | Opt-in Stage 11 identity-provider foundation, dedicated PostgreSQL and a 5 GiB cluster 1 budget | `DEV_CONFIG`; application OIDC migration is still in progress |
+| [dbx-topology.json](dbx-topology.json) | Optional in-cluster DBX workbench with loopback-only browser access | `DEV_CONFIG`; adds 512 MiB to cluster 1's required memory budget |
 
 Rules:
 

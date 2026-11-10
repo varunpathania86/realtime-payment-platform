@@ -6,7 +6,7 @@ variable "ai_enabled" {
 
 locals {
   # The portal's synthetic sign-in serves both the BI dashboard and the assistant (ADR-025).
-  portal_identity_enabled = var.bi_enabled || var.ai_enabled
+  portal_identity_enabled = var.identity_enabled || var.bi_enabled || var.ai_enabled
   # MinIO stores Flink state and, with the assistant, the original knowledge documents.
   object_store_enabled = var.streaming_enabled || var.ai_enabled
   ai_secrets           = toset(["knowledge-admin", "knowledge-writer", "knowledge-reader", "ai-reader"])
@@ -27,12 +27,12 @@ resource "random_password" "ai" {
 
 # Signs the portal's assistant assertions (ADR-030). Only web-portal receives the private key.
 resource "tls_private_key" "ai_identity" {
-  count     = var.ai_enabled ? 1 : 0
+  count     = var.ai_enabled && !var.identity_enabled ? 1 : 0
   algorithm = "ED25519"
 }
 
 resource "kubernetes_secret_v1" "ai_identity" {
-  count = var.ai_enabled ? 1 : 0
+  count = var.ai_enabled && !var.identity_enabled ? 1 : 0
   metadata {
     name      = "ai-identity"
     namespace = kubernetes_namespace_v1.foundation["apps"].metadata[0].name
@@ -41,7 +41,7 @@ resource "kubernetes_secret_v1" "ai_identity" {
 }
 
 resource "kubernetes_secret_v1" "web_portal_assistant_signer" {
-  count = var.ai_enabled ? 1 : 0
+  count = var.ai_enabled && !var.identity_enabled ? 1 : 0
   metadata {
     name      = "web-portal-assistant-signer"
     namespace = kubernetes_namespace_v1.foundation["apps"].metadata[0].name
@@ -165,12 +165,21 @@ resource "kubernetes_stateful_set_v1" "knowledge_postgres" {
           }
           readiness_probe {
             exec { command = ["pg_isready", "-U", "rpp_knowledge_admin", "-d", "ai_knowledge"] }
-            period_seconds = 2
+            period_seconds  = 5
+            timeout_seconds = 5
+          }
+          startup_probe {
+            exec { command = ["pg_isready", "-U", "rpp_knowledge_admin", "-d", "ai_knowledge"] }
+            period_seconds    = 5
+            timeout_seconds   = 5
+            failure_threshold = 30
           }
           liveness_probe {
             exec { command = ["pg_isready", "-U", "rpp_knowledge_admin", "-d", "ai_knowledge"] }
             initial_delay_seconds = 15
             period_seconds        = 10
+            timeout_seconds       = 5
+            failure_threshold     = 6
           }
           volume_mount {
             name       = "data"

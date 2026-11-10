@@ -36,7 +36,7 @@ flowchart TB
 
 | File | Creates | Used by / uses |
 |---|---|---|
-| [deployment.yaml](templates/deployment.yaml) | API Deployment (maintains API pods) | Selected by the Service; uses database Secret and optional TLS/telemetry |
+| [deployment.yaml](templates/deployment.yaml) | API Deployment (maintains API pods) | Selected by the Service; uses database Secret, optional TLS/telemetry and HTTP-container OIDC configuration |
 | [service.yaml](templates/service.yaml) | Internal Service (stable address) | Ingress and internal callers; selects API pods, port 80 to pod port 8080 |
 | [ingress.yaml](templates/ingress.yaml) | `/api` Ingress rule | Traefik reads the rule and routes to the API Service without removing `/api` |
 | [workers.yaml](templates/workers.yaml) | Relay and consumer Deployments, only when `events.enabled` | Use database/event Secrets and schema ConfigMap; communicate with PostgreSQL/Kafka/Apicurio |
@@ -56,6 +56,9 @@ flowchart LR
     T --> S --> P["API pods:8080"]
     D -. "maintains" .-> P
     P --> DB["PostgreSQL"]
+    P -. "optional JWKS verification" .-> KC["Keycloak"]
+    T -. "optional OIDC payments route" .-> BFF["Portal BFF"]
+    BFF -->|"audience-scoped token"| S
     W --> DB
     W --> K["Kafka / Apicurio"]
     X["Terraform Secrets / schema ConfigMap"] -. "credentials / files" .-> P
@@ -104,6 +107,19 @@ Useful vocabulary shared by the other charts:
 - **Resources / securityContext:** CPU/memory requests reserve scheduling
   capacity; limits bound usage. Security settings restrict user, filesystem
   writes and Linux privileges.
+
+When `oidc.enabled`, only the HTTP container receives `oidc.issuer` and
+`oidc.internalUrl`. It independently requires a `payment-api` audience,
+`openid` scope and `payments:read` or `payments:write`, even for direct Service
+callers. Probes, metrics and version endpoints remain public. Migrations and
+event workers retain their scoped database/Kafka credentials, not human OIDC
+sessions. The identity-enabled portal installs the more-specific payments
+Ingress and exchanges a token before forwarding to the API Service.
+
+Use `make dev-update` after changing module charts: it refreshes their local
+snapshots before Terraform applies them, preserving the streaming savepoint
+guard. Applying an already prepared snapshot alone does not copy new chart
+source into the deployment.
 
 Helm syntax is evaluated before Kubernetes sees the YAML:
 

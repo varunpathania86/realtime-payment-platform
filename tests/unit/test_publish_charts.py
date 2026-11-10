@@ -136,7 +136,7 @@ class ChartPublicationTests(unittest.TestCase):
             publish_chart(self.source, CONTEXT, RESERVATION, VERSION, REPOSITORY, IMAGE)
 
     def test_workload_and_hook_containers_require_the_approved_digest(self):
-        for kind in ("Deployment", "StatefulSet", "DaemonSet", "Job"):
+        for kind in ("Deployment", "StatefulSet", "DaemonSet", "Job", "CronJob"):
             for field in ("containers", "initContainers"):
                 with self.subTest(kind=kind, field=field):
                     pod = {"containers": [{"image": f"{REPOSITORY}@{IMAGE}"}]}
@@ -144,11 +144,14 @@ class ChartPublicationTests(unittest.TestCase):
 
                     def command(args, **kwargs):
                         if args[:2] == ["helm", "template"]:
+                            workload = {"template": {"spec": pod}}
+                            if kind == "CronJob":
+                                workload = {"jobTemplate": {"spec": workload}}
                             documents = [
                                 {"kind": "Deployment", "spec": {"template": {"spec": {
                                     "containers": [{"image": f"{REPOSITORY}@{IMAGE}"}],
                                 }}}},
-                                {"kind": kind, "spec": {"template": {"spec": pod}}},
+                                {"kind": kind, "spec": workload},
                             ]
                             return subprocess.CompletedProcess(args, 0,
                                 stdout=yaml.safe_dump_all(documents), stderr="")
@@ -161,9 +164,23 @@ class ChartPublicationTests(unittest.TestCase):
                     ):
                         publish_chart(self.source, CONTEXT, RESERVATION, VERSION, REPOSITORY, IMAGE)
 
-    def test_real_helm_packages_application_and_stateful_charts_and_metadata_is_read_by_digest(self):
+    def test_chart_without_pod_workloads_is_rejected(self):
+        def command(args, **kwargs):
+            if args[:2] == ["helm", "template"]:
+                return subprocess.CompletedProcess(args, 0, stdout="kind: ConfigMap\n", stderr="")
+            return self.command(args, **kwargs)
+
+        with (
+            patch("scripts.publish_modules.registry_manifest", return_value=None),
+            patch("scripts.publish_modules.subprocess.run", side_effect=command) as run,
+            self.assertRaisesRegex(ValueError, "immutable digest"),
+        ):
+            publish_chart(self.source, CONTEXT, RESERVATION, VERSION, REPOSITORY, IMAGE)
+        self.assertNotIn(["helm", "push"], [call.args[0][:2] for call in run.call_args_list])
+
+    def test_real_helm_packages_supported_charts_and_metadata_is_read_by_digest(self):
         real_run = subprocess.run
-        for name in ("payment-api", "web-portal", "realtime-analytics"):
+        for name in ("payment-api", "web-portal", "realtime-analytics", "operations-knowledge"):
             with self.subTest(module=name):
                 chart = self.source / "modules" / name / "chart"
                 if not chart.exists():

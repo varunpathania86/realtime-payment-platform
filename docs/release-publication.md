@@ -51,12 +51,16 @@ Do not bypass this trust boundary or copy a second runtime version into a
 Dockerfile default just to make branch publication succeed.
 
 Chart digest validation covers regular and init containers in Deployments,
-StatefulSets, DaemonSets and hook Jobs. A StatefulSet-only chart must not fail
-because it has no Deployment, and hook images must not escape digest checks.
-Real Helm packaging regressions cover ClickHouse as well as application charts.
+StatefulSets, DaemonSets, hook Jobs and CronJobs, including suspended CronJobs
+used as on-demand Job templates. A StatefulSet- or CronJob-only chart must not
+fail because it has no Deployment, and init containers or additional workload
+images must not escape digest checks. Real Helm packaging regressions cover
+ClickHouse, operations knowledge and application charts.
 The error `published chart must render the approved image by immutable digest`
 requires checking both the rendered resources and the trusted validator; do
-not assume it means the source chart omitted its image digest.
+not assume it means the source chart omitted its image digest. A validator fix
+on a feature branch does not change credentialed publication until the reviewed
+tooling reaches `main` and a subsequent publication run uses that revision.
 
 ### Events and responsibilities
 

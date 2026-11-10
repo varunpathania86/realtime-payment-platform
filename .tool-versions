@@ -10,6 +10,7 @@ yq 4.54.1
 nodejs 22.22.1
 tflint 0.65.0
 trivy 0.76.1
+editorconfig-checker 3.11.1
 # Container image tag used by local PostgreSQL and integration tests (not a CLI).
 postgres 16.6-alpine
 # Shared local event infrastructure container tags (not host CLIs).
@@ -56,4 +57,24 @@ superset-image-digest sha256:16b50bbef6648912a79e3293d418fefa743ce555d36c5af6b85
 ai-python 3.12.16-slim-bookworm
 llama-cpp server-b12124
 llama-cpp-image-digest sha256:c0a11067c72bb1eb330b8bddbf9869274c195e596bf4fae55fd527102e644b85
+llama-cpp-cuda server-cuda-b12124
+llama-cpp-cuda-image-digest sha256:821d0ae4e5d4e82a2ad8d08973b5f9cd5d0b84524b1d2439ed1f3e41ebc6b4c7
+nvidia-device-plugin 0.20.1
+nvidia-device-plugin-chart-sha256 b705142f03ac17906bfcface9319e2f7b9a570d2af7f04f23252723ce2c0bb8e
 pgvector 0.8.7-pg16-bookworm
+# Stage 11 identity provider; the digest pins the upstream multi-arch image.
+keycloak 26.8.2
+keycloak-image-digest sha256:3879c623248408de29a5303178b5816c77e8dfef3890c361f8c0bbeaa979ba3b
+# Optional DBX Web workbench; keep the internal connection API adapter coupled to this release.
+dbx 0.6.67
+dbx-api-contract 0.6.67
+dbx-image-digest sha256:0fdaf801248c7155431d6d1d412f9f7cc9b79b955dc956571d8e9c03993c0020
+# Official agents-v0.2.159 offline artifacts compatible with the pinned Web release.
+dbx-agents-release 0.2.159
+dbx-agent-kafka 0.1.24
+dbx-agent-kafka-sha256 4608d6e7f53412aab8b26821c07094a4e0532eff5953089d4672825b324e9c67
+dbx-agent-trino 0.1.92
+dbx-agent-trino-sha256 a196ecee4bdb06809371753fc18230ab1fb2d8b0ae02ef13804f7d156c631143
+dbx-jre 21.0.12+kerberos.ec.2
+dbx-jre-sha256-amd64 fa6f93ed486c7ee7bba1fcb0f24d8cd4eb640d68b16e6695b4829abe2604ac13
+dbx-jre-sha256-arm64 203c93a780c28daa95cf2ffa043a70fae1eb14e1eafdb3749bf97c81a61d9e94

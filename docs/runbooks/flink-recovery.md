@@ -17,11 +17,11 @@ MinIO is persistent local development storage, not a replicated backup.
 ## Diagnosis
 
 1. Run `make dev-status` and check both Flink roles, MinIO and Kafka readiness.
-2. Inspect `kubectl --context rpp-a -n apps logs deployment/stream-processor-taskmanager`.
+2. Inspect `kubectl --context rpp-1 -n apps logs deployment/stream-processor-taskmanager`.
 3. Use a loopback REST forward:
 
     ```bash
-    kubectl --context rpp-a -n apps port-forward --address 127.0.0.1 service/stream-processor 8081:8081
+    kubectl --context rpp-1 -n apps port-forward --address 127.0.0.1 service/stream-processor 8081:8081
     ```
 
 4. Inspect the running job and completed checkpoint at `/jobs/overview` and
@@ -40,16 +40,16 @@ MinIO is persistent local development storage, not a replicated backup.
 Before updating stateful processing, create a compatible savepoint:
 
 ```bash
-make streaming-savepoint DEV_PROFILE=rpp
-make streaming-stop DEV_PROFILE=rpp
+make streaming-savepoint MULTI_CLUSTER=3
+make streaming-stop MULTI_CLUSTER=3
 ```
 
-Save the returned URI. Do not remove the MinIO volume or use `dev-down` when
+Save the returned URI. Do not remove the MinIO volume or use `dev-clean` when
 you intend to retain state. Restore after stopping/replacing the session
 cluster using the returned URI:
 
 ```bash
-STREAMING_RESTORE_PATH=s3://flink-state/savepoints/<returned-savepoint> make dev-update DEV_PROFILE=rpp
+STREAMING_RESTORE_PATH=s3://flink-state/savepoints/<returned-savepoint> make dev-update MULTI_CLUSTER=3
 ```
 
 The local update guard refuses a changed stateful image without an explicit
@@ -93,6 +93,6 @@ Keep stable operator UIDs, monitor checkpoint failures/age and disk capacity,
 and test serializer compatibility before upgrades. Deduplication is bounded by
 24-hour processing-time TTL. MinIO PVC deletion destroys checkpoints/savepoints.
 Disabling the streaming feature also removes its owned MinIO PVC; export any
-state you need before removing the feature or running `dev-down`.
+state you need before removing the feature or running `dev-clean`.
 Cluster-A loss is not covered by local HA. Stage 6 adds the persistent analytics
 sink and durable lineage; it must preserve result-revision semantics.

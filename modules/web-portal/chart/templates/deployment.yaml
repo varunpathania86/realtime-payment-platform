@@ -9,6 +9,9 @@ With assistant.enabled it also signs short-lived identity assertions with the Ed
 from assistant.signingSecret and forwards questions to the ai-orchestrator Service (ADR-030).
 values.yaml supplies the image, replicas, resource budget, identity, BI and optional telemetry. See ../README.md.
 */}}
+{{- if and .Values.oidc.enabled (ne (int .Values.replicaCount) 1) }}
+{{- fail "OIDC requires one web-portal replica while opaque sessions are stored in process memory" }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -28,7 +31,7 @@ spec:
         runAsNonRoot: true
         runAsUser: 65532
         runAsGroup: 65532
-        {{- if and .Values.identity.enabled .Values.assistant.enabled }}
+        {{- if and .Values.identity.enabled .Values.assistant.enabled (not .Values.oidc.enabled) }}
         # Lets the non-root user read the 0440 signing key file.
         fsGroup: 65532
         {{- end }}
@@ -48,12 +51,23 @@ spec:
               value: {{ .Values.telemetry.cluster | quote }}
           {{- end }}
           {{- if .Values.identity.enabled }}
+          {{- if .Values.oidc.enabled }}
+            # OIDC tokens stay in BFF memory; only the confidential client secret is mounted.
+            - {name: OIDC_ISSUER, value: {{ .Values.oidc.issuer | quote }}}
+            - {name: OIDC_INTERNAL_URL, value: {{ .Values.oidc.internalUrl | quote }}}
+            - {name: OIDC_PORTAL_ORIGIN, value: {{ .Values.oidc.portalOrigin | quote }}}
+            - {name: OIDC_LOCAL_HTTP, value: {{ .Values.oidc.localHTTP | quote }}}
+            - name: OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef: {name: {{ .Values.oidc.existingSecret }}, key: oidc-client-secret}
+          {{- else }}
             - name: PORTAL_SESSION_KEY
               valueFrom:
                 secretKeyRef: {name: {{ .Values.identity.existingSecret }}, key: session-key}
             - name: PORTAL_DEV_USERS
               valueFrom:
                 secretKeyRef: {name: {{ .Values.identity.existingSecret }}, key: dev-users}
+          {{- end }}
             - name: PORTAL_ALLOWED_ORIGINS
               {{- /* The Go server splits this value on spaces. */}}
               value: {{ join " " .Values.identity.allowedOrigins | quote }}
@@ -74,12 +88,14 @@ spec:
           {{- if and .Values.identity.enabled .Values.assistant.enabled }}
             - name: AI_ORCHESTRATOR_URL
               value: {{ .Values.assistant.orchestratorUrl | quote }}
+            {{- if not .Values.oidc.enabled }}
             - name: AI_ASSERTION_PRIVATE_KEY_FILE
               value: /assistant-identity/private-key.pem
           volumeMounts:
             - name: assistant-identity
               mountPath: /assistant-identity
               readOnly: true
+            {{- end }}
           {{- end }}
           ports:
             - name: http
@@ -102,7 +118,7 @@ spec:
             initialDelaySeconds: 3
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
-      {{- if and .Values.identity.enabled .Values.assistant.enabled }}
+      {{- if and .Values.identity.enabled .Values.assistant.enabled (not .Values.oidc.enabled) }}
       volumes:
         # Only the portal mounts the private key; orchestrator and tools mount the public key (ai-identity).
         - name: assistant-identity

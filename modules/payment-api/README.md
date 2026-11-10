@@ -9,6 +9,15 @@ metadata. Stage 3 atomically adds an outbox event per payment and provides relay
 and receipt-consumer worker modes. Neither mode authorizes or settles payments.
 Only synthetic UUIDs and integer money amounts are used.
 
+Stage 11 `OIDC_ISSUER`/`OIDC_INTERNAL_URL` enable independent Keycloak RS256
+verification for every payment endpoint: exact issuer, `payment-api` audience,
+expiry, `openid` scope and resource-specific `payments:read` or
+`payments:write`. Viewers cannot write. Browser traffic reaches these
+endpoints through the portal's opaque session and audience-token exchange;
+direct API callers supply their own valid audience-scoped bearer token.
+Health, readiness, metrics and build metadata remain available to probes and
+local smoke checks. Configured invalid identity fails closed.
+
 ## Layout
 
 See the [Helm chart guide](chart/README.md) for template purposes, Kubernetes
@@ -53,8 +62,9 @@ From the repository root, `make dev-up` deploys the local environment,
 `make dev-update` rebuilds local images, and `make smoke` checks the routed endpoints.
 This provisions PostgreSQL, generates private profile-local credentials, and
 runs migrations before the API starts. Keep `make dev-access` running for ingress.
-New development bases run the stack in three independent clusters. Select a
-member for access/smoke with `MINIKUBE_PROFILE=<base>-a` (or `-b`/`-c`).
+The `MULTI_CLUSTER=3` topology runs the stack in three independent clusters. Select a
+member for access/smoke with `MULTI_CLUSTER=3 MINIKUBE_PROFILE=rpp-1`
+(or `rpp-2`/`rpp-3`).
 Set chart `replicaCount`, `events.relayReplicas` and `events.consumerReplicas`
 independently to positive integers; each defaults to one. The development
 `DEV_CONFIG` maps these to per-cluster `applications.payment-api`, `relay`

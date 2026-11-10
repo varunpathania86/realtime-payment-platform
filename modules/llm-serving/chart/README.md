@@ -47,6 +47,8 @@ flowchart LR
     O["ai-orchestrator"] --> SC
     K["operations-knowledge Job"] --> SE
     T["assistant-tools"] --> SE
+    P -. "optional: one shared slot per server" .-> G["NVIDIA GPU"]
+    DP["Terraform-owned NVIDIA device plugin"] -. "two time-sliced slots per GPU" .-> G
 ```
 
 ## Prerequisites
@@ -66,3 +68,12 @@ download the models; later starts reuse the volume offline.
 | `embed.contextSize`, `embed.threads` | Embedding batch size equals context so each input embeds in one pass |
 | `*.resources`, `fetchResources` | CPU and memory per container |
 | `replicaCount` | Must be 1 because the models volume is ReadWriteOnce |
+| `gpu.enabled` | Require CUDA0 and full layer offload in both servers; each requests/limits one `nvidia.com/gpu.shared` slot |
+
+GPU mode also requires the CUDA image selected by the local build and the
+Terraform-owned NVIDIA device plugin; this chart does not install a second
+plugin. The plugin advertises shared slots using time slicing, without GPU
+memory isolation. The init container explicitly hides GPU devices and requests
+no slot; CUDA caching is disabled so application filesystems stay read-only.
+See [GPU setup](../../../docs/developer-setup.md#optional-nvidia-acceleration-for-ai)
+before enabling the value. The default CPU render is unchanged.
