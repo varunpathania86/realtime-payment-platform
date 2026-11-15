@@ -2181,6 +2181,20 @@
       "reservedVersion": "0.0.1-it2-rv.2",
       "sourceCommit": "dcf77d6bb220fd42ecea0849c8a407c60e58d42f",
       "targetVersion": "0.0.1"
+    },
+    {
+      "approvedImpact": "patch",
+      "branch": "main",
+      "chartRegistry": "oci://ghcr.io/varunpathania86/charts",
+      "counter": 2,
+      "integrated": true,
+      "iteration": 2,
+      "module": "lakehouse-catalog",
+      "registry": "ghcr.io/varunpathania86",
+      "releaseLine": "main",
+      "reservedVersion": "0.0.1-it2-rv.2",
+      "sourceCommit": "dcf77d6bb220fd42ecea0849c8a407c60e58d42f",
+      "targetVersion": "0.0.1"
     }
   ],
   "schemaVersion": 1
