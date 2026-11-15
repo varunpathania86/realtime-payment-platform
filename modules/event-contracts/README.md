@@ -11,7 +11,7 @@ compatibility against every retained baseline, and payment-api registers the
 canonical schema in Apicurio at relay startup. The HTTP OpenAPI contract lives
 with payment-api. This module remains a data bundle, not a broker or executable.
 
-Stage 5 adds `payment.processing.v1`, a **separate synthetic dataset** with
+Stage 5 added `payment.processing.v1`, originally a separate synthetic dataset with
 account, country, payment method and labeled outcomes for Flink exercises.
 It does not change initiation semantics or make authorization decisions.
 Its Kafka transport is JSON with CreateTime equal to `event_time`, rather than
@@ -21,9 +21,16 @@ baseline still define and validate the logical contract.
 Stage 7 adds optional `account_created_at` (RFC3339 UTC, not after the
 payment's event time) and `device_id` (synthetic UUID). Both are nullable with
 null defaults, so older producers remain valid. Missing context is unknown,
-not evidence of an established account or an unchanged device. These fields
-belong only to the synthetic processing dataset; initiation events and
-authorization behavior are unchanged.
+not evidence of an established account or an unchanged device. These fields are now also carried as synthetic context in initiation payloads
+so the relay can produce processing events for the same API-created payment.
+
+The unified development update requires country and payment method in API
+requests and carries them through initiation and processing. Explicit event-time
+and outcome controls require the generator service's `payments:simulate` role.
+The current unreleased initiation schema/baseline is replaced in place by
+explicit maintainer approval; old local messages/databases require recreation.
+Future retained versions still follow the compatibility checks below.
+See [ADR-035](../../docs/adr/ADR-035-unified-api-originated-stream.md).
 
 ## Layout
 

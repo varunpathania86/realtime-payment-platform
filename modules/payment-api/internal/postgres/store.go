@@ -116,12 +116,15 @@ func (s *Store) Ready(ctx context.Context) error {
 	return nil
 }
 
-const columns = `id::text, account_id::text, amount_minor, currency, status, created_at`
+const columns = `id::text, account_id::text, amount_minor, currency, country, payment_method,
+account_created_at, device_id, simulation_event_time, simulation_outcome, status, created_at`
 
 func scan(row *sql.Row) (payment.Payment, error) {
 	var p payment.Payment
-	err := row.Scan(&p.ID, &p.AccountID, &p.AmountMinor, &p.Currency, &p.Status, &p.CreatedAt)
+	err := row.Scan(&p.ID, &p.AccountID, &p.AmountMinor, &p.Currency, &p.Country, &p.PaymentMethod,
+		&p.AccountCreatedAt, &p.DeviceID, &p.Simulation.EventTime, &p.Simulation.Outcome, &p.Status, &p.CreatedAt)
 	p.CreatedAt = p.CreatedAt.UTC()
+	p.ProcessingEventID = payment.ProcessingID(p.ID)
 	return p, err
 }
 
@@ -139,10 +142,12 @@ func (s *Store) Create(ctx context.Context, key string, command payment.Command)
 	}
 	defer tx.Rollback()
 	p, err := scan(tx.QueryRowContext(ctx, `INSERT INTO payments
-		(id, account_id, amount_minor, currency, status, idempotency_key)
-		VALUES ($1, $2, $3, $4, 'initiated', $5)
+		(id, account_id, amount_minor, currency, status, idempotency_key, country, payment_method,
+		account_created_at, device_id, simulation_event_time, simulation_outcome)
+		VALUES ($1, $2, $3, $4, 'initiated', $5, $6, $7, $8, $9, $10, $11)
 		ON CONFLICT (idempotency_key) DO NOTHING RETURNING `+columns,
-		id, command.AccountID, command.AmountMinor, command.Currency, key))
+		id, command.AccountID, command.AmountMinor, command.Currency, key, command.Country, command.PaymentMethod,
+		command.AccountCreatedAt, command.DeviceID, command.Simulation.EventTime, command.Simulation.Outcome))
 	if errors.Is(err, sql.ErrNoRows) {
 		// A conflicting INSERT waits for the winner to commit. A fresh READ COMMITTED
 		// statement can then see that row, including when both requests arrived together.

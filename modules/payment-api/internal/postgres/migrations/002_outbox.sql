@@ -24,7 +24,7 @@ SELECT md5('payment.initiated.v1:' || id::text)::uuid, id, account_id,
         'correlation_id', id,
         'causation_id', NULL,
         'schema_version', 1,
-        'payload', jsonb_build_object('payment_id', id, 'amount_minor', amount_minor, 'currency', currency)
+        'payload', jsonb_build_object('payment_id', id, 'amount_minor', amount_minor, 'currency', currency, 'country', country, 'payment_method', payment_method, 'account_created_at', account_created_at, 'device_id', device_id, 'simulation_event_time', simulation_event_time, 'simulation_outcome', simulation_outcome)
     )
 FROM payments
 ORDER BY created_at, id;

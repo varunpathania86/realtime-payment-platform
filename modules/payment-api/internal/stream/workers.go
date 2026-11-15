@@ -44,10 +44,19 @@ func RunRelay(ctx context.Context, store *postgres.Store, k *Kafka, registry *Re
 	if err != nil {
 		return err
 	}
+	setup, cancel = context.WithTimeout(ctx, 15*time.Second)
+	err = k.EnsureTopic(setup, "payment-processing-events-v1")
+	cancel()
+	if err != nil {
+		return err
+	}
 	for ctx.Err() == nil {
 		attempt, cancel := context.WithTimeout(ctx, 10*time.Second)
 		result, err := store.RelayOne(attempt, 8, func(ctx context.Context, message postgres.Publication) error {
-			return k.Publish(ctx, topic, id, codec, message)
+			if err := k.Publish(ctx, topic, id, codec, message); err != nil {
+				return err
+			}
+			return k.PublishProcessing(ctx, message)
 		})
 		cancel()
 		if err != nil {

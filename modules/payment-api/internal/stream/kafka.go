@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -15,6 +16,7 @@ import (
 	"github.com/segmentio/kafka-go/sasl/scram"
 	"github.com/varunpathania86/realtime-payment-platform/modules/payment-api/internal/event"
 	"github.com/varunpathania86/realtime-payment-platform/modules/payment-api/internal/postgres"
+	"github.com/varunpathania86/realtime-payment-platform/modules/payment-api/internal/simulation"
 	"github.com/varunpathania86/realtime-payment-platform/modules/payment-api/internal/telemetry"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -167,6 +169,7 @@ func (k *Kafka) Publish(ctx context.Context, topic string, id uint32, codec *eve
 		span.SetStatus(codes.Error, "event_encoding_failed")
 		return err
 	}
+
 	headers := Headers{{Key: "event_id", Value: []byte(message.Event.ID)}}
 	telemetry.Propagator.Inject(ctx, &headers)
 	err = k.writer.WriteMessages(ctx, kafka.Message{
@@ -184,6 +187,32 @@ func (k *Kafka) Publish(ctx context.Context, topic string, id uint32, codec *eve
 	slog.InfoContext(ctx, "kafka_publication", "event_id", message.Event.ID,
 		"payment_id", message.Event.Payload.PaymentID, "success", err == nil)
 	return err
+}
+
+func (k *Kafka) PublishProcessing(ctx context.Context, message postgres.Publication) error {
+	record, err := simulation.FromInitiation(message.Event, message.AccountID)
+	if err != nil {
+		return err
+	}
+	data, err := json.Marshal(record)
+	if err != nil {
+		return err
+	}
+	timestamp, err := time.Parse(time.RFC3339Nano, record.EventTime)
+	if err != nil {
+		return err
+	}
+	headers := Headers{{Key: "event_id", Value: []byte(record.EventID)}}
+	telemetry.Propagator.Inject(ctx, &headers)
+	if err := k.writer.WriteMessages(ctx, kafka.Message{
+		Topic: "payment-processing-events-v1", Key: []byte(record.AccountID), Value: data,
+		Time: timestamp, Headers: []kafka.Header(headers),
+	}); err != nil {
+		return errors.New("synthetic processing publication failed")
+	}
+	slog.InfoContext(ctx, "synthetic_processing_published", "event_id", record.EventID,
+		"payment_id", record.PaymentID, "simulated_outcome", record.Outcome)
+	return nil
 }
 
 type Headers []kafka.Header

@@ -24,7 +24,7 @@
   "roles": {
     "client": {
       "web-portal": [{"name": "bi:view"}],
-      "payment-api": [{"name": "payments:read"}, {"name": "payments:write"}],
+      "payment-api": [{"name": "payments:read"}, {"name": "payments:write"}, {"name": "payments:simulate"}],
       "ai-orchestrator": [{"name": "ai:invoke"}, {"name": "ai:admin"}],
       "assistant-tools": [
         {"name": "knowledge:read"}, {"name": "knowledge:restricted"},
@@ -86,6 +86,26 @@
     }
   ],
   "clients": [
+    {
+      "clientId": "payment-generator",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "${GENERATOR_CLIENT_SECRET}",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": true,
+      "defaultClientScopes": ["basic", "roles"],
+      "protocolMappers": [
+        {
+          "name": "payment-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {"included.client.audience": "payment-api", "access.token.claim": "true", "id.token.claim": "false"}
+        }
+      ]
+    },
     {
       "clientId": "web-portal",
       "enabled": true,
@@ -180,6 +200,12 @@
     }
   ],
   "users": [
+    {
+      "username": "service-account-payment-generator",
+      "enabled": true,
+      "serviceAccountClientId": "payment-generator",
+      "clientRoles": {"payment-api": ["payments:read", "payments:write", "payments:simulate"]}
+    },
     {
       "username": "ops-viewer",
       "enabled": true,

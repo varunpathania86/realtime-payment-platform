@@ -66,6 +66,11 @@ flowchart LR
   `/realms/master`. Bootstrap administration requires an explicit loopback-only
   Service port forward.
 - Grafana and Superset clients use OIDC and map per-tool resource roles.
+- `payment-generator` is a confidential service client with client credentials,
+  not human login. Its service account has only payment read/write/simulate
+  roles and a payment-api audience. Terraform copies its generated secret into
+  the apps namespace for live API fixture tooling; human role mappings do not
+  receive synthetic time/outcome controls.
   The Argo CD client remains disabled; Argo CD
   deployment is deferred to its own stage.
 - Keep the `basic` default client scope: Keycloak 26.8 uses it to put `sub`

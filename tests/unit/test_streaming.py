@@ -42,6 +42,19 @@ class StreamingTests(unittest.TestCase):
         )
         return list(yaml.safe_load_all(rendered.stdout))
 
+    def test_only_jobmanager_receives_payment_generator_credentials(self):
+        for resource in self.render(True):
+            if not resource or resource["kind"] != "Deployment":
+                continue
+            env = {item["name"]: item for item in resource["spec"]["template"]["spec"]["containers"][0]["env"]}
+            if resource["metadata"]["name"].endswith("-jobmanager"):
+                self.assertEqual(env["PAYMENT_API_URL"]["value"], "http://payment-api:80")
+                self.assertEqual(env["PAYMENT_GENERATOR_SECRET"]["valueFrom"]["secretKeyRef"],
+                    {"name": "payment-generator", "key": "client-secret", "optional": True})
+            else:
+                self.assertNotIn("PAYMENT_GENERATOR_SECRET", env)
+                self.assertNotIn("PAYMENT_TOKEN_URL", env)
+
     def test_lakehouse_requires_streaming_and_wires_two_slots_and_writer_secret(self):
         command = ["helm", "template", "stream-processor", str(ROOT / "modules/stream-processor/chart"),
             "--namespace", "apps", "--set", "lakehouse.enabled=true"]

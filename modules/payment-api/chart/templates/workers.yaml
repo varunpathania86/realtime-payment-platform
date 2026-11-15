@@ -1,6 +1,7 @@
 {{/*
 When events.enabled is true, renders two Deployments from the same image: relay and consumer.
-Relay publishes PostgreSQL outbox records to Kafka; consumer stores deduplicated receipts.
+Relay publishes PostgreSQL outbox initiations and derived synthetic processing events to Kafka;
+consumer stores deduplicated initiation receipts. Flink consumes the processing topic.
 Terraform supplies database/event Secrets and the schema ConfigMap; these workers are not
 selected by the HTTP API Service. "$" retains the chart context inside the range loop.
 See ../README.md for the resource and data-flow diagram.

@@ -231,7 +231,7 @@ group.initial.rebalance.delay.ms=0
 	if err := unauthorized.Close(); err != nil {
 		t.Fatal(err)
 	}
-	p, err := store.Create(ctx, "recovery", payment.Command{AccountID: "12345678-1234-4234-8234-123456789abc", AmountMinor: 1250, Currency: "USD"})
+	p, err := store.Create(ctx, "recovery", payment.Command{AccountID: "12345678-1234-4234-8234-123456789abc", AmountMinor: 1250, Currency: "USD", Country: "DE", PaymentMethod: "transfer"})
 	if err != nil {
 		t.Fatal(err)
 	}

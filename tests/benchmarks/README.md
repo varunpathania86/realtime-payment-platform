@@ -30,6 +30,13 @@ tests/benchmarks/
 These are different metrics. A fast query over already stored data is not a
 measurement of pipeline ingestion latency.
 
+The current launcher submits authenticated API requests, not direct Kafka
+events. The two historical reports above are unchanged: they do not measure
+the new API/outbox/simulation path or certify its capacity. New runs require
+the provisioned `payment-generator` service identity and a separate report.
+Current streaming presets include Keycloak and budget 8192 MiB for cluster 1;
+the historical 6144-MiB pipeline report is not a measurement of these presets.
+
 ## Prerequisites
 
 - Follow [developer setup](../../docs/developer-setup.md); pinned dependencies

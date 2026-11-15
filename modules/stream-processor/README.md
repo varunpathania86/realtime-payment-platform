@@ -15,8 +15,11 @@ Checkpointed PyFlink processing of synthetic payment outcomes. Part of
 - Opt-in Stage 7 advisory ONNX inference, checkpointed account/currency history,
   append-only prediction revisions and version-labelled model metrics.
 
-The processing dataset is separate from API initiation events. Synthetic
-`authorized`/`rejected` values are labels, not payment decisions.
+Processing events are derived from API-created payments by the Go outbox
+relay's deterministic simulation. Synthetic `authorized`/`rejected` values
+are labels, not payment decisions. Live input always starts at the API using
+the `payment-generator` Keycloak service identity; Kafka clients here only
+inspect output and offsets. Isolated operator/unit tests still use records.
 
 ## Layout
 
@@ -27,7 +30,8 @@ hook and external storage/service relationships.
 .
 ├── chart/          # Opt-in session cluster and job submission
 ├── configuration.py # Preserve native Flink/Java defaults during configuration
-├── control.py      # Kafka fixtures and materialized result inspection
+├── control.py      # API fixtures and materialized Kafka result inspection
+├── payment_client.py # Client-credentials tokens, API submission and idempotency
 ├── fixtures.py     # Deterministic disorder/late/duplicate/idle/skewed cases
 ├── job.py          # Real PyFlink keyed state and event-time timers
 ├── processing.py   # Pure event validation and aggregate calculations
@@ -53,6 +57,7 @@ make -C modules/stream-processor integration
 make dev-up MULTI_CLUSTER=3 DEV_CONFIG=templates/streaming-topology.json
 make streaming-fixtures MULTI_CLUSTER=3
 make streaming-inspect MULTI_CLUSTER=3
+make unified-stream-verify MULTI_CLUSTER=3
 make streaming-savepoint MULTI_CLUSTER=3
 ```
 
@@ -83,6 +88,9 @@ enables them only in cluster 1 and provisions a 5 GiB MinIO PVC. Kafka uses the 
 TLS/SCRAM credentials, private cluster services and three partitions. Input
 records are UTF-8 JSON conforming to the Avro logical contract; this topic does
 not use the initiation topic's Confluent-wire encoding.
+The relay owns processing-event publication. Live synthetic tools require
+Keycloak, `PAYMENT_API_URL`, `PAYMENT_TOKEN_URL` and the Secret-injected
+`PAYMENT_GENERATOR_SECRET`; configured identity is never bypassed.
 
 Deployment preserves the image's Java 17 module-access flags and pins the
 BlobServer service port. The submission hook waits for a completed durable
@@ -118,6 +126,11 @@ These are Flink operator metrics, not invented HTTP payment metrics.
 
 ### Bounded pipeline benchmark
 
+The current benchmark starts its timer at the authenticated API request,
+including PostgreSQL/outbox, relay simulation, Kafka and Flink before observing
+the ClickHouse fact. Historical Stage 6 reports retain their original direct
+Kafka origin and cannot be reused as measurements of this unified path.
+
 The existing `make streaming-load` is a small recovery workload, not a capacity
 benchmark. Use the separate three-cluster benchmark for throughput, lag and fact
 visibility latency:
@@ -129,9 +142,10 @@ make streaming-benchmark MULTI_CLUSTER=3
 ```
 
 Do not continue to `dev-up` if preflight fails. The benchmark template budgets
-cluster 1 at 4 CPUs/6144 MiB and clusters 2/3 at 2 CPUs/3072 MiB each, without observability
-backends. A fresh start requires 14336 MiB **available** host memory, including
+cluster 1 at 4 CPUs/8192 MiB and clusters 2/3 at 2 CPUs/3072 MiB each, with
+Keycloak identity but without observability backends. A fresh start requires 16384 MiB **available** host memory, including
 a 2048-MiB safety reserve; installed RAM alone is not the check.
+The historical 6144-MiB measurements predate authenticated API-originated input.
 
 The measured schedule lasts 285 seconds: 20-second warmup, 120 seconds at
 50 events/s, 10-second baseline drain, 90 seconds at 100 events/s, and a

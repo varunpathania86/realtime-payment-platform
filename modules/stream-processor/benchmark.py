@@ -1,4 +1,4 @@
-"""Bounded synthetic Kafka-to-ClickHouse fact visibility benchmark."""
+"""Bounded authenticated payment-API-to-ClickHouse fact visibility benchmark."""
 
 import base64
 from contextlib import ExitStack
@@ -136,15 +136,12 @@ def job_health():
 
 
 def run():
-    from kafka import KafkaConsumer, KafkaProducer
+    from kafka import KafkaConsumer
+    from payment_client import PaymentClient
     from control import connection
 
     with ExitStack() as cleanup:
-        producer = KafkaProducer(
-            **connection(), acks="all", max_block_ms=5000,
-            request_timeout_ms=5000, api_version_auto_timeout_ms=5000,
-        )
-        cleanup.callback(producer.close, timeout=5)
+        producer = PaymentClient()
         consumer = KafkaConsumer(
             **connection(), enable_auto_commit=False,
             group_id="payment-windows-v1", request_timeout_ms=5000,
@@ -191,14 +188,10 @@ def execute(producer, consumer):
                         raise TimeoutError("producer fell over one second behind its pacing schedule")
                     timestamp = datetime.now(timezone.utc)
                     value = make_event(run_id, phase, index, timestamp)
+                    sent_at = time.monotonic()
+                    result = producer.create(value)
                     with lock:
-                        sent[value["event_id"]] = (phase, time.monotonic())
-                    producer.send(
-                        "payment-processing-events-v1",
-                        partition=partitions[index % len(partitions)].partition,
-                        timestamp_ms=int(timestamp.timestamp() * 1000),
-                        value=json.dumps(value).encode(),
-                    ).get(timeout=5)
+                        sent[result["processing_event_id"]] = (phase, sent_at)
         except Exception as error:
             with lock:
                 errors.append(error)
@@ -252,7 +245,7 @@ def execute(producer, consumer):
                 and after["counts"]["restored"] == before["counts"]["restored"]
             ),
             "measurement": {
-                "latency": "producer send attempt to first query observing FINAL fact; includes polling",
+                "latency": "authenticated API request attempt to first query observing FINAL fact; includes outbox, simulation and polling",
                 "poll_interval_seconds": 1,
                 "lag": "Kafka end offsets minus Flink checkpoint-committed offsets, not processing backlog",
                 "partitions_observed_without_commit": sorted(uncommitted_partitions),
@@ -261,7 +254,7 @@ def execute(producer, consumer):
                 "non_growing_tolerance_events_per_second": 1,
                 "producer_rate_scheduling_tolerance_percent": 1,
                 "terminal_baseline_backlog_limit_events": 100,
-                "scope": "facts only; not event-time aggregate completion or API latency",
+                "scope": "API-originated fact visibility, not event-time aggregate completion or authorization latency",
             },
         }
         print(json.dumps(report, indent=2))

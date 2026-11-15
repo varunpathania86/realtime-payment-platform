@@ -273,6 +273,137 @@ to discard them; do not use the three-cluster cleanup against other profiles.
 
 ### Optional Stage 5 streaming runtime
 
+Live fixtures, load tests, risk acceptance and the current streaming benchmark
+now originate at the payment API. Provision Keycloak identity (included in the
+streaming/analytics/lakehouse example topologies) before running these tools.
+New single-cluster settings also enable identity by default; existing saved
+settings are preserved. The generator Secret is exposed only to JobManager-hosted
+test clients, not TaskManagers.
+Payment and identity PostgreSQL health checks use five-second timeouts and a
+bounded startup probe. One-second exec probes caused repeated restarts during
+fresh full-stack startup; readiness failures still remain visible.
+Terraform supplies a confidential `payment-generator` service client and its
+Secret. Clients request short-lived payment-api audience tokens using client
+credentials; no password grant, human login or manually pasted token is needed.
+
+API requests require `country` and `payment_method` alongside account, amount
+and currency. Synthetic event-time/outcome controls are accepted only with
+`payments:simulate`; human roles do not have that permission.
+The relay publishes initiation and deterministic synthetic processing events
+for the same payment. Neither the API nor simulation performs real payment
+authorization.
+
+```bash
+make streaming-fixtures
+make unified-stream-verify
+make risk-verify     # when the published risk model is enabled
+make lakehouse-verify
+```
+
+`unified-stream-verify` checks API authentication/idempotency, ClickHouse
+lineage/predictions and enabled Iceberg rows. Isolated unit/operator tests still
+use deterministic records; live input tools no longer publish Kafka events.
+The unreleased contract was replaced by explicit approval. Existing old
+databases/message logs need an explicitly approved `make dev-clean` followed by
+recreation; normal source updates never discard them automatically.
+Historical benchmark reports measure the former direct-Kafka origin and are
+not performance evidence for this new flow.
+
+#### Manual payment testing with Postman
+
+For the identity-enabled single-cluster `rpp` environment, use the dedicated
+`payment-generator` service identity. This tests machine-to-machine access, not
+a human login. It has payment read/write/simulate permissions.
+
+1. Start ingress access in a terminal and leave it running:
+
+    ```bash
+    make dev-access MULTI_CLUSTER=0
+    ```
+
+2. Retrieve the generated client secret locally:
+
+    ```bash
+    kubectl --context rpp -n apps get secret payment-generator \
+      -o jsonpath='{.data.client-secret}' | base64 --decode
+    echo
+    ```
+
+    Store it as a local Postman secret variable named `payment_generator_secret`.
+    Do not sync/export the secret or tokens, commit them, or paste them into chat.
+    Do not use Postman's cloud agent for local endpoints; use the desktop app or
+    desktop agent. With VS Code Remote/WSL, ensure the ingress port is reachable
+    from the machine running Postman.
+
+3. Create a token request with **No Auth**, method **POST**, and URL:
+
+    ```text
+    http://identity.localhost:8080/realms/rpp/protocol/openid-connect/token
+    ```
+
+    Select **Body > x-www-form-urlencoded**:
+
+    | Key | Value |
+    |---|---|
+    | `grant_type` | `client_credentials` |
+    | `client_id` | `payment-generator` |
+    | `client_secret` | `{{payment_generator_secret}}` |
+    | `scope` | `openid` |
+
+    Copy the response's `access_token` into a local secret variable named
+    `payment_access_token`; use the access token, not an ID token. Tokens expire
+    after approximately five minutes. Repeat this request when the token expires;
+    no password grant or browser login is needed.
+
+4. Create a payment request with method **POST** and URL:
+
+    ```text
+    http://127.0.0.1:8080/api/payments
+    ```
+
+    Select **Authorization > Bearer Token**, using `{{payment_access_token}}`.
+    Add headers:
+
+    ```text
+    Content-Type: application/json
+    Idempotency-Key: postman-payment-001
+    ```
+
+    Select **Body > raw > JSON** and use synthetic values only:
+
+    ```json
+    {
+      "account_id": "12345678-1234-4234-8234-123456789abc",
+      "amount_minor": 1250,
+      "currency": "EUR",
+      "country": "DE",
+      "payment_method": "transfer",
+      "simulation": {
+        "outcome": "authorized"
+      }
+    }
+    ```
+
+    Expect **201 Created** with `id` and `processing_event_id`. Status remains
+    `initiated`; the simulated outcome is not a real payment authorization.
+    PostgreSQL/outbox publication and Flink processing continue asynchronously.
+    Optional `simulation.event_time` must be an RFC3339 UTC timestamp ending
+    in `Z`, with at most six fractional digits; omit it for ordinary testing.
+    Country must be two uppercase letters; method is `card`, `transfer` or `wallet`.
+
+5. Test reads with **GET** to
+    `http://127.0.0.1:8080/api/payments/<id>` using the same bearer token.
+    Repeating the POST with the same key and body returns the existing payment
+    without another outbox event. Changing its body with the same key returns
+    **409 Conflict**. Use a new key to create a new payment.
+
+Missing, invalid or expired tokens return **401**; insufficient permissions
+return **403**; invalid payment fields return **400**. Health endpoints remain
+unauthenticated. If `identity.localhost` does not resolve on your desktop,
+configure it to resolve to loopback; retain that hostname for ingress routing.
+These URLs assume the default `LOCAL_PORT=8080`; adjust both if you override it.
+See the [payment API contract](../modules/payment-api/openapi.yaml) for details.
+
 `STREAMING=1 make setup` prepares the pinned Flink/PyFlink runtime image and
 MinIO image. `STREAMING=1 make doctor` verifies both; ordinary `make doctor`
 checks their pins without requiring optional images. No host JVM, Maven,
@@ -300,9 +431,10 @@ The [Flink guide](../modules/stream-processor/README.md) and
 
 For the bounded 50 events/s baseline and 100 events/s stress test, follow the
 [pipeline benchmark guide](../modules/stream-processor/README.md#bounded-pipeline-benchmark).
-Its compact topology uses cluster 1=4 CPUs/6144 MiB and clusters 2/3=2 CPUs/3072 MiB each. Run
+Its authenticated topology uses cluster 1=4 CPUs/8192 MiB and clusters 2/3=2 CPUs/3072 MiB each. Run
 `make streaming-benchmark-preflight MULTI_CLUSTER=3` first;
-it requires 14336 MiB available host memory before any nodes are started.
+it requires 16384 MiB available host memory before any nodes are started.
+The earlier 6144-MiB report predates the added Keycloak service identity.
 Do not bypass a failed preflight on a resource-constrained shared machine.
 Cluster startup is outside the under-seven-minute measured benchmark.
 For coordinated Flink process/container tuning, the opt-in
@@ -362,7 +494,9 @@ Use `make dev-up MULTI_CLUSTER=3 DEV_CONFIG=templates/lakehouse-topology.json` t
 streaming, the [Polaris catalog](../modules/lakehouse-catalog/README.md),
 [Trino](../modules/lakehouse-query/README.md) and the Flink lakehouse writer
 in cluster 1. The lakehouse requires streaming and at least 4 CPUs/8192 MiB
-on cluster 1, or 10240 MiB together with analytics. It uses the profile-local
+on cluster 1, or 10240 MiB together with analytics. Identity adds another
+2048 MiB; the authenticated lakehouse example therefore budgets 10240 MiB.
+It uses the profile-local
 PostgreSQL for catalog metadata and cannot be combined with the full-stack
 external database.
 

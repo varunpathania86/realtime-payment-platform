@@ -10,7 +10,8 @@ PROGRAM = r'''
 from datetime import datetime, timedelta, timezone
 import json, signal, sys, time, urllib.request
 from uuid import NAMESPACE_URL, uuid4, uuid5
-from kafka import KafkaConsumer, KafkaProducer, TopicPartition
+from kafka import KafkaConsumer, TopicPartition
+from payment_client import PaymentClient
 from control import connection
 from fixtures import event
 from model_registry import download_package
@@ -47,13 +48,15 @@ consumer.assign(partitions)
 for partition, end in consumer.end_offsets(partitions).items():
     consumer.seek(partition, end)
 print("Risk acceptance: audit starting offsets initialized", file=sys.stderr, flush=True)
-producer = KafkaProducer(**connection(), acks="all")
+producer = PaymentClient()
+request_keys = {}
 audit, expired = [], []
 
 def send(record):
-    producer.send("payment-processing-events-v1", json.dumps(record).encode(),
-        partition=0, timestamp_ms=decode(json.dumps(record))["timestamp_ms"]).get(timeout=20)
-    producer.flush(timeout=20)
+    key = request_keys.setdefault(id(record), record["event_id"])
+    result = producer.submit({**record, "event_id": key})
+    record.update(event_id=result["event_id"], payment_id=result["payment_id"])
+    identifiers.add(record["event_id"])
 
 def collect(predicate, timeout=90):
     deadline = time.monotonic() + timeout
@@ -161,7 +164,6 @@ try:
         "initial_checkpoints": initial_checkpoints,
         "model_telemetry": telemetry}, indent=2))
 finally:
-    producer.close(timeout=10)
     consumer.close()
 '''
 

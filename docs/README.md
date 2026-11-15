@@ -8,6 +8,8 @@ All design documentation lives here, written in Markdown with Mermaid diagrams. 
 | [module-development.md](module-development.md) | Module boundaries, catalog types, and adding modules |
 | [release-publication.md](release-publication.md) | Trusted OCI publication, activation, counters, and recovery |
 | [architecture/repository-overview.md](architecture/repository-overview.md) | Module catalog and delivery flow |
+| [architecture/implemented-component-flows.md](architecture/implemented-component-flows.md) | Implemented data/control flows and subcomponents: payments, Kafka, Flink/ONNX, lakehouse, BI, identity, AI/GPU and deployment |
+| [adr/ADR-035-unified-api-originated-stream.md](adr/ADR-035-unified-api-originated-stream.md) | Authenticated API-originated synthetic streaming and explicit development-baseline replacement |
 | [architecture/local-platform-guide.md](architecture/local-platform-guide.md) | Start here: repository layout and how Make, Docker, Minikube, Terraform, Helm and Kubernetes connect |
 | [developer-setup.md](developer-setup.md) | Developer environment setup (`make setup`) |
 | [adr/ADR-001-terraform-local-development.md](adr/ADR-001-terraform-local-development.md) | Terraform ownership and independent local image/deployment loop |

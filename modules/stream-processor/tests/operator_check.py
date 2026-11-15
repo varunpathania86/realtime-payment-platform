@@ -169,19 +169,19 @@ class OperatorTests(unittest.TestCase):
         consumer.seek_to_beginning.assert_not_called()
         consumer.close.assert_called_once()
 
-    def test_fixture_and_recovery_producers_use_contract_timestamps_and_bounded_duplicates(self):
+    def test_live_fixture_and_recovery_clients_use_api_and_bounded_idempotency_keys(self):
         for action, expected in ((lambda: control.produce("offline-test"), 32), (control.load, 512)):
             producer = unittest.mock.MagicMock()
-            with patch.object(control, "connection", return_value={}), \
-                    patch.object(control, "KafkaProducer", return_value=producer), \
+            with patch.object(control, "PaymentClient", return_value=producer), \
                     patch.object(control.time, "sleep"), redirect_stdout(io.StringIO()):
                 action()
-            self.assertEqual(producer.send.call_count, expected)
-            for call in producer.send.call_args_list:
-                options = call.kwargs
-                self.assertEqual(options["timestamp_ms"], decode(options["value"])["timestamp_ms"])
-                self.assertIn(options["partition"], (0, 1))
-            producer.close.assert_called_once_with(timeout=10)
+            self.assertEqual(producer.create.call_count, expected)
+            for call in producer.create.call_args_list:
+                record = call.args[0]
+                self.assertGreater(decode(json.dumps(record))["timestamp_ms"], 0)
+                self.assertIn(record["country"], ("DE",))
+                self.assertEqual(record["payment_method"], "transfer")
+            producer.close.assert_not_called()
 
     def test_submit_readiness_requires_a_completed_checkpoint(self):
         response = unittest.mock.MagicMock()

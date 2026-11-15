@@ -29,8 +29,24 @@ class IdentityRealmTests(unittest.TestCase):
         self.assertTrue(self.realm["revokeRefreshToken"])
         self.assertEqual(self.realm["refreshTokenMaxReuse"], 0)
         for user in self.users.values():
+            if "serviceAccountClientId" in user:
+                self.assertEqual(user["serviceAccountClientId"], "payment-generator")
+                self.assertNotIn("credentials", user)
+                continue
             self.assertTrue(user["email"].endswith("@example.invalid"))
             self.assertRegex(user["credentials"][0]["value"], r"^\$\{[A-Z_]+\}$")
+
+    def test_generator_has_only_payment_service_permissions(self):
+        client = self.clients["payment-generator"]
+        self.assertTrue(client["serviceAccountsEnabled"])
+        self.assertFalse(client["standardFlowEnabled"])
+        self.assertFalse(client["directAccessGrantsEnabled"])
+        self.assertFalse(client["publicClient"])
+        user = self.users["service-account-payment-generator"]
+        self.assertEqual(user["clientRoles"], {
+            "payment-api": ["payments:read", "payments:write", "payments:simulate"]})
+        for group in self.groups.values():
+            self.assertNotIn("payments:simulate", group["clientRoles"]["payment-api"])
 
     def test_portal_requires_confidential_code_flow_and_s256_pkce(self):
         client = self.clients["web-portal"]

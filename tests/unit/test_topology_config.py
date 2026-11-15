@@ -67,8 +67,8 @@ class TopologyConfigurationTests(unittest.TestCase):
         config = json.loads((ROOT / "templates/lakehouse-topology.json").read_text())
         settings = validate(config)
         self.assertTrue(settings["lakehouse"])
-        self.assertEqual(settings["nodes"]["1"], {"cpus": 4, "memory_mib": 8192})
-        both = {**config, "analytics": True, "nodes": {"1": {"cpus": 4, "memory_mib": 10240}}}
+        self.assertEqual(settings["nodes"]["1"], {"cpus": 4, "memory_mib": 10240})
+        both = {**config, "analytics": True, "nodes": {"1": {"cpus": 4, "memory_mib": 12288}}}
         self.assertTrue(validate(both)["analytics"])
         for invalid in (
             {**config, "streaming": False},
@@ -84,8 +84,8 @@ class TopologyConfigurationTests(unittest.TestCase):
         config = json.loads((ROOT / "templates/bi-topology.json").read_text())
         settings = validate(config)
         self.assertTrue(settings["bi"])
-        self.assertEqual(settings["nodes"]["1"], {"cpus": 4, "memory_mib": 12288})
-        without_lakehouse = {**config, "lakehouse": False, "nodes": {"1": {"cpus": 4, "memory_mib": 7168}}}
+        self.assertEqual(settings["nodes"]["1"], {"cpus": 4, "memory_mib": 14336})
+        without_lakehouse = {**config, "lakehouse": False, "nodes": {"1": {"cpus": 4, "memory_mib": 9216}}}
         self.assertTrue(validate(without_lakehouse)["bi"])
         for invalid in (
             {**config, "analytics": False},
@@ -95,6 +95,13 @@ class TopologyConfigurationTests(unittest.TestCase):
         ):
             with self.subTest(invalid=invalid), self.assertRaises(ValueError):
                 validate(invalid)
+
+    def test_live_streaming_templates_include_authenticated_origin_and_valid_budgets(self):
+        for name in ("streaming", "analytics", "analytics-low-memory", "analytics-benchmark", "lakehouse", "bi"):
+            with self.subTest(name=name):
+                settings = validate(json.loads((ROOT / f"templates/{name}-topology.json").read_text()))
+                self.assertTrue(settings["identity"])
+                self.assertTrue(settings["streaming"])
 
     def test_lean_ai_profile_runs_analytics_without_streaming(self):
         config = json.loads((ROOT / "templates/ai-topology.json").read_text())

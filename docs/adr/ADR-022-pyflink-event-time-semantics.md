@@ -15,6 +15,11 @@ the Python ecosystem.
 
 ## Decision
 
+The independent live-fixture origin below is superseded by
+[ADR-035](ADR-035-unified-api-originated-stream.md). Live inputs now originate
+through the authenticated payment API and relay simulation. The event-time,
+state and window semantics in this decision remain applicable.
+
 Use PyFlink, with Flink's JVM and compatible Python installed inside the pinned
 runtime image, not as additional host toolchains. This is an explicit Python
 ecosystem use for stream processing/ML, not a change to Go's backend role.

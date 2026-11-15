@@ -9,6 +9,7 @@ export PATH := $(HOME)/.local/bin:$(PATH)
 .PHONY: identity-integration identity-sync identity-access identity-verify
 .PHONY: dev-clean access-local dbx-access dbx-status minio-access
 .PHONY: streaming-fixtures streaming-inspect streaming-load streaming-savepoint streaming-stop streaming-benchmark streaming-benchmark-preflight risk-publish risk-verify lakehouse-query lakehouse-verify lakehouse-maintain bi-verify knowledge-ingest ai-fixtures ai-eval
+.PHONY: unified-stream-verify
 
 # Use a system pre-commit if present, otherwise the one installed by `make setup`.
 VENV       := .venv
@@ -199,6 +200,9 @@ dev-observability: ## Forward opt-in Grafana to http://127.0.0.1:3000 (foregroun
 
 streaming-fixtures: ## Send deterministic synthetic processing events to the selected cluster
 	MINIKUBE_PROFILE="$(LOCAL_PROFILE)" $(VENV)/bin/python scripts/streaming-control.py fixtures
+
+unified-stream-verify: ## Verify authenticated API payments in ClickHouse, risk outputs and enabled Iceberg
+	$(VENV)/bin/python -m scripts.unified_stream_acceptance --profile "$(LOCAL_PROFILE)"
 
 risk-publish: ## Publish immutable trained model artifacts to the explicitly selected profile's MinIO
 	$(VENV)/bin/python -m scripts.risk_model --profile "$(LOCAL_PROFILE)" --directory "$(or $(MODEL_DIRECTORY),.local/models/payment-risk/1.0.0)"

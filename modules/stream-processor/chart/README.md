@@ -10,6 +10,13 @@ selects this chart only for streaming and installs it in `apps`.
 The **JobManager** coordinates the job; the **TaskManager** runs its operators.
 Terraform separately provides Kafka, MinIO and Secrets, plus optional ClickHouse.
 
+`runtime.yaml` injects the payment API/token endpoint and the generated
+`payment-generator` client-secret reference into the runtime pods. This is used
+by API-driven fixtures/load/acceptance executed in JobManager, not by Flink
+operators. The Secret is optional for chart-only inspection, but live input
+tools fail explicitly if identity configuration is absent. No token or secret
+is written into event records.
+
 ## Layout
 
 File layout (one template can render several Kubernetes resources):

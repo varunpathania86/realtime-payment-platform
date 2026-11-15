@@ -1042,6 +1042,39 @@ than treating existing initiation events as authorization results. Preserve
 the transactional payment path. See
 [ADR-022](adr/ADR-022-pyflink-event-time-semantics.md).
 
+**Approved integration follow-up (2026-11-15):** Connect live synthetic input
+through the payment API, PostgreSQL/outbox and relay simulation to Kafka/Flink.
+Require country/payment method in the existing API contract. A dedicated
+Keycloak client-credentials service identity supplies payment-api audience
+tokens; controlled synthetic event times/outcomes require `payments:simulate`.
+Retain distinct initiation/processing meanings, but no independent direct-Kafka
+live fixture/load producer. The unreleased baseline may be replaced in place;
+old local state must be explicitly recreated, never silently migrated or erased.
+See [ADR-035](adr/ADR-035-unified-api-originated-stream.md). This integration
+does not start Stage 12 or put model decisions in the payment critical path.
+
+**Local integration verification (2026-11-15):** Recreated only the explicitly
+approved `rpp` profile, retaining GPU-enabled AI settings and the trained model.
+Published the model into fresh MinIO and restored both Flink jobs with durable
+state. `make unified-stream-verify MULTI_CLUSTER=0` passed authentication,
+idempotency and lineage for two API payments: two ClickHouse facts, two advisory
+prediction events and two curated Iceberg rows. `make risk-verify MULTI_CLUSTER=0`
+passed late-history revision, too-late quarantine and model telemetry.
+`make lakehouse-verify MULTI_CLUSTER=0`, `make bi-verify MULTI_CLUSTER=0`
+(26 checks) and `make identity-verify MULTI_CLUSTER=0` (24 checks) passed.
+Live startup exposed one-second database probe failures; bounded five-second
+probes fixed them. A valid five-digit timestamp crashed Python 3.10 processing;
+canonical normalization was regression-tested and deployed with checkpoint
+recovery. Lakehouse evolution now checks a frozen scratch table rather than
+racing live ingestion. These are functional results, not new throughput or
+latency benchmarks; historical measurements remain unchanged.
+Final `make ci`, payment API unit/lint/PostgreSQL/Kafka integration, and
+`make -C modules/stream-processor integration risk-integration` passed.
+Dirty-source updates changed the API/Flink image identities and restored retained
+state. Deleting only the API pod triggered recovery; rollout and
+`make smoke MULTI_CLUSTER=0` passed afterward. The three other Minikube profiles
+remained stopped and untouched.
+
 **Approved scope extension (2026-11-03):** Replace manual release SHA/version
 inputs with `release` (`module`/`solution`), optional module name, explicit
 `type` (`major`/`minor`/`patch`) and `promote` (`iteration` default,
@@ -2633,10 +2666,10 @@ runbooks. See the [low-memory pipeline report](../tests/benchmarks/pipeline/2026
 and [ClickHouse query report](../tests/benchmarks/pipeline/2026-11-03-clickhouse-query.md).
 
 ```yaml
-current_milestone: stage-11-unified-identity
-stage_status: Stage 10 merged as PR 14; Stage 11 complete and verified locally on feature/stage-11-unified-identity, awaiting pull request review and merge
-last_completed_task: Verified the rpp single-cluster lifecycle and feature workflows, including approved clean recreation, Keycloak, DBX and advisory risk
-next_task: Open, review and merge the Stage 11 pull request; Stage 12 implementation remains deferred
+current_milestone: stage-5-unified-stream-integration
+stage_status: Stage 11 merged as PR 15; approved unified-stream follow-up verified locally on feature/unified-payment-stream
+last_completed_task: Recreated only rpp and verified authenticated API-origin payment lineage, Flink advisory predictions, Iceberg, BI and identity
+next_task: Review and publish the unified-stream integration changes; Stage 12 implementation remains deferred
 known_issues:
   - one rpp dev-up encountered a transient HTTP 504 while Minikube checked the pinned Kubernetes release; retry succeeded after upstream access recovered
   - the 14 GiB rpp node used about 9.5 GiB during low-load full-stack knowledge ingestion; the 15.5 GiB host had about 5 GiB available with 3.6 GiB of 4 GiB swap in use, so this is not a capacity guarantee

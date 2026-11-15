@@ -143,7 +143,7 @@ components:
     CreatePayment:
       type: object
       additionalProperties: false
-      required: [account_id, amount_minor, currency]
+      required: [account_id, amount_minor, currency, country, payment_method]
       properties:
         account_id:
           $ref: '#/components/schemas/UUID'
@@ -154,10 +154,34 @@ components:
         currency:
           type: string
           enum: [USD, EUR, GBP, INR, JPY, CAD, AUD, CHF, SGD]
+        country:
+          type: string
+          pattern: '^[A-Z]{2}$'
+        payment_method:
+          type: string
+          enum: [card, transfer, wallet]
+        account_created_at:
+          type: string
+          format: date-time
+        device_id:
+          $ref: '#/components/schemas/UUID'
+        simulation:
+          $ref: '#/components/schemas/Simulation'
+    Simulation:
+      type: object
+      additionalProperties: false
+      description: Synthetic test controls requiring payments:simulate, never a real authorization decision.
+      properties:
+        event_time:
+          type: string
+          format: date-time
+        outcome:
+          type: string
+          enum: [authorized, rejected]
     Payment:
       type: object
       additionalProperties: false
-      required: [id, account_id, amount_minor, currency, status, created_at]
+      required: [id, account_id, amount_minor, currency, country, payment_method, status, created_at, processing_event_id, simulation]
       properties:
         id:
           $ref: '#/components/schemas/UUID'
@@ -170,6 +194,21 @@ components:
         currency:
           type: string
           enum: [USD, EUR, GBP, INR, JPY, CAD, AUD, CHF, SGD]
+        country:
+          type: string
+          pattern: '^[A-Z]{2}$'
+        payment_method:
+          type: string
+          enum: [card, transfer, wallet]
+        account_created_at:
+          type: string
+          format: date-time
+        device_id:
+          $ref: '#/components/schemas/UUID'
+        simulation:
+          $ref: '#/components/schemas/Simulation'
+        processing_event_id:
+          $ref: '#/components/schemas/UUID'
         status:
           type: string
           enum: [initiated]

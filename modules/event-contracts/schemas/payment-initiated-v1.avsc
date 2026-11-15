@@ -69,6 +69,30 @@
             "name": "currency",
             "type": "string",
             "doc": "ISO 4217 alphabetic currency code."
+          },
+          {
+            "name": "country",
+            "type": "string"
+          },
+          {
+            "name": "payment_method",
+            "type": "string"
+          },
+          {
+            "name": "account_created_at",
+            "type": "string"
+          },
+          {
+            "name": "device_id",
+            "type": "string"
+          },
+          {
+            "name": "simulation_event_time",
+            "type": "string"
+          },
+          {
+            "name": "simulation_outcome",
+            "type": "string"
           }
         ]
       }

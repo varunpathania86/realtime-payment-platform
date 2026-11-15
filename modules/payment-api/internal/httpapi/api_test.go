@@ -15,7 +15,7 @@ import (
 )
 
 const account = "12345678-1234-1234-1234-123456789abc"
-const body = `{"account_id":"` + account + `","amount_minor":100,"currency":"USD"}`
+const body = `{"account_id":"` + account + `","amount_minor":100,"currency":"USD","country":"DE","payment_method":"transfer"}`
 
 type fakeStore struct {
 	err     error
@@ -96,6 +96,10 @@ func TestInvalidRequestsNeverReachStore(t *testing.T) {
 		strings.Replace(body, "100", "9223372036854775808", 1),
 		strings.Replace(body, "100", "null", 1),
 		strings.Replace(body, "USD", "XXX", 1),
+		strings.Replace(body, `,"country":"DE"`, "", 1),
+		strings.Replace(body, `,"payment_method":"transfer"`, "", 1),
+		strings.Replace(body, `"DE"`, `"de"`, 1),
+		strings.Replace(body, `"transfer"`, `"cash"`, 1),
 		strings.TrimSuffix(body, "}") + `,"extra":1}`, strings.Repeat("x", 4097),
 	} {
 		store := &fakeStore{}
@@ -103,6 +107,7 @@ func TestInvalidRequestsNeverReachStore(t *testing.T) {
 		if (w.Code != 400 && w.Code != 413) || store.key != "" {
 			t.Fatalf("accepted %q: %d", payload[:min(len(payload), 100)], w.Code)
 		}
+
 	}
 	if request(&fakeStore{}, "POST", "/payments", body, "").Code != 400 {
 		t.Fatal("missing idempotency key accepted")
@@ -116,6 +121,23 @@ func TestInvalidRequestsNeverReachStore(t *testing.T) {
 	New(&fakeStore{}, slog.Default(), "", "").ServeHTTP(w, r)
 	if w.Code != 415 {
 		t.Fatal("invalid content type accepted")
+	}
+}
+
+func TestSyntheticControlsRequirePermission(t *testing.T) {
+	payload := strings.TrimSuffix(body, "}") + `,"simulation":{"event_time":"2026-11-03T00:00:00Z","outcome":"rejected"}}`
+	store := &fakeStore{}
+	if response := request(store, "POST", "/payments", payload, "simulation"); response.Code != 403 || store.key != "" {
+		t.Fatal("unprivileged synthetic controls accepted")
+	}
+	r := httptest.NewRequest("POST", "/payments", strings.NewReader(payload))
+	r = r.WithContext(payment.WithSimulationPermission(r.Context()))
+	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("Idempotency-Key", "simulation")
+	response := httptest.NewRecorder()
+	New(store, slog.Default(), "", "").ServeHTTP(response, r)
+	if response.Code != 201 || store.created.Simulation.Outcome != "rejected" {
+		t.Fatalf("privileged synthetic request failed: %d", response.Code)
 	}
 }
 

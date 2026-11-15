@@ -90,8 +90,8 @@ func TestPostgres(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := store.db.ExecContext(ctx, `CREATE TABLE schema_migrations (version integer PRIMARY KEY, checksum text NOT NULL);
-		INSERT INTO payments (id, account_id, amount_minor, currency, status, idempotency_key)
-		VALUES ('00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002', 500, 'USD', 'initiated', 'legacy')`); err != nil {
+		INSERT INTO payments (id, account_id, amount_minor, currency, country, payment_method, status, idempotency_key)
+		VALUES ('00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002', 500, 'USD', 'DE', 'transfer', 'initiated', 'legacy')`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.db.ExecContext(ctx, `INSERT INTO schema_migrations VALUES (1, $1)`, fmt.Sprintf("%x", sha256.Sum256([]byte(oldSQL)))); err != nil {
@@ -105,7 +105,7 @@ func TestPostgres(t *testing.T) {
 	if err := store.Ready(ctx); err != nil {
 		t.Fatal(err)
 	}
-	command := payment.Command{AccountID: "12345678-1234-1234-1234-123456789abc", AmountMinor: 12345, Currency: "USD"}
+	command := payment.Command{AccountID: "12345678-1234-1234-1234-123456789abc", AmountMinor: 12345, Currency: "USD", Country: "DE", PaymentMethod: "transfer"}
 	results := make(chan payment.Payment, 12)
 	errorsFound := make(chan error, 12)
 	var workers sync.WaitGroup

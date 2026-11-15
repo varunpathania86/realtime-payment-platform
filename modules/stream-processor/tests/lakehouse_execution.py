@@ -14,13 +14,13 @@ from pyflink.table import EnvironmentSettings, Schema, StreamTableEnvironment, T
 
 from fixtures import event
 import lakehouse
-from processing import decode
+from processing import decode, utc_timestamp
 
 DEVICE = "6f1c1a52-6f4b-4a8e-9d0e-6a3f7c2b9e11"
 RECORDS = [
     json.dumps(event(1, 10)),
     json.dumps(event(1, 10)),
-    json.dumps(event(2, 20, outcome="rejected", device_id=DEVICE, account_created_at="2026-11-02T00:00:00Z")),
+    json.dumps(event(2, 20, outcome="rejected", device_id=DEVICE, account_created_at="2026-11-02T00:00:00.12345Z")),
     json.dumps(event(3, 30, event_time="2026-11-03T00:00:30.123456Z")),
     json.dumps(event(4, 40, schema_version="1")),
     json.dumps(event(5, 50, amount_minor=1.5)),
@@ -95,7 +95,7 @@ def main():
         with batch.execute_sql(
             "SELECT event_id, payment_id, amount_minor, currency, outcome, device_id, kafka_offset, "
             "DATE_FORMAT(event_time, 'yyyy-MM-dd''T''HH:mm:ss.SSSSSS'), "
-            "DATE_FORMAT(account_created_at, 'yyyy-MM-dd''T''HH:mm:ss') FROM lakehouse.payments.payment_events"
+            "DATE_FORMAT(account_created_at, 'yyyy-MM-dd''T''HH:mm:ss.SSSSSS') FROM lakehouse.payments.payment_events"
         ).collect() as result:
             curated = {row[0]: row for row in result}
         expected = expected_curated()
@@ -108,9 +108,9 @@ def main():
                 decoded.get("device_id"),
             ):
                 raise AssertionError(f"curated values differ for {event_id}: {row}")
-            if not decoded["event_time"].rstrip("Z").startswith(row[7].rstrip("0").rstrip(".")):
+            if utc_timestamp(decoded["event_time"]) != utc_timestamp(row[7] + "Z"):
                 raise AssertionError(f"event_time was not interpreted as UTC: {row[7]} vs {decoded['event_time']}")
-            if decoded.get("account_created_at") and row[8] != decoded["account_created_at"].rstrip("Z"):
+            if decoded.get("account_created_at") and utc_timestamp(row[8] + "Z") != utc_timestamp(decoded["account_created_at"]):
                 raise AssertionError(f"account_created_at mismatch: {row[8]}")
         if curated[event(1)["event_id"]][6] != 0:
             raise AssertionError("deduplication must keep the first occurrence")
