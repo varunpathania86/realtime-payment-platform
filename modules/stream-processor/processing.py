@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 import hashlib
 import json
 import re
@@ -15,6 +15,11 @@ WINDOWS = (60_000, 600_000)
 SLIDE_MS = 60_000
 LATENESS_MS = 120_000
 DEDUP_TTL_MS = 86_400_000
+
+
+def utc_timestamp(value: str) -> datetime:
+    pattern = "%Y-%m-%dT%H:%M:%S.%fZ" if "." in value else "%Y-%m-%dT%H:%M:%SZ"
+    return datetime.strptime(value, pattern).replace(tzinfo=timezone.utc)
 
 
 def decode(raw: str) -> dict:
@@ -36,17 +41,19 @@ def decode(raw: str) -> dict:
         raise ValueError("unknown payment method")
     if event["outcome"] not in ("authorized", "rejected"):
         raise ValueError("unknown synthetic processing outcome")
-    event["timestamp_ms"] = int(datetime.fromisoformat(event["event_time"].replace("Z", "+00:00")).timestamp() * 1000)
+    at = utc_timestamp(event["event_time"])
+    event["timestamp_ms"] = int(at.timestamp() * 1000)
+    event["event_time"] = at.isoformat(timespec="microseconds").replace("+00:00", "Z")
     created = event.get("account_created_at")
     if created is not None:
         if not isinstance(created, str) or not re.fullmatch(
             r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,6})?Z", created
         ):
             raise ValueError("account_created_at must be an RFC3339 UTC timestamp")
-        if datetime.fromisoformat(created.replace("Z", "+00:00")) > datetime.fromisoformat(
-            event["event_time"].replace("Z", "+00:00")
-        ):
+        created_at = utc_timestamp(created)
+        if created_at > at:
             raise ValueError("account_created_at must not follow event_time")
+        event["account_created_at"] = created_at.isoformat(timespec="microseconds").replace("+00:00", "Z")
     if event.get("device_id") is not None:
         UUID(event["device_id"])
     return event

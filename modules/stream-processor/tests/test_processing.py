@@ -10,6 +10,15 @@ from processing import LATENESS_MS, add, decode, dimension, empty_window, output
 
 
 class ProcessingTests(unittest.TestCase):
+    def test_contract_timestamp_precision_is_normalized_for_python310_workers(self):
+        for fraction in ("", ".1", ".12", ".123", ".1234", ".12345", ".123456"):
+            with self.subTest(fraction=fraction):
+                at = "2026-11-03T00:00:10" + fraction + "Z"
+                record = decode(json.dumps(event(1, event_time=at, account_created_at=at)))
+                expected = "2026-11-03T00:00:10." + fraction.removeprefix(".").ljust(6, "0") + "Z"
+                self.assertEqual(record["event_time"], expected)
+                self.assertEqual(record["account_created_at"], expected)
+
     def test_runtime_overlay_preserves_java17_defaults(self):
         base = {"env": {"java": {"opts": {"all": "--add-opens=java.base/java.util=ALL-UNNAMED"}}},
             "jobmanager": {"rpc": {"address": "localhost"}}}

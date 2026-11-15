@@ -11,6 +11,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/varunpathania86/realtime-payment-platform/modules/payment-api/internal/payment"
 )
 
 func TestPaymentKeycloakAuthorizationAndRotation(t *testing.T) {
@@ -27,7 +29,12 @@ func TestPaymentKeycloakAuthorizationAndRotation(t *testing.T) {
 	}))
 	defer provider.Close()
 	issuer := provider.URL + "/realms/rpp"
-	handler, err := paymentIdentity(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(204) }),
+	handler, err := paymentIdentity(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if payment.SimulationAllowed(r.Context()) {
+			w.Header().Set("X-Simulation-Allowed", "true")
+		}
+		w.WriteHeader(204)
+	}),
 		func(k string) string {
 			if k == "OIDC_ISSUER" || k == "OIDC_INTERNAL_URL" {
 				return issuer
@@ -80,4 +87,13 @@ func TestPaymentKeycloakAuthorizationAndRotation(t *testing.T) {
 	check("GET", sign("second", second, nil), 204)
 	check("POST", sign("second", second, map[string]any{"resource_access": map[string]any{
 		"payment-api": map[string]any{"roles": []string{"payments:write"}}}}), 204)
+	request := httptest.NewRequest("POST", "/payments", nil)
+	request.Header.Set("Authorization", "Bearer "+sign("second", second, map[string]any{
+		"resource_access": map[string]any{"payment-api": map[string]any{"roles": []string{"payments:write", "payments:simulate"}}},
+	}))
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != 204 || response.Header().Get("X-Simulation-Allowed") != "true" {
+		t.Fatal("verified simulate role was not passed to the API context")
+	}
 }

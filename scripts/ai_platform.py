@@ -120,7 +120,7 @@ def ingest(profile, wait_seconds=1800):
 def lookup_payment(send, origin, headers=None):
     status, _, text = send("POST", "/api/payments", PORTAL_HOST,
         {"Origin": origin, "Idempotency-Key": LOOKUP_KEY, **(headers or {})},
-        {"account_id": LOOKUP_ACCOUNT, "amount_minor": 4200, "currency": "EUR"})
+        {"account_id": LOOKUP_ACCOUNT, "amount_minor": 4200, "currency": "EUR", "country": "DE", "payment_method": "transfer"})
     if status != 201:
         raise RuntimeError(f"creating the synthetic lookup payment returned {status}")
     return json.loads(text)["id"]

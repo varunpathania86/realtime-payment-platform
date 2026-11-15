@@ -16,6 +16,10 @@ or upgrade this chart as a **Helm release** in the `apps` namespace. Terraform
 also supplies the database/event Secrets, schema ConfigMap, PostgreSQL, Kafka,
 Apicurio and Traefik. This chart does not create those dependencies.
 
+The relay process also runs the deterministic simulation function and publishes
+`payment-processing-events-v1` for Flink. It is not an additional Deployment:
+the outbox row is marked published only after both Kafka sends succeed.
+
 ## Layout
 
 This diagram maps files on disk; the next diagram maps deployed resources.

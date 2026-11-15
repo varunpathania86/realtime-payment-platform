@@ -39,7 +39,7 @@ class RunLocalTests(unittest.TestCase):
             self.assertIn("up rpp 6 14336", result.stdout)
             settings = json.loads((root / ".local/rpp/events.tfvars.json").read_text())
             self.assertEqual(settings, {
-                **{f"{feature}_enabled": True for feature in ("streaming", "analytics", "lakehouse", "bi", "ai")},
+                **{f"{feature}_enabled": True for feature in ("streaming", "analytics", "lakehouse", "bi", "ai", "identity")},
                 "kafka_host_port": 19092,
             })
 

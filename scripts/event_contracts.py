@@ -50,8 +50,10 @@ def validate_event(schema: avro.schema.Schema, event: dict) -> None:
         raise ValueError("amount_minor must be positive")
     if not re.fullmatch(r"[A-Z]{3}", payload["currency"]):
         raise ValueError("currency must be a three-letter uppercase ISO 4217 code")
-    if processing and not re.fullmatch(r"[A-Z]{2}", event["country"]):
+    if not re.fullmatch(r"[A-Z]{2}", payload["country"]):
         raise ValueError("country must be an uppercase two-letter code")
+    if payload["payment_method"] not in ("card", "transfer", "wallet"):
+        raise ValueError("unknown payment method")
     if processing:
         event = {**event}
         for key in ("account_created_at", "device_id"):

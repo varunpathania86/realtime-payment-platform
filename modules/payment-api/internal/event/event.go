@@ -9,9 +9,15 @@ import (
 )
 
 type Payload struct {
-	PaymentID   string `json:"payment_id"`
-	AmountMinor int64  `json:"amount_minor"`
-	Currency    string `json:"currency"`
+	PaymentID           string `json:"payment_id"`
+	AmountMinor         int64  `json:"amount_minor"`
+	Currency            string `json:"currency"`
+	Country             string `json:"country"`
+	PaymentMethod       string `json:"payment_method"`
+	AccountCreatedAt    string `json:"account_created_at"`
+	DeviceID            string `json:"device_id"`
+	SimulationEventTime string `json:"simulation_event_time"`
+	SimulationOutcome   string `json:"simulation_outcome"`
 }
 
 type Initiated struct {
@@ -29,7 +35,9 @@ func New(id string, p payment.Payment) Initiated {
 	return Initiated{
 		ID: id, Type: "payment.initiated.v1", Time: p.CreatedAt.UTC().Format(time.RFC3339Nano),
 		Producer: "payment-api", CorrelationID: p.ID, SchemaVersion: 1,
-		Payload: Payload{PaymentID: p.ID, AmountMinor: p.AmountMinor, Currency: p.Currency},
+		Payload: Payload{PaymentID: p.ID, AmountMinor: p.AmountMinor, Currency: p.Currency,
+			Country: p.Country, PaymentMethod: p.PaymentMethod, AccountCreatedAt: p.AccountCreatedAt,
+			DeviceID: p.DeviceID, SimulationEventTime: p.Simulation.EventTime, SimulationOutcome: p.Simulation.Outcome},
 	}
 }
 
@@ -46,5 +54,8 @@ func (e Initiated) Validate(accountID string) error {
 	if !payment.ValidID(e.Payload.PaymentID) {
 		return errors.New("invalid payment event identity")
 	}
-	return payment.Validate("event", payment.Command{AccountID: accountID, AmountMinor: e.Payload.AmountMinor, Currency: e.Payload.Currency})
+	return payment.Validate("event", payment.Command{AccountID: accountID, AmountMinor: e.Payload.AmountMinor,
+		Currency: e.Payload.Currency, Country: e.Payload.Country, PaymentMethod: e.Payload.PaymentMethod,
+		AccountCreatedAt: e.Payload.AccountCreatedAt, DeviceID: e.Payload.DeviceID,
+		Simulation: payment.Simulation{EventTime: e.Payload.SimulationEventTime, Outcome: e.Payload.SimulationOutcome}})
 }

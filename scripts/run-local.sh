@@ -46,6 +46,7 @@ if [ ! -e "$state/events.tfvars.json" ]; then
   "lakehouse_enabled": true,
   "bi_enabled": true,
   "ai_enabled": true,
+  "identity_enabled": true,
   "kafka_host_port": 19092
 }
 JSON

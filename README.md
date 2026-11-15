@@ -2,6 +2,15 @@
 
 A production-style, self-hosted learning platform for real-time payment data and AI: Go, React, Kafka, Flink, ClickHouse, Iceberg, and LLM/RAG, running on Terraform and Minikube. It uses synthetic data only.
 
+See [Implemented components and execution flows](docs/architecture/implemented-component-flows.md)
+for the complete runtime map, subcomponent interactions and explicit separation
+between implemented capabilities and planned services.
+
+Live synthetic streaming now starts at the payment API using a dedicated
+Keycloak service token, then follows PostgreSQL/outbox, relay simulation, Kafka
+and Flink into analytics and the lakehouse. Run `make unified-stream-verify`
+against an identity/streaming/analytics-enabled local deployment.
+
 The full requirements and roadmap are in the [master plan](docs/master-plan.md).
 
 ## Status

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/varunpathania86/realtime-payment-platform/modules/payment-api/internal/payment"
 )
 
 func paymentIdentity(next http.Handler, getenv func(string) string) (http.Handler, error) {
@@ -59,12 +60,17 @@ func paymentIdentity(next http.Handler, getenv func(string) string) (http.Handle
 			wanted = "payments:read"
 		}
 		allowed := false
+		simulate := false
 		for _, permission := range claims.Resources["payment-api"].Roles {
 			allowed = allowed || permission == wanted
+			simulate = simulate || permission == "payments:simulate"
 		}
 		if !allowed || !strings.Contains(" "+claims.Scope+" ", " openid ") {
 			http.Error(w, "payment permission required", http.StatusForbidden)
 			return
+		}
+		if simulate {
+			r = r.WithContext(payment.WithSimulationPermission(r.Context()))
 		}
 		next.ServeHTTP(w, r)
 	}), nil

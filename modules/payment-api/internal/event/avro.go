@@ -35,7 +35,10 @@ func (c *Codec) Encode(id uint32, e Initiated) ([]byte, error) {
 	native := map[string]any{
 		"event_id": e.ID, "event_type": e.Type, "event_time": e.Time, "producer": e.Producer,
 		"correlation_id": e.CorrelationID, "causation_id": cause, "schema_version": int32(e.SchemaVersion),
-		"payload": map[string]any{"payment_id": e.Payload.PaymentID, "amount_minor": e.Payload.AmountMinor, "currency": e.Payload.Currency},
+		"payload": map[string]any{"payment_id": e.Payload.PaymentID, "amount_minor": e.Payload.AmountMinor,
+			"currency": e.Payload.Currency, "country": e.Payload.Country, "payment_method": e.Payload.PaymentMethod,
+			"account_created_at": e.Payload.AccountCreatedAt, "device_id": e.Payload.DeviceID,
+			"simulation_event_time": e.Payload.SimulationEventTime, "simulation_outcome": e.Payload.SimulationOutcome},
 	}
 	header := make([]byte, 5)
 	binary.BigEndian.PutUint32(header[1:], id)

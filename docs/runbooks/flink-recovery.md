@@ -16,6 +16,13 @@ MinIO is persistent local development storage, not a replicated backup.
 
 ## Diagnosis
 
+Live fixture/load clients now call the payment API with the `payment-generator`
+Keycloak service token. Missing identity or API errors fail before producing
+input; inspect API/Keycloak logs as well as Kafka/Flink.
+Use `make unified-stream-verify` for API idempotency/authentication, ClickHouse
+facts/predictions and enabled Iceberg lineage. Test-only event-time/outcome
+controls require `payments:simulate`. Do not manually publish processing input.
+
 1. Run `make dev-status` and check both Flink roles, MinIO and Kafka readiness.
 2. Inspect `kubectl --context rpp-1 -n apps logs deployment/stream-processor-taskmanager`.
 3. Use a loopback REST forward:

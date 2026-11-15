@@ -9,7 +9,7 @@ import (
 
 func TestInitiated(t *testing.T) {
 	p := payment.Payment{ID: "12345678-1234-1234-1234-123456789abc", Command: payment.Command{
-		AccountID: "22345678-1234-1234-1234-123456789abc", AmountMinor: 1250, Currency: "USD",
+		AccountID: "22345678-1234-1234-1234-123456789abc", AmountMinor: 1250, Currency: "USD", Country: "DE", PaymentMethod: "transfer",
 	}, Status: "initiated", CreatedAt: time.Date(2026, 10, 29, 12, 0, 0, 123000000, time.UTC)}
 	e := New("32345678-1234-1234-1234-123456789abc", p)
 	if err := e.Validate(p.AccountID); err != nil {

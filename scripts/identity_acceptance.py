@@ -104,7 +104,7 @@ def verify(profile, *, include_assistant=True):
         writer = LocalBrowser(browser.forwarding_port, origin, issuer)
         writer.login(origin + "/auth/login", "payments-clerk", users["payments-clerk"]["password"])
         status, _, text = writer.json("POST", "/api/payments",
-            {"account_id": "11111111-1111-4111-8111-111111111111", "amount_minor": 100, "currency": "USD"},
+            {"account_id": "11111111-1111-4111-8111-111111111111", "amount_minor": 100, "currency": "USD", "country": "DE", "payment_method": "transfer"},
             {"Idempotency-Key": "stage11-identity-acceptance"})
         expect("Keycloak payment clerk can create the synthetic acceptance fixture", status == 201)
         payment_path = "/api/payments/" + json.loads(text)["id"]

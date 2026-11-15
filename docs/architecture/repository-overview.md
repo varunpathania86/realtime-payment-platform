@@ -2,6 +2,9 @@
 
 How the monorepo's independently versioned modules are cataloged and how changes travel from branch to release.
 
+For application runtime diagrams rather than delivery,
+see [Implemented components and execution flows](implemented-component-flows.md).
+
 ## Layout
 
 ```mermaid

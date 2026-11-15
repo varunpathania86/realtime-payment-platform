@@ -7,7 +7,7 @@ import (
 )
 
 func TestValidation(t *testing.T) {
-	valid := Command{AccountID: "12345678-1234-1234-1234-123456789abc", AmountMinor: math.MaxInt64, Currency: "USD"}
+	valid := Command{AccountID: "12345678-1234-1234-1234-123456789abc", AmountMinor: math.MaxInt64, Currency: "USD", Country: "DE", PaymentMethod: "transfer"}
 	if err := Validate("key", valid); err != nil {
 		t.Fatal(err)
 	}
@@ -17,11 +17,11 @@ func TestValidation(t *testing.T) {
 		}
 	}
 	for _, c := range []Command{
-		{AccountID: valid.AccountID, AmountMinor: 0, Currency: "USD"},
-		{AccountID: valid.AccountID, AmountMinor: -1, Currency: "USD"},
-		{AccountID: "bad", AmountMinor: 1, Currency: "USD"},
-		{AccountID: valid.AccountID, AmountMinor: 1, Currency: "ZZZ"},
-		{AccountID: valid.AccountID, AmountMinor: 1, Currency: "usd"},
+		{AccountID: valid.AccountID, AmountMinor: 0, Currency: "USD", Country: "DE", PaymentMethod: "transfer"},
+		{AccountID: valid.AccountID, AmountMinor: -1, Currency: "USD", Country: "DE", PaymentMethod: "transfer"},
+		{AccountID: "bad", AmountMinor: 1, Currency: "USD", Country: "DE", PaymentMethod: "transfer"},
+		{AccountID: valid.AccountID, AmountMinor: 1, Currency: "ZZZ", Country: "DE", PaymentMethod: "transfer"},
+		{AccountID: valid.AccountID, AmountMinor: 1, Currency: "usd", Country: "DE", PaymentMethod: "transfer"},
 	} {
 		if Validate("key", c) == nil {
 			t.Fatalf("accepted command %+v", c)

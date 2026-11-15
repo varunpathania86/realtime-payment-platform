@@ -120,6 +120,14 @@ spec:
             - {name: S3_ENDPOINT, value: {{ $.Values.streaming.endpoint | quote }}}
             - {name: KAFKA_BROKERS, value: {{ $.Values.events.brokers | quote }}}
             - {name: KAFKA_TLS, value: {{ $.Values.events.tls | quote }}}
+            {{- if eq $role "jobmanager" }}
+            # Only JobManager-hosted live clients need the payment-generator service identity.
+            - {name: PAYMENT_API_URL, value: "http://payment-api:80"}
+            - {name: PAYMENT_TOKEN_URL, value: "http://identity-provider.security.svc.cluster.local:8080/realms/rpp/protocol/openid-connect/token"}
+            - name: PAYMENT_GENERATOR_SECRET
+              valueFrom:
+                secretKeyRef: {name: payment-generator, key: client-secret, optional: true}
+            {{- end }}
             - {name: ANALYTICS_ENABLED, value: {{ $.Values.analytics.enabled | quote }}}
             - {name: RISK_ENABLED, value: {{ $.Values.risk.enabled | quote }}}
             # Read by streaming-control.py guard: toggling it restarts this session cluster.

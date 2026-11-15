@@ -26,27 +26,28 @@ class BenchmarkTests(unittest.TestCase):
     def test_clients_close_on_execution_failure(self):
         producer, consumer = Mock(), Mock()
         kafka = types.SimpleNamespace(
-            KafkaProducer=Mock(return_value=producer), KafkaConsumer=Mock(return_value=consumer),
+            KafkaConsumer=Mock(return_value=consumer),
         )
         control = types.SimpleNamespace(connection=Mock(return_value={}))
-        with patch.dict(sys.modules, {"kafka": kafka, "control": control}), \
+        client = types.SimpleNamespace(PaymentClient=Mock(return_value=producer))
+        with patch.dict(sys.modules, {"kafka": kafka, "control": control, "payment_client": client}), \
                 patch.object(benchmark, "execute", side_effect=ValueError("test failure")):
             with self.assertRaisesRegex(ValueError, "test failure"):
                 benchmark.run()
-        producer.close.assert_called_once_with(timeout=5)
+        producer.close.assert_not_called()
         consumer.close.assert_called_once()
 
-    def test_producer_closes_if_consumer_creation_fails(self):
+    def test_api_client_needs_no_close_if_consumer_creation_fails(self):
         producer = Mock()
         kafka = types.SimpleNamespace(
-            KafkaProducer=Mock(return_value=producer),
             KafkaConsumer=Mock(side_effect=ValueError("consumer failure")),
         )
         control = types.SimpleNamespace(connection=Mock(return_value={}))
-        with patch.dict(sys.modules, {"kafka": kafka, "control": control}):
+        client = types.SimpleNamespace(PaymentClient=Mock(return_value=producer))
+        with patch.dict(sys.modules, {"kafka": kafka, "control": control, "payment_client": client}):
             with self.assertRaisesRegex(ValueError, "consumer failure"):
                 benchmark.run()
-        producer.close.assert_called_once_with(timeout=5)
+        producer.close.assert_not_called()
 
     def test_generated_events_match_utc_contract_and_kafka_timestamp(self):
         run_id = UUID("ed537ff3-f272-4278-b9e8-37a668c3da1e")

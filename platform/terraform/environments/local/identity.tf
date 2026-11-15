@@ -22,3 +22,14 @@ module "identity" {
   grafana_client_secret = var.identity_grafana_client_secret
   depends_on            = [helm_release.ingress]
 }
+
+resource "kubernetes_secret_v1" "payment_generator" {
+  count = var.identity_enabled ? 1 : 0
+  metadata {
+    name      = "payment-generator"
+    namespace = kubernetes_namespace_v1.foundation["apps"].metadata[0].name
+  }
+  data = {
+    client-secret = module.identity[0].generator_client_secret
+  }
+}

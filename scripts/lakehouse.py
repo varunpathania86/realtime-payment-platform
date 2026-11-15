@@ -81,16 +81,17 @@ def verify(profile, timeout=240, runner=subprocess.run, clock=time.monotonic, sl
         query(f"CREATE TABLE {SCRATCH} WITH (partitioning = ARRAY['day(event_time)']) AS "
             "SELECT event_id, event_time, amount_minor, currency FROM lakehouse_admin.payments.payment_events",
             "lakehouse_admin")
+        scratch_rows = scalar(query(f"SELECT count(*) AS n FROM {SCRATCH}", "lakehouse_admin"))
         query(f"ALTER TABLE {SCRATCH} ADD COLUMN review_note varchar", "lakehouse_admin")
         query(f"ALTER TABLE {SCRATCH} SET PROPERTIES partitioning = ARRAY['day(event_time)', 'currency']",
             "lakehouse_admin")
         query(f"INSERT INTO {SCRATCH} SELECT event_id, event_time, amount_minor, currency, 'evolved' "
-            "FROM lakehouse_admin.payments.payment_events", "lakehouse_admin")
+            f"FROM {SCRATCH}", "lakehouse_admin")
         notes = scalar(query(f"SELECT count(review_note) AS n FROM {SCRATCH}", "lakehouse_admin"))
         specs = scalar(query(f'SELECT count(DISTINCT spec_id) AS n FROM "{SCRATCH.rsplit(".", 1)[1]}$files"',
             "lakehouse_admin"))
-        if notes != curated or specs != 2:
-            raise RuntimeError(f"evolution check expected {curated} notes and 2 specs, got {notes} and {specs}")
+        if notes != scratch_rows or specs != 2:
+            raise RuntimeError(f"evolution check expected {scratch_rows} notes and 2 specs, got {notes} and {specs}")
         print("Lakehouse: ADD COLUMN and partition evolution verified on a scratch table", flush=True)
     finally:
         query(f"DROP TABLE IF EXISTS {SCRATCH}", "lakehouse_admin")

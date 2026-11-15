@@ -32,6 +32,7 @@ def healthy(curated=3, raw=14, specs=2, created=True):
         ("$snapshots", [{"snapshot_id": 42}]),
         ("FOR VERSION AS OF 42", [{"n": 1}]),
         ("count(review_note)", [{"n": curated}]),
+        (f"count(*) AS n FROM {lakehouse.SCRATCH}", [{"n": curated}]),
         ("count(DISTINCT spec_id)", [{"n": specs}]),
         ("count(*) AS n FROM payment_events", [{"n": curated}]),
     ])
@@ -61,6 +62,14 @@ class LakehouseControlTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             lakehouse.verify("rpp-1", runner=fake, clock=lambda: 0, sleep=lambda _: None)
         self.assertIn("DROP TABLE IF EXISTS", fake.calls[-1][1])
+
+    def test_evolution_uses_frozen_scratch_rows_while_live_table_grows(self):
+        fake = healthy(curated=3)
+        fake.rules.insert(0, (f"count(*) AS n FROM {lakehouse.SCRATCH}", [{"n": 5}]))
+        fake.rules.insert(0, ("count(review_note)", [{"n": 5}]))
+        lakehouse.verify("rpp-1", runner=fake, clock=lambda: 0, sleep=lambda _: None)
+        insert = next(sql for _, sql in fake.calls if sql.startswith("INSERT"))
+        self.assertTrue(insert.endswith(f"FROM {lakehouse.SCRATCH}"))
 
     def test_verify_rejects_a_reader_catalog_that_accepts_writes(self):
         fake = healthy()

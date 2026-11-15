@@ -95,12 +95,21 @@ resource "kubernetes_stateful_set_v1" "postgres" {
           }
           readiness_probe {
             exec { command = ["pg_isready", "-U", "payments", "-d", "payments"] }
-            period_seconds = 2
+            period_seconds  = 5
+            timeout_seconds = 5
+          }
+          startup_probe {
+            exec { command = ["pg_isready", "-U", "payments", "-d", "payments"] }
+            period_seconds    = 5
+            timeout_seconds   = 5
+            failure_threshold = 30
           }
           liveness_probe {
             exec { command = ["pg_isready", "-U", "payments", "-d", "payments"] }
             initial_delay_seconds = 15
             period_seconds        = 10
+            timeout_seconds       = 5
+            failure_threshold     = 6
           }
           volume_mount {
             name       = "data"

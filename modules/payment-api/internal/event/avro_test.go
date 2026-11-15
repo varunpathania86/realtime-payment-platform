@@ -19,7 +19,7 @@ func TestAuthoritativeAvroContract(t *testing.T) {
 	}
 	e := New("12345678-1234-4234-8234-123456789abc", payment.Payment{
 		ID: "22345678-1234-4234-8234-123456789abc", CreatedAt: time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC),
-		Command: payment.Command{AmountMinor: 9223372036854775807, Currency: "USD"},
+		Command: payment.Command{AmountMinor: 9223372036854775807, Currency: "USD", Country: "DE", PaymentMethod: "transfer"},
 	})
 	data, err := codec.Encode(42, e)
 	if err != nil {

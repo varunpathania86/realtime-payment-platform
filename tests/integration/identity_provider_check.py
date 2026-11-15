@@ -64,7 +64,7 @@ class IdentityProviderCheck(unittest.TestCase):
                     if line and not line.startswith("#"))
         cls.credentials = {key: secrets.token_urlsafe(36) for key in (
             "PORTAL_CLIENT_SECRET", "GRAFANA_CLIENT_SECRET", "SUPERSET_CLIENT_SECRET",
-            "ARGOCD_CLIENT_SECRET", "VIEWER_PASSWORD", "CLERK_PASSWORD", "ENGINEER_PASSWORD",
+            "ARGOCD_CLIENT_SECRET", "VIEWER_PASSWORD", "CLERK_PASSWORD", "ENGINEER_PASSWORD", "GENERATOR_CLIENT_SECRET",
         )}
         cls.credentials.update({
             "PORTAL_ORIGIN": CALLBACK.removesuffix("/auth/callback"),
@@ -130,6 +130,21 @@ class IdentityProviderCheck(unittest.TestCase):
         body = urllib.parse.urlencode(data).encode() if data is not None else None
         with urllib.request.urlopen(url, data=body, timeout=10) as response:
             return json.load(response)
+
+    def test_generator_client_credentials(self):
+        result = self.json_request(self.realm + "/protocol/openid-connect/token", {
+            "grant_type": "client_credentials", "client_id": "payment-generator",
+            "client_secret": self.credentials["GENERATOR_CLIENT_SECRET"], "scope": "openid",
+        })
+        raw = result["access_token"].split(".")[1]
+        claims = json.loads(base64.urlsafe_b64decode(raw + "=" * (-len(raw) % 4)))
+        audience = claims["aud"]
+        self.assertIn("payment-api", [audience] if isinstance(audience, str) else audience)
+        self.assertIn("openid", claims["scope"].split())
+        self.assertEqual(set(claims["resource_access"]["payment-api"]["roles"]),
+                        {"payments:read", "payments:write", "payments:simulate"})
+        self.assertNotIn("assistant-tools", claims["resource_access"])
+        self.assertLessEqual(result["expires_in"], 300)
 
     def authorize(self, user, challenge=True):
         self.jar = http.cookiejar.CookieJar(policy=LoopbackBrowserCookies())

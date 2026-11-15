@@ -200,11 +200,16 @@ func (api *API) create(ctx context.Context, w http.ResponseWriter, r *http.Reque
 		fail(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if command.Simulation != (payment.Simulation{}) && !payment.SimulationAllowed(ctx) {
+		fail(w, http.StatusForbidden, "payments:simulate permission required for synthetic controls")
+		return
+	}
 	p, err := api.store.Create(ctx, keys[0], command)
 	if err != nil {
 		span.SetStatus(codes.Error, "payment_creation_failed")
 	}
 	if err == nil {
+		p.ProcessingEventID = payment.ProcessingID(p.ID)
 		trace.SpanFromContext(ctx).SetAttributes(attribute.String("payment_id", p.ID))
 		api.logger.InfoContext(ctx, "payment_created", "payment_id", p.ID)
 		prefix := ""
@@ -217,6 +222,9 @@ func (api *API) create(ctx context.Context, w http.ResponseWriter, r *http.Reque
 }
 
 func (api *API) result(ctx context.Context, w http.ResponseWriter, p payment.Payment, err error, status int) {
+	if err == nil {
+		p.ProcessingEventID = payment.ProcessingID(p.ID)
+	}
 	switch {
 	case err == nil:
 		respond(w, status, p)

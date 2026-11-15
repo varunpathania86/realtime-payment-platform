@@ -25,7 +25,7 @@ variable "access_port" { type = number }
 locals {
   credential_names = toset([
     "database", "bootstrap-admin", "portal-client", "grafana-client", "superset-client", "argocd-client",
-    "ops-viewer", "payments-clerk", "ops-engineer",
+    "ops-viewer", "payments-clerk", "ops-engineer", "payment-generator",
   ])
   identity_hostname = "http://identity.localhost:${var.access_port}"
 }
@@ -102,11 +102,20 @@ resource "kubernetes_stateful_set_v1" "database" {
             exec { command = ["pg_isready", "-U", "keycloak", "-d", "keycloak"] }
             initial_delay_seconds = 5
             period_seconds        = 5
+            timeout_seconds       = 5
+          }
+          startup_probe {
+            exec { command = ["pg_isready", "-U", "keycloak", "-d", "keycloak"] }
+            period_seconds    = 5
+            timeout_seconds   = 5
+            failure_threshold = 30
           }
           liveness_probe {
             exec { command = ["pg_isready", "-U", "keycloak", "-d", "keycloak"] }
             initial_delay_seconds = 30
             period_seconds        = 10
+            timeout_seconds       = 5
+            failure_threshold     = 6
           }
           resources {
             requests = { cpu = "100m", memory = "128Mi" }
@@ -169,6 +178,7 @@ resource "kubernetes_secret_v1" "provider" {
     VIEWER_PASSWORD             = random_password.credential["ops-viewer"].result
     CLERK_PASSWORD              = random_password.credential["payments-clerk"].result
     ENGINEER_PASSWORD           = random_password.credential["ops-engineer"].result
+    GENERATOR_CLIENT_SECRET     = random_password.credential["payment-generator"].result
     PORTAL_ORIGIN               = "http://localhost:${var.access_port}"
     GRAFANA_ORIGIN              = "http://grafana.localhost:${var.access_port}"
     SUPERSET_ORIGIN             = "http://bi.localhost:${var.access_port}"
@@ -221,5 +231,10 @@ variable "grafana_client_secret" {
 
 output "superset_client_secret" {
   value     = random_password.credential["superset-client"].result
+  sensitive = true
+}
+
+output "generator_client_secret" {
+  value     = random_password.credential["payment-generator"].result
   sensitive = true
 }

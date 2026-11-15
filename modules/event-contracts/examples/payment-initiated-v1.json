@@ -9,6 +9,12 @@
   "payload": {
     "payment_id": "00000000-0000-4000-8000-000000000003",
     "amount_minor": 1250,
-    "currency": "EUR"
+    "currency": "EUR",
+    "country": "DE",
+    "payment_method": "transfer",
+    "account_created_at": "",
+    "device_id": "",
+    "simulation_event_time": "",
+    "simulation_outcome": ""
   }
 }

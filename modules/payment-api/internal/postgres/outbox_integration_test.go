@@ -19,7 +19,7 @@ func testTraceContext(t *testing.T, ctx context.Context, store *Store) {
 		"traceparent": "00-01000000000000000000000000000000-0200000000000000-01",
 		"tracestate":  "rpp=synthetic",
 	})
-	command := payment.Command{AccountID: "00000000-0000-4000-8000-000000000004", AmountMinor: 100, Currency: "USD"}
+	command := payment.Command{AccountID: "00000000-0000-4000-8000-000000000004", AmountMinor: 100, Currency: "USD", Country: "DE", PaymentMethod: "transfer"}
 	p, err := store.Create(origin, "traced-payment", command)
 	if err != nil {
 		t.Fatal(err)
@@ -194,8 +194,8 @@ func testOutbox(t *testing.T, ctx context.Context, store *Store, first payment.P
 	if err := store.Quarantine(ctx, "payments.initiated.v1", 0, 43, nil, nil, "arbitrary"); err == nil {
 		t.Fatal("accepted invalid quarantine failure code")
 	}
-	if _, err := store.db.ExecContext(ctx, `INSERT INTO payments (id,account_id,amount_minor,currency,status,idempotency_key)
-		VALUES ('00000000-0000-4000-8000-000000000099','00000000-0000-4000-8000-000000000003',100,'USD','initiated','old-api-writer')`); err != nil {
+	if _, err := store.db.ExecContext(ctx, `INSERT INTO payments (id,account_id,amount_minor,currency,country,payment_method,status,idempotency_key)
+		VALUES ('00000000-0000-4000-8000-000000000099','00000000-0000-4000-8000-000000000003',100,'USD','DE','transfer','initiated','old-api-writer')`); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.db.QueryRowContext(ctx, `SELECT count(*) FROM payment_outbox WHERE payment_id = '00000000-0000-4000-8000-000000000099'`).Scan(&count); err != nil || count != 1 {
