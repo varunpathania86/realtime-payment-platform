@@ -2190,6 +2190,25 @@
       "integrated": true,
       "iteration": 2,
       "module": "ai-orchestrator",
+      "publication": {
+        "approvedImpact": "patch",
+        "branch": "main",
+        "chart": {
+          "digest": "sha256:8533185202cf0b11c03203ab448039294377c61d29373c9e42774aaa8d26e3c1",
+          "repository": "ghcr.io/varunpathania86/charts/ai-orchestrator",
+          "version": "0.0.1-it2-rv.2"
+        },
+        "digest": "sha256:8c21d56d3dfe2a51598d7ed1e6544ecddd728ee95d055bc0b9bc8716f0c2da8a",
+        "module": "ai-orchestrator",
+        "provenance": "ghcr.io/varunpathania86/ai-orchestrator@sha256:8c21d56d3dfe2a51598d7ed1e6544ecddd728ee95d055bc0b9bc8716f0c2da8a",
+        "repository": "ghcr.io/varunpathania86/ai-orchestrator",
+        "sbom": "ghcr.io/varunpathania86/ai-orchestrator@sha256:8c21d56d3dfe2a51598d7ed1e6544ecddd728ee95d055bc0b9bc8716f0c2da8a",
+        "schemaVersion": 1,
+        "sourceCommit": "dcf77d6bb220fd42ecea0849c8a407c60e58d42f",
+        "testRun": "https://github.com/varunpathania86/realtime-payment-platform/actions/runs/43762202511",
+        "version": "0.0.1-it2-rv.2",
+        "workflowRun": "https://github.com/varunpathania86/realtime-payment-platform/actions/runs/43762786078"
+      },
       "registry": "ghcr.io/varunpathania86",
       "releaseLine": "main",
       "reservedVersion": "0.0.1-it2-rv.2",
